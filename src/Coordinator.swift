@@ -44,6 +44,7 @@ final class Coordinator {
         guard interrupt || pauseRead || resumeRead || routed != nil else { return }
         // Lecture en pause : « reprends la lecture » la relance, « écoute » ouvre le micro.
         if trigger.readingTarget() == nil, let paused = trigger.pausedTarget(), resumeRead || interrupt {
+            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { detector.reset(); return }
             lastWake = Date()
             detector.reset()
             if resumeRead {
