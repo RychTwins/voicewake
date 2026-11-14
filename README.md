@@ -9,6 +9,10 @@ Dites « Dis Claude » : VoiceWake ouvre l'application, active son micro intégr
 - **Contextuel** : la fenêtre au premier plan décide. Dans VS Code, « Dis Claude » vise l'extension Claude Code ; ailleurs, l'application Claude.
 - **Mains libres de bout en bout** : activation, dictée, envoi, lecture de la réponse et interruption de la lecture.
 
+- **Sans interface** : tout s'installe et se règle en ligne de commande.
+
+> **Open source et gratuit.** Téléchargez-le, testez-le sur votre Mac, améliorez-le et adaptez-le à votre façon de travailler. La version actuelle est en **français** ; elle s'adapte à n'importe quelle langue (voir [Adapter à votre langue](#adapter-à-votre-langue)). Les contributions sont les bienvenues.
+
 > Projet indépendant, sans lien avec Anthropic, OpenAI ou Google.
 
 ---
@@ -26,6 +30,8 @@ Dites « Dis Claude » : VoiceWake ouvre l'application, active son micro intégr
 9. [Limites connues](#limites-connues)
 10. [Windows](#windows)
 11. [Désinstallation](#désinstallation)
+12. [Adapter à votre langue](#adapter-à-votre-langue)
+13. [Contribuer](#contribuer)
 
 ---
 
@@ -301,11 +307,37 @@ Windows : `.\uninstall.ps1` (`-Purge` pour supprimer aussi la configuration).
 
 ---
 
+## Adapter à votre langue
+
+Seule la configuration change, le code reste identique :
+
+1. `locale` : votre langue de reconnaissance, par exemple `en-US`, `es-ES`, `de-DE`, `pt-BR`.
+2. `phrases`, `frontmostPhrases`, `sendPhrases`, `stopPhrases`, `readPausePhrases`, `readResumePhrases`, `interruptPhrases` : vos commandes dans cette langue (« Hey Claude », « OK send »…).
+3. Les libellés `button:` suivent la langue de l'interface des applications : relevez-les avec Accessibility Inspector, ou ajoutez-les en alternative avec `|` (`button:Envoyer|Send`).
+4. Relancez le service, puis vérifiez avec `voicewake route "hey claude"`.
+
+Si votre langue n'est pas reconnue localement par macOS, passez `"requireOnDevice": false`.
+
+---
+
+## Contribuer
+
+Le projet est ouvert à tous : nouvelles langues, nouveaux assistants, autres éditeurs, version Linux, corrections.
+
+1. Forkez le dépôt et créez une branche.
+2. Vérifiez vos changements : `./install.sh`, `voicewake check`, puis `bash tests/route.sh ~/.local/bin/voicewake`.
+3. Ouvrez une pull request en décrivant ce que vous avez testé (application, langue, version de macOS).
+
+Un bug ou une idée ? Ouvrez une [issue](https://github.com/RychTwins/voicewake/issues) avec l'extrait utile du journal `~/Library/Logs/voicewake.log` (en mode `debug`, il contient vos paroles : relisez-le avant de le partager).
+
+---
+
 ## Feuille de route
 
 - Version Linux (Vosk)
 - Lecture à voix haute dans les éditeurs de code
 - Version anglaise de la documentation
+- Configurations prêtes à l'emploi pour d'autres langues
 
 ## Licence
 
