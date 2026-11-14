@@ -40,21 +40,27 @@ final class Coordinator {
         let interrupt = router.containsInterruptPhrase(text)
         let routed = router.route(text)
         guard interrupt || routed != nil else { return }
-        // Un assistant parle (lecture à voix haute) : seule une phrase d'interruption compte,
-        // pour ne pas se déclencher sur sa propre voix.
-        if let speaking = MicMonitor.outputtingPrefix(config.targets.compactMap(\.bundleID)) {
-            if interrupt, let t = config.targets.first(where: { $0.bundleID == speaking }) {
+        // Lecture à voix haute lancée par VoiceWake et encore en cours : seule une phrase
+        // d'interruption compte, pour ne pas se déclencher sur la voix de l'assistant.
+        // (Une app peut garder sa sortie audio ouverte sans rien lire : on ne bloque que nos lectures.)
+        if let reader = trigger.readingTarget(), let bundle = reader.bundleID,
+           MicMonitor.isOutputRunning(bundlePrefixes: [bundle]) {
+            if interrupt {
+                let t = reader
                 lastWake = Date()
                 log("Interruption de la lecture → \(t.id)\(said(text)).")
                 detector.stop()
                 trigger.interruptAndDictate(t) { [weak self] in self?.pauseUntilConversationEnds(t) }
             } else {
-                if config.debug { log("Phrase ignorée : un assistant parle (« \(text) »).") }
+                log("Phrase ignorée : lecture à voix haute de \(reader.id) en cours\(said(text)).")
                 detector.reset()
             }
             return
         }
-        guard let target = routed else { detector.reset(); return }
+        trigger.endReading() // lecture terminée (plus de son) : on ne bloque plus
+        guard let routedTarget = routed else { detector.reset(); return }
+        // Éditeur de code au premier plan avec cet assistant intégré : on vise l'éditeur.
+        let target = router.inEditor(routedTarget) ?? routedTarget
         let now = Date()
         guard now.timeIntervalSince(lastWake) >= config.cooldownSeconds else {
             detector.reset()

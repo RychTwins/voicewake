@@ -41,6 +41,7 @@ final class ShortcutTrigger {
         }
         let activate = t.activate ?? true
         readGeneration += 1 // nouvelle demande : annule une lecture en attente
+        reading = nil
 
         if let app = Self.runningApp(for: t) {
             if activate { Self.activate(app) }
@@ -82,6 +83,16 @@ final class ShortcutTrigger {
     }
 
     private var readGeneration = 0
+    /// Lecture à voix haute lancée par VoiceWake (cible et date), effacée à la demande suivante.
+    private(set) var reading: (target: Target, since: Date)?
+
+    /// Cible dont VoiceWake a lancé la lecture il y a moins de `within` secondes.
+    func endReading() { reading = nil }
+
+    func readingTarget(within seconds: TimeInterval = 900) -> Target? {
+        guard let r = reading, Date().timeIntervalSince(r.since) < seconds else { return nil }
+        return r.target
+    }
 
     /// Attend la fin de la réponse, puis clique le dernier bouton de lecture à voix haute.
     /// Fin = indicateur « en cours » (busyLabels) disparu, ou nouveau bouton de lecture, stable 2 s.
@@ -108,6 +119,7 @@ final class ShortcutTrigger {
                 if stable >= 2 {
                     let ok = AXButtonPresser.pressLast(labels, in: app)
                     DispatchQueue.main.async {
+                        if ok { self.reading = (t, Date()) }
                         log(ok ? "\(t.id) : lecture à voix haute lancée." : "\(t.id) : bouton de lecture introuvable.")
                     }
                     return

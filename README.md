@@ -101,7 +101,7 @@ Pendant la dictée, VoiceWake continue d'écouter (micro partagé). Termine par 
 - `sendSilenceSeconds` (1,2) : silence requis après la phrase. Une phrase d'envoi en milieu de phrase ne déclenche rien.
 - `sendPauseBeforeSeconds` (0,6) : pause requise aussi *avant* « ok envoie » / « ok arrête ». Évite l'envoi quand tu cites la phrase en parlant. `0` = désactivé.
 
-**Lecture à voix haute automatique** : après un envoi vocal, VoiceWake attend la fin de la réponse puis clique le dernier bouton de lecture (`readAloudShortcut`, ex. `button:Lire à voix haute`). Fin de réponse = disparition des libellés `busyLabels` (Claude : « Arrêter », « Message en cours de génération ») ou apparition d'un nouveau bouton de lecture, stable 2 s. Attente max : `readAloudTimeoutSeconds` (600). Configuré pour Claude et Codex. Tant qu'une app d'assistant joue du son, les phrases d'activation sont ignorées (VoiceWake ne se déclenche pas sur la voix de lecture).
+**Lecture à voix haute automatique** : après un envoi vocal, VoiceWake attend la fin de la réponse puis clique le dernier bouton de lecture (`readAloudShortcut`, ex. `button:Lire à voix haute`). Fin de réponse = disparition des libellés `busyLabels` (Claude : « Arrêter », « Message en cours de génération ») ou apparition d'un nouveau bouton de lecture, stable 2 s. Attente max : `readAloudTimeoutSeconds` (600). Configuré pour Claude et Codex. Pendant une lecture lancée par VoiceWake, les phrases d'activation sont ignorées (VoiceWake ne se déclenche pas sur la voix de lecture) ; le log l'indique (« Phrase ignorée »).
 
 **Interrompre la lecture** : pendant la lecture, dis une phrase de `interruptPhrases` (« stop lecture », « arrête la lecture », « stop stop »). VoiceWake clique `pauseReadShortcut` (Claude : `button:Pause`), rouvre le micro de l'app, puis tu dictes ta nouvelle demande et « ok envoie ». Limite : si la réponse lue contient elle-même une phrase d'interruption, la lecture s'interrompt toute seule (pas de distinction entre ta voix et celle des haut-parleurs ; un casque évite le problème).
 
@@ -110,6 +110,26 @@ App fermée : VoiceWake la lance, attend `launchDelaySeconds` (3), puis cherche 
 Le micro de l'app transcrit aussi « ok envoie » dans le message. Pour trouver le libellé d'un bouton : Accessibility Inspector (Xcode > Open Developer Tool).
 
 Phrases d'activation : ajoute autant de variantes que voulu par cible (« salut claude », « dis claude », « hey claude », « say claude »…).
+
+### Éditeurs de code (VS Code, Cursor, Antigravity…)
+
+Règle : **la fenêtre au premier plan décide**.
+
+- Un éditeur de `editors` est au premier plan et intègre l'assistant appelé → « Dis Claude » active le micro **dans l'éditeur** (ex. extension Claude Code dans VS Code).
+- Sinon (autre fenêtre au premier plan, ou panneau de l'assistant fermé dans l'éditeur) → l'app de bureau, comme d'habitude.
+- « Salut assistant » dans un éditeur → son assistant intégré (`defaultTarget` en priorité).
+
+```json
+"editors": [{
+  "id": "vscode",
+  "bundleIDs": ["com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "com.google.antigravity"],
+  "assistants": {
+    "claude": { "shortcut": "button:Voice dictation", "stopShortcut": "button:Stop recording", "submitShortcut": "button:Send message" }
+  }
+}]
+```
+
+Testé : extension Claude Code dans VS Code. Les extensions Codex et Gemini Code Assist s'ajoutent de la même façon (clé `codex`, `gemini`) une fois leurs libellés de boutons relevés. `voicewake test claude` applique la même règle : passe sur l'éditeur pendant les 3 s. Version Windows : pas encore prise en charge.
 
 **Dicter dans la session ouverte (toutes applications)** : le `capslock` de Claude dicte dans la fenêtre Quick Entry, pas dans la conversation ouverte. Pour écrire directement dans le champ actif de l'application, utilise la Dictée macOS : Réglages Système > Clavier > Dictée > Raccourci > Personnaliser → `⌃⌥D`, puis `"shortcut": "ctrl+option+d"` et `"activate": true` pour chaque cible. Une cible s'ajoute librement, ex. Gemini (`"bundleID": "com.google.GeminiMacOS"`, phrase « salut gemini »).
 

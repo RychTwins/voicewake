@@ -82,6 +82,9 @@ case "check":
         print("    phrases : \(t.phrases.joined(separator: ", "))")
     }
     print("- premier plan : \(config.frontmostPhrases.joined(separator: ", ")) → défaut : \(config.defaultTarget ?? "aucun")")
+    for e in config.editors ?? [] {
+        print("- éditeur \(e.id) (\(e.bundleIDs.joined(separator: ", "))) : \(e.assistants.keys.sorted().joined(separator: ", "))")
+    }
     print("- envoi vocal : \((config.sendPhrases ?? []).isEmpty ? "désactivé" : (config.sendPhrases ?? []).joined(separator: ", "))")
     print("Accessibilité : \(ShortcutTrigger.checkAccessibility(prompt: false) ? "OK" : "NON")")
 
@@ -90,7 +93,10 @@ case "test":
     guard ShortcutTrigger.checkAccessibility(prompt: true) else { exit(1) }
     print("Raccourci de \(t.id) (« \(t.shortcut.spec) ») dans 3 s…")
     DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-        ShortcutTrigger().fire(t) { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exit(0) } }
+        // Même règle que la voix : un éditeur au premier plan avec l'assistant intégré est prioritaire.
+        let target = Router(config: config).inEditor(t) ?? t
+        print("→ \(target.id)")
+        ShortcutTrigger().fire(target) { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exit(0) } }
     }
     app.run()
 

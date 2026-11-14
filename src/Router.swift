@@ -58,10 +58,40 @@ struct Router {
         return (phrases ?? []).map(normalize).filter { !$0.isEmpty && n.hasSuffix($0) }.max { $0.count < $1.count }
     }
 
+    /// Éditeur au premier plan qui intègre cet assistant → cible « dans l'éditeur ».
+    /// nil si aucun éditeur n'est au premier plan, s'il n'intègre pas l'assistant,
+    /// ou si le panneau de l'assistant n'est pas ouvert (bouton introuvable) : l'app de bureau prend le relais.
+    func inEditor(_ t: Target) -> Target? {
+        guard let front = NSWorkspace.shared.frontmostApplication, let bid = front.bundleIdentifier,
+              let editor = config.editors?.first(where: { $0.bundleIDs.contains(bid) }),
+              let a = editor.assistants[t.id] else { return nil }
+        if !a.shortcut.buttons.isEmpty, AXButtonPresser.all(a.shortcut.buttons, in: front).isEmpty {
+            log("\(editor.id) au premier plan, mais panneau \(t.id) fermé : app de bureau.")
+            return nil
+        }
+        var e = t
+        e.id = "\(t.id)@\(editor.id)"
+        e.bundleID = bid
+        e.appName = front.localizedName
+        e.shortcut = a.shortcut
+        e.stopShortcut = a.stopShortcut
+        e.submitShortcut = a.submitShortcut
+        e.readAloudShortcut = a.readAloudShortcut
+        e.busyLabels = a.busyLabels
+        e.pauseReadShortcut = a.pauseReadShortcut
+        e.activate = true
+        return e
+    }
+
     func frontmostTarget() -> Target? {
-        if let front = NSWorkspace.shared.frontmostApplication,
-           let t = config.targets.first(where: { ShortcutTrigger.matches(front, $0) }) {
+        guard let front = NSWorkspace.shared.frontmostApplication else { return config.defaultTarget.flatMap(config.target(id:)) }
+        if let t = config.targets.first(where: { ShortcutTrigger.matches(front, $0) }) {
             return t
+        }
+        // Éditeur au premier plan : son assistant intégré (defaultTarget en priorité).
+        if let bid = front.bundleIdentifier, let editor = config.editors?.first(where: { $0.bundleIDs.contains(bid) }) {
+            let ids = [config.defaultTarget].compactMap { $0 } + editor.assistants.keys.sorted()
+            if let id = ids.first(where: { editor.assistants[$0] != nil }), let t = config.target(id: id) { return t }
         }
         if let d = config.defaultTarget { return config.target(id: d) }
         log("Phrase générale : aucune cible au premier plan et pas de defaultTarget.")

@@ -46,6 +46,24 @@ struct Target: Codable {
     var submitDelaySeconds: Double?
 }
 
+/// Un assistant intégré à un éditeur (ex. extension Claude Code dans VS Code).
+struct EditorAssistant: Codable {
+    var shortcut: Shortcut
+    var stopShortcut: Shortcut?
+    var submitShortcut: Shortcut?
+    var readAloudShortcut: Shortcut?
+    var busyLabels: [String]?
+    var pauseReadShortcut: Shortcut?
+}
+
+/// Éditeur de code : s'il est au premier plan, « Dis Claude » vise l'assistant intégré plutôt que l'app de bureau.
+struct Editor: Codable {
+    var id: String
+    var bundleIDs: [String]
+    /// Clé = id de la cible (claude, codex, gemini…).
+    var assistants: [String: EditorAssistant]
+}
+
 struct ConversationSettings: Codable {
     /// Temps laissé à l'assistant pour ouvrir le micro après le déclenchement.
     var startGraceSeconds: Double
@@ -78,6 +96,8 @@ struct Config: Codable {
     /// Après « ok arrête », durée d'attente de « ok envoie » (défaut 180 s).
     var reviewSeconds: Double?
     var targets: [Target]
+    /// Éditeurs de code avec assistants intégrés (prioritaires quand ils sont au premier plan).
+    var editors: [Editor]?
 
     static func defaultPath() -> String {
         (NSHomeDirectory() as NSString).appendingPathComponent(".config/voicewake/config.json")
