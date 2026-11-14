@@ -87,11 +87,39 @@ final class ShortcutTrigger {
     private(set) var reading: (target: Target, since: Date)?
 
     /// Cible dont VoiceWake a lancé la lecture il y a moins de `within` secondes.
-    func endReading() { reading = nil }
-
     func readingTarget(within seconds: TimeInterval = 900) -> Target? {
         guard let r = reading, Date().timeIntervalSince(r.since) < seconds else { return nil }
         return r.target
+    }
+
+    /// Lecture lancée : surveille le son de l'app et ne considère la lecture finie qu'après
+    /// 3 s de silence continu (les pauses entre phrases ne lèvent pas la protection).
+    private func startReading(_ t: Target, app: NSRunningApplication) {
+        reading = (t, Date())
+        let gen = readGeneration
+        let bundle = t.bundleID ?? app.bundleIdentifier ?? ""
+        DispatchQueue.global().async {
+            var silentSince: Date?
+            while true {
+                usleep(500_000)
+                // Signal le plus fiable : le bouton de pause, visible seulement pendant la lecture (Claude).
+                // Sinon, le son de l'app.
+                let pauseLabels = t.pauseReadShortcut?.buttons ?? []
+                let playing = !pauseLabels.isEmpty
+                    ? !AXButtonPresser.all(pauseLabels, in: app).isEmpty
+                    : (!bundle.isEmpty && MicMonitor.isOutputRunning(bundlePrefixes: [bundle]))
+                var done = false
+                if playing { silentSince = nil }
+                else if let s = silentSince { done = Date().timeIntervalSince(s) >= 3 }
+                else { silentSince = Date() }
+                let stop: Bool = DispatchQueue.main.sync {
+                    guard gen == self.readGeneration, self.reading != nil else { return true }
+                    if done { self.reading = nil; log("\(t.id) : lecture terminée.") }
+                    return done
+                }
+                if stop { return }
+            }
+        }
     }
 
     /// Attend la fin de la réponse, puis clique le dernier bouton de lecture à voix haute.
@@ -119,7 +147,7 @@ final class ShortcutTrigger {
                 if stable >= 2 {
                     let ok = AXButtonPresser.pressLast(labels, in: app)
                     DispatchQueue.main.async {
-                        if ok { self.reading = (t, Date()) }
+                        if ok { self.startReading(t, app: app) }
                         log(ok ? "\(t.id) : lecture à voix haute lancée." : "\(t.id) : bouton de lecture introuvable.")
                     }
                     return

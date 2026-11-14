@@ -43,8 +43,8 @@ final class Coordinator {
         // Lecture à voix haute lancée par VoiceWake et encore en cours : seule une phrase
         // d'interruption compte, pour ne pas se déclencher sur la voix de l'assistant.
         // (Une app peut garder sa sortie audio ouverte sans rien lire : on ne bloque que nos lectures.)
-        if let reader = trigger.readingTarget(), let bundle = reader.bundleID,
-           MicMonitor.isOutputRunning(bundlePrefixes: [bundle]) {
+        // La lecture reste « en cours » jusqu'à 3 s de silence continu (voir startReading).
+        if let reader = trigger.readingTarget() {
             if interrupt {
                 let t = reader
                 lastWake = Date()
@@ -57,7 +57,6 @@ final class Coordinator {
             }
             return
         }
-        trigger.endReading() // lecture terminée (plus de son) : on ne bloque plus
         guard let routedTarget = routed else { detector.reset(); return }
         // Éditeur de code au premier plan avec cet assistant intégré : on vise l'éditeur.
         let target = router.inEditor(routedTarget) ?? routedTarget
