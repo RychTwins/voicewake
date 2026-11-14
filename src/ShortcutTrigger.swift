@@ -24,11 +24,17 @@ final class ShortcutTrigger {
         return ok
     }
 
+    /// La vraie application de la cible : bundle ID exact d'abord, puis le nom,
+    /// uniquement parmi les apps normales (icône dans le Dock). Évite les extensions et assistants
+    /// qui portent le même nom (ex. « Gemini » = extension Finder de Gemini).
     static func runningApp(for t: Target) -> NSRunningApplication? {
-        NSWorkspace.shared.runningApplications.first { matches($0, t) }
+        let apps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
+        if let b = t.bundleID, let app = apps.first(where: { $0.bundleIdentifier == b }) { return app }
+        return apps.first { matches($0, t) }
     }
 
     static func matches(_ app: NSRunningApplication, _ t: Target) -> Bool {
+        guard app.activationPolicy == .regular else { return false }
         if let b = t.bundleID, app.bundleIdentifier == b { return true }
         if let n = t.appName, app.localizedName?.caseInsensitiveCompare(n) == .orderedSame { return true }
         return false
@@ -59,8 +65,21 @@ final class ShortcutTrigger {
         reading = nil
 
         if let app = Self.runningApp(for: t) {
-            if activate { Self.activate(app) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.send(t, completion) }
+            guard activate else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.send(t, completion) }
+                return
+            }
+            // L'app doit être réellement au premier plan (fenêtre affichée) avant le clic.
+            Self.bringToFront(app, target: t) { active in
+                guard active else {
+                    log("\(t.id) : impossible de mettre l'app au premier plan.")
+                    completion?(false)
+                    return
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    self.send(t, patience: 5, foregroundApp: app, completion)
+                }
+            }
             return
         }
 
@@ -72,12 +91,15 @@ final class ShortcutTrigger {
         log("\(t.id) : lancement de l'application.")
         let cfg = NSWorkspace.OpenConfiguration()
         cfg.activates = activate
-        NSWorkspace.shared.openApplication(at: url, configuration: cfg) { _, error in
-            if let error { log("\(t.id) : lancement impossible : \(error.localizedDescription)") }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + (t.launchDelaySeconds ?? 3)) {
-            // App tout juste lancée : son interface peut mettre du temps à apparaître.
-            self.send(t, patience: 20, completion)
+        NSWorkspace.shared.openApplication(at: url, configuration: cfg) { app, error in
+            DispatchQueue.main.asyncAfter(deadline: .now() + (t.launchDelaySeconds ?? 3)) {
+                guard let app else {
+                    log("\(t.id) : lancement impossible : \(error?.localizedDescription ?? "application indisponible")")
+                    completion?(false)
+                    return
+                }
+                self.send(t, patience: 20, foregroundApp: activate ? app : nil, completion)
+            }
         }
     }
 
@@ -195,6 +217,39 @@ final class ShortcutTrigger {
         send(stopTarget, in: window, systemShortcut: usesOpeningShortcut, completion)
     }
 
+    /// Met l'app au premier plan et attend qu'elle le soit (3 s max).
+    /// Depuis macOS 14, `activate()` appelé par une app en arrière-plan peut être refusé :
+    /// on passe alors par LaunchServices (comme un clic dans le Dock), qui affiche aussi une app masquée.
+    static func bringToFront(_ app: NSRunningApplication, target t: Target, completion: @escaping (Bool) -> Void) {
+        if app.isActive { return completion(true) }
+        app.unhide()
+        activate(app)
+        // Accessibilité : accepté même depuis un service en arrière-plan (activate() peut être refusé).
+        let el = AXUIElementCreateApplication(app.processIdentifier)
+        let unhidden = AXUIElementSetAttributeValue(el, kAXHiddenAttribute as CFString, kCFBooleanFalse)
+        let front = AXUIElementSetAttributeValue(el, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        log("\(t.id) : mise au premier plan (AX masquage \(unhidden.rawValue), premier plan \(front.rawValue)).")
+        var windows: CFTypeRef?
+        if AXUIElementCopyAttributeValue(el, kAXWindowsAttribute as CFString, &windows) == .success,
+           let first = (windows as? [AXUIElement])?.first {
+            AXUIElementSetAttributeValue(first, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+            AXUIElementPerformAction(first, kAXRaiseAction as CFString)
+        }
+        var fallbackDone = false
+        func poll(_ remaining: Int) {
+            if app.isActive { return completion(true) }
+            if remaining <= 0 { return completion(false) }
+            if remaining == 4, !fallbackDone, let url = app.bundleURL ?? appURL(for: t) {
+                fallbackDone = true
+                let cfg = NSWorkspace.OpenConfiguration()
+                cfg.activates = true
+                NSWorkspace.shared.openApplication(at: url, configuration: cfg) { _, _ in }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { poll(remaining - 1) }
+        }
+        poll(12)
+    }
+
     private static func activate(_ app: NSRunningApplication) {
         if #available(macOS 14, *) {
             app.activate()
@@ -206,10 +261,10 @@ final class ShortcutTrigger {
     /// `patience` : durée max (s) de recherche du bouton.
     private func send(
         _ t: Target, patience: Double = 3, in window: DictationWindow? = nil,
-        systemShortcut: Bool = false, _ completion: ((Bool) -> Void)?
+        systemShortcut: Bool = false, foregroundApp: NSRunningApplication? = nil, _ completion: ((Bool) -> Void)?
     ) {
         let s = t.shortcut
-        let allowed = { AXIsProcessTrusted() && (window?.isFocused ?? true) }
+        let allowed = { AXIsProcessTrusted() && (window?.isFocused ?? foregroundApp?.isActive ?? true) }
         guard allowed() else {
             log("\(t.id) : action ignorée, fenêtre de dictée inactive ou accès refusé.")
             completion?(false)

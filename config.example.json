@@ -101,8 +101,8 @@
         "hey codex",
         "say codex"
       ],
-      "shortcut": "button:Dicter|Dictate",
-      "stopShortcut": "button:Arrêter la dictée|Stop dictation",
+      "shortcut": "cmd+shift+d",
+      "stopShortcut": "cmd+shift+d",
       "submitShortcut": "button:Envoyer|Send",
       "_note": "App Codex (peut être installée sous le nom ChatGPT.app). Vérifier le bundle ID : mdls -name kMDItemCFBundleIdentifier /Applications/*.app",
       "activate": true,
@@ -110,7 +110,9 @@
       "readAloudShortcut": "button:Lire à voix haute|Read aloud",
       "windows": {
         "processName": "Codex",
-        "launch": "startmenu:Codex"
+        "launch": "startmenu:Codex",
+        "shortcut": "button:Dicter|Dictate",
+        "stopShortcut": "button:Arrêter la dictée|Stop dictation"
       }
     },
     {

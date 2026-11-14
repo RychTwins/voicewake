@@ -76,7 +76,7 @@ Les lettres suivent la disposition active (AZERTY, QWERTY…). Modificateurs : `
 | --- | --- | --- | --- |
 | Claude | `button:Maintenez appuyé pour enregistrer` | micro de la session ouverte | Rien (libellé de l'interface en français ou anglais) |
 | ChatGPT | `ctrl+option+d` | Dictée macOS dans le champ actif | Régler ⌃⌥D dans Réglages Système > Clavier > Dictée |
-| Codex | `button:Dicter` | micro de la zone de saisie | Vérifier le bundle ID (voir ci-dessous) |
+| Codex | `cmd+shift+d` | bascule la dictée de la zone de saisie | Vérifier le raccourci « Activer ou désactiver la dictée » si personnalisé |
 | Gemini | `button:Utiliser le micro (⌘D)` | micro de la zone de saisie | Rien |
 
 **Applications OpenAI récentes** : l'app installée sous le nom `ChatGPT.app` peut être l'app Codex (bundle `com.openai.codex`), et l'ancienne app ChatGPT s'appelle alors `ChatGPT Classic.app` (`com.openai.chat`). Vérifie avec `mdls -name kMDItemCFBundleIdentifier /Applications/*.app`, puis renseigne `appName` et `bundleID` de chaque cible (ex. codex → `"appName": "ChatGPT", "bundleID": "com.openai.codex"`). `voicewake check` doit afficher « installée : oui » pour chaque cible.
@@ -88,7 +88,7 @@ Les lettres suivent la disposition active (AZERTY, QWERTY…). Modificateurs : `
 | App | `shortcut` | `stopShortcut` | `submitShortcut` |
 | --- | --- | --- | --- |
 | Claude | `button:Maintenez appuyé pour enregistrer` | `button:Arrêter la dictée` | `return` (défaut) |
-| Codex (`ChatGPT.app`) | `button:Dicter` | `button:Arrêter la dictée` | `button:Envoyer` |
+| Codex (`ChatGPT.app`) | `cmd+shift+d` | `cmd+shift+d` | `button:Envoyer` |
 | Gemini | `button:Utiliser le micro (⌘D)` | `button:Arrêter (⌘D)` | `button:Envoyer` |
 | ChatGPT Classic | `ctrl+option+d` (Dictée macOS) | idem | `return` |
 
