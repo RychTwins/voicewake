@@ -1,32 +1,37 @@
 # VoiceWake
 
-Déclencheur vocal local pour macOS : dis « Salut Claude » (ou « Dis / Hey Claude »), « Salut ChatGPT », « Salut Codex » ou « Salut Gemini » : VoiceWake ouvre l'application et active son micro. Termine par « ok envoie » pour envoyer le message.
+**Pilotez Claude, Codex, Gemini et ChatGPT à la voix, sans toucher au clavier.**
 
-- **Gratuit et local** : reconnaissance vocale d'Apple sur le Mac, sans API ni abonnement.
-- **Invisible** : pas de fenêtre ni d'icône, démarre avec la session.
-- **Multi-assistants** : une phrase par application, plus une phrase générale qui vise l'application au premier plan.
-- **Discret pendant la conversation** : VoiceWake libère le micro et se met en pause tant que l'assistant l'utilise.
+Dites « Dis Claude » : VoiceWake ouvre l'application, active son micro intégré, vous dictez votre demande, puis « OK envoie » l'envoie. La réponse est ensuite lue à voix haute. Le tout fonctionne aussi dans VS Code et les éditeurs dérivés.
 
-> Projet indépendant, sans lien avec Anthropic ou OpenAI.
+- **Local et gratuit** : reconnaissance vocale d'Apple exécutée sur le Mac, sans API ni abonnement.
+- **Invisible** : un service en arrière-plan, sans fenêtre ni icône, lancé à l'ouverture de session.
+- **Contextuel** : la fenêtre au premier plan décide. Dans VS Code, « Dis Claude » vise l'extension Claude Code ; ailleurs, l'application Claude.
+- **Mains libres de bout en bout** : activation, dictée, envoi, lecture de la réponse et interruption de la lecture.
 
-## Fonctionnement
+> Projet indépendant, sans lien avec Anthropic, OpenAI ou Google.
 
-```
-micro → transcription locale → phrase reconnue → ouverture de l'app + raccourci
-      → pause (micro libéré) tant que l'assistant parle → retour en veille
-```
+---
 
-| Phrase | Action |
-| --- | --- |
-| « Salut Claude » | Claude |
-| « Salut ChatGPT » | ChatGPT |
-| « Salut Codex » | Codex |
-| « Salut Gemini » | Gemini |
-| « Salut assistant » | application au premier plan, sinon `defaultTarget` |
+## Sommaire
 
-## Installation
+1. [Démarrage rapide](#démarrage-rapide)
+2. [Commandes vocales](#commandes-vocales)
+3. [Applications prises en charge](#applications-prises-en-charge)
+4. [Éditeurs de code](#éditeurs-de-code)
+5. [Configuration](#configuration)
+6. [Application de dictée externe](#application-de-dictée-externe)
+7. [Commandes du terminal](#commandes-du-terminal)
+8. [Dépannage](#dépannage)
+9. [Limites connues](#limites-connues)
+10. [Windows](#windows)
+11. [Désinstallation](#désinstallation)
 
-Prérequis : macOS 13+, outils de compilation (`xcode-select --install`).
+---
+
+## Démarrage rapide
+
+**Prérequis** : macOS 13 ou plus récent, outils de compilation Apple (`xcode-select --install`).
 
 ```bash
 git clone https://github.com/RychTwins/voicewake.git
@@ -34,122 +39,158 @@ cd voicewake
 ./install.sh
 ```
 
-Accepte ensuite les trois autorisations demandées par macOS : **Micro**, **Reconnaissance vocale** et **Accessibilité** (pour simuler le raccourci).
+1. Acceptez les trois autorisations demandées par macOS : **Micro**, **Reconnaissance vocale** et **Accessibilité** (VoiceWake clique les boutons des applications).
+2. Vérifiez l'installation : `voicewake check`.
+3. Ouvrez Claude et dites « **Dis Claude** », puis votre demande, puis « **OK envoie** ».
 
-L'installation crée un certificat de signature local, une seule fois. Grâce à lui, macOS conserve les autorisations quand tu réinstalles une nouvelle version.
+`install.sh` compile le programme, le signe avec un certificat local créé une seule fois (macOS conserve ainsi les autorisations d'une version à l'autre), installe `~/Applications/VoiceWake.app`, crée la configuration et démarre le service. La commande `voicewake` est installée dans `~/.local/bin`.
 
-## Configuration
+---
 
-Fichier : `~/.config/voicewake/config.json` (copie de `config.example.json`).
+## Commandes vocales
 
-### Raccourci vocal : n'importe lequel
+Chaque commande se dit **seule**, avec une courte pause avant et environ une seconde de silence après.
 
-VoiceWake rejoue le raccourci que **tu** as défini dans chaque application. Le plus simple est de l'enregistrer au clavier :
+### Activer un assistant
 
-```bash
-voicewake record claude    # puis tape le raccourci vocal de Claude
-voicewake record codex
-```
+| Phrase | Effet |
+| --- | --- |
+| « Dis Claude », « Salut Claude », « Hey Claude » | micro de Claude |
+| « Dis Codex », « Salut Codex » | micro de Codex |
+| « Dis Gemini », « Salut Gemini » | micro de Gemini |
+| « Salut ChatGPT » | dictée dans ChatGPT |
+| « Salut assistant », « Dis assistant » | assistant de l'application au premier plan, sinon `defaultTarget` |
 
-Ou de l'écrire :
+L'application est lancée si elle est fermée, puis mise au premier plan.
 
-```bash
-voicewake set claude "capslock"
-voicewake set chatgpt "option+space"
-```
+### Pendant la dictée
 
-| Syntaxe | Exemple | Usage |
-| --- | --- | --- |
-| combinaison | `ctrl+shift+v`, `cmd+option+f5` | cas courant |
-| touche seule | `capslock`, `fn`, `f13` | Verr. Maj. de Claude, touche globe |
-| modificateur seul | `option`, `ctrl+option` | appui puis relâchement |
-| double appui | `double option` | Quick Entry de Claude |
-| maintien | `hold 1.5 fn` | push-to-talk |
-| enchaînement | `cmd+k then v` | raccourcis en deux temps |
-| code brut | `keycode:57` | touche non reconnue |
+| Phrase | Effet |
+| --- | --- |
+| « OK envoie », « C'est bon, vas-y, envoie » | coupe le micro, laisse le texte s'afficher, puis envoie |
+| « OK arrête », « OK stop » | coupe seulement le micro, pour relire ; dites ensuite « OK envoie » (3 min max) |
 
-Les lettres suivent la disposition active (AZERTY, QWERTY…). Modificateurs : `ctrl`, `option`, `shift`, `cmd`, `fn`, et `rcmd`, `roption`… pour ceux de droite.
+Gardez l'application au premier plan jusqu'à l'envoi : si une autre application passe devant, l'envoi est annulé.
 
-**Valeurs par défaut** (à confirmer dans chaque application) :
+### Pendant la lecture à voix haute
 
-| App | Raccourci | Effet | À faire |
-| --- | --- | --- | --- |
-| Claude | `button:Maintenez appuyé pour enregistrer` | micro de la session ouverte | Rien (libellé de l'interface en français ou anglais) |
-| ChatGPT | `ctrl+option+d` | Dictée macOS dans le champ actif | Régler ⌃⌥D dans Réglages Système > Clavier > Dictée |
-| Codex | `cmd+shift+d` | bascule la dictée de la zone de saisie | Vérifier le raccourci « Activer ou désactiver la dictée » si personnalisé |
-| Gemini | `button:Utiliser le micro (⌘D)` | micro de la zone de saisie | Rien |
+Après un envoi vocal, VoiceWake attend la fin de la réponse puis lance la lecture à voix haute.
 
-**Applications OpenAI récentes** : l'app installée sous le nom `ChatGPT.app` peut être l'app Codex (bundle `com.openai.codex`), et l'ancienne app ChatGPT s'appelle alors `ChatGPT Classic.app` (`com.openai.chat`). Vérifie avec `mdls -name kMDItemCFBundleIdentifier /Applications/*.app`, puis renseigne `appName` et `bundleID` de chaque cible (ex. codex → `"appName": "ChatGPT", "bundleID": "com.openai.codex"`). `voicewake check` doit afficher « installée : oui » pour chaque cible.
+| Phrase | Effet |
+| --- | --- |
+| « Arrête la lecture », « Stop la lecture » | pause |
+| « Reprends la lecture », « Continue la lecture » | reprise là où elle s'était arrêtée (10 min max) |
+| « Écoute » | pause et micro rouvert pour une nouvelle demande |
 
-### Micro intégré de l'app et envoi à la voix
+Pendant une lecture lancée par VoiceWake, les phrases d'activation sont ignorées, pour ne pas réagir à la voix de l'assistant.
 
-`"shortcut": "button:<libellé>"` clique le bouton micro de l'application (via l'Accessibilité), libellé exact, plusieurs séparés par `|`. Exemples testés (macOS en français) :
+---
 
-| App | `shortcut` | `stopShortcut` | `submitShortcut` |
-| --- | --- | --- | --- |
-| Claude | `button:Maintenez appuyé pour enregistrer` | `button:Arrêter la dictée` | `return` (défaut) |
-| Codex (`ChatGPT.app`) | `cmd+shift+d` | `cmd+shift+d` | `button:Envoyer` |
-| Gemini | `button:Utiliser le micro (⌘D)` | `button:Arrêter (⌘D)` | `button:Envoyer` |
-| ChatGPT Classic | `ctrl+option+d` (Dictée macOS) | idem | `return` |
+## Applications prises en charge
 
-ChatGPT Classic : son bouton « Dictée » ne réagit pas au clic automatique, d'où la Dictée macOS. Cette app est retirée le 30/01/2027.
+| Application | Micro | Envoi | Lecture à voix haute | État |
+| --- | --- | --- | --- | --- |
+| **Claude** | bouton micro intégré | Entrée | oui, avec pause et reprise | testé à la voix |
+| **Codex** (`ChatGPT.app`) | raccourci `cmd+shift+d` | bouton « Envoyer » | oui | testé à la voix |
+| **Gemini** | bouton micro intégré | bouton « Envoyer » | oui (menu « Autres actions » > « Écouter »), avec pause et reprise | activation et envoi testés à la voix |
+| **ChatGPT Classic** | Dictée macOS (`ctrl+option+d`) | Entrée | non | testé |
+| **VS Code** + Claude Code | bouton « Voice dictation » | bouton « Send message » | non | testé sans la voix |
+| **VS Code** + Codex | bouton « Dicter » | bouton « Envoyer » | non | testé sans la voix |
+| Cursor, Antigravity, Windsurf | comme VS Code | comme VS Code | non | configurés, non testés |
 
-Pendant la dictée, VoiceWake continue d'écouter (micro partagé). Termine par une phrase puis ~1 s de silence :
+Les libellés des boutons correspondent à une interface en français ; les libellés anglais sont prévus en alternative.
 
-- `stopPhrases` (« ok arrête », « ok stop ») : coupe le micro de l'app pour relire ; « ok envoie » reste attendu pendant `reviewSeconds` (180).
-- `sendPhrases` (« ok envoie », « c'est bon vas-y envoie ») : coupe le micro si besoin, attend `submitDelaySeconds` (1,5), puis envoie.
-- `sendSilenceSeconds` (1,2) : silence requis après la phrase. Une phrase d'envoi en milieu de phrase ne déclenche rien.
-- `sendPauseBeforeSeconds` (0,6) : pause requise aussi *avant* « ok envoie » / « ok arrête ». Évite l'envoi quand tu cites la phrase en parlant. `0` = désactivé.
+**Applications OpenAI récentes** : sur certains Mac, `ChatGPT.app` est l'application Codex (`com.openai.codex`) et l'ancienne application s'appelle `ChatGPT Classic.app` (`com.openai.chat`). La configuration d'exemple identifie donc ces deux cibles par leur `bundleID`. Pour vérifier : `mdls -name kMDItemCFBundleIdentifier /Applications/*.app`.
 
-Sur macOS, garde la fenêtre de dictée au premier plan jusqu'à l'envoi. VoiceWake annule l'action si la fenêtre a changé ou si l'arrêt demandé de la dictée échoue.
+**ChatGPT Classic** : son bouton « Dictée » ne réagit pas au clic automatique, d'où l'usage de la Dictée macOS. Réglez son raccourci dans **Réglages Système > Clavier > Dictée > Raccourci > Personnaliser** → `⌃⌥D`. Cette application est retirée le 30 janvier 2027.
 
-**Lecture à voix haute automatique** : après un envoi vocal, VoiceWake attend la fin de la réponse puis clique le dernier bouton de lecture (`readAloudShortcut`, ex. `button:Lire à voix haute`). Fin de réponse = disparition des libellés `busyLabels` (Claude : « Arrêter », « Message en cours de génération ») ou apparition d'un nouveau bouton de lecture, stable 2 s. Attente max : `readAloudTimeoutSeconds` (600). Configuré pour Claude, Codex et Gemini. Si le bouton ouvre un menu, `readAloudMenuItem` choisit l'option (Gemini : « Autres actions » puis « Écouter »). Fin de lecture : disparition du bouton `pauseReadShortcut` (Claude « Pause », Gemini « Mettre en pause ») pendant 3 s, sinon arrêt du son de l'app. Pendant une lecture lancée par VoiceWake, les phrases d'activation sont ignorées (VoiceWake ne se déclenche pas sur la voix de lecture) ; le log l'indique (« Phrase ignorée »).
+---
 
-**Commandes pendant la lecture** (Claude, Gemini ; dites seules, à tout moment de la lecture) :
-
-| Tu dis | Effet | Config |
-| --- | --- | --- |
-| « arrête la lecture », « stop la lecture » | pause | `readPausePhrases`, bouton `pauseReadShortcut` |
-| « reprends la lecture », « continue la lecture » | reprise là où elle s'était arrêtée (10 min max) | `readResumePhrases`, bouton `resumeReadShortcut` (« Reprendre ») |
-| « écoute » | pause + micro rouvert pour une nouvelle demande, puis « ok envoie » | `interruptPhrases` |
-
-Limite : si la réponse lue contient elle-même une de ces phrases (« écoute »…), elle peut s'appliquer toute seule ; un casque évite le problème.
-
-App fermée : VoiceWake la lance, attend `launchDelaySeconds` (3), puis cherche le bouton micro pendant 20 s maximum.
-
-Le micro de l'app transcrit aussi « ok envoie » dans le message. Pour trouver le libellé d'un bouton : Accessibility Inspector (Xcode > Open Developer Tool).
-
-Phrases d'activation : ajoute autant de variantes que voulu par cible (« salut claude », « dis claude », « hey claude », « say claude »…).
-
-### Éditeurs de code (VS Code, Cursor, Antigravity…)
+## Éditeurs de code
 
 Règle : **la fenêtre au premier plan décide**.
 
-- Un éditeur de `editors` est au premier plan et intègre l'assistant appelé → « Dis Claude » active le micro **dans l'éditeur** (ex. extension Claude Code dans VS Code).
-- Sinon (autre fenêtre au premier plan, ou panneau de l'assistant fermé dans l'éditeur) → l'app de bureau, comme d'habitude.
-- « Salut assistant » dans un éditeur → son assistant intégré (`defaultTarget` en priorité).
+- Un éditeur de la liste `editors` est au premier plan et intègre l'assistant appelé : le micro s'ouvre **dans l'éditeur**.
+- Autre fenêtre au premier plan, ou panneau de l'assistant fermé dans l'éditeur : l'application de bureau prend le relais.
+- « Salut assistant » dans un éditeur vise `preferredAssistant`, sinon `defaultTarget`.
 
 ```json
 "editors": [{
   "id": "vscode",
   "bundleIDs": ["com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "com.google.antigravity"],
+  "preferredAssistant": "codex",
   "assistants": {
-    "claude": { "shortcut": "button:Voice dictation", "stopShortcut": "button:Stop recording", "submitShortcut": "button:Send message" }
+    "claude": { "shortcut": "button:Voice dictation", "stopShortcut": "button:Stop recording", "submitShortcut": "button:Send message" },
+    "codex":  { "shortcut": "button:Dicter|Dictate", "stopShortcut": "button:Arrêter la dictée|Stop dictation", "submitShortcut": "button:Envoyer|Send" }
   }
 }]
 ```
 
-Testé : extension Claude Code dans VS Code. Les extensions Codex et Gemini Code Assist s'ajoutent de la même façon (clé `codex`, `gemini`) une fois leurs libellés de boutons relevés. `voicewake test claude` applique la même règle : passe sur l'éditeur pendant les 3 s. Version Windows : pas encore prise en charge.
+`voicewake test claude` applique la même règle : passez sur l'éditeur pendant le compte à rebours de 3 secondes.
 
-**Dicter dans la session ouverte (toutes applications)** : le `capslock` de Claude dicte dans la fenêtre Quick Entry, pas dans la conversation ouverte. Pour écrire directement dans le champ actif de l'application, utilise la Dictée macOS : Réglages Système > Clavier > Dictée > Raccourci > Personnaliser → `⌃⌥D`, puis `"shortcut": "ctrl+option+d"` et `"activate": true` pour chaque cible. Une cible s'ajoute librement, ex. Gemini (`"bundleID": "com.google.GeminiMacOS"`, phrase « salut gemini »).
+---
 
-Avec `option+space` (fenêtre compagnon, sans micro), VoiceWake ne détecte pas de conversation et reprend la veille après `startGraceSeconds`.
+## Configuration
 
-Dans un bloc `editors`, `"preferredAssistant": "codex"` donne la priorité au micro intégré de l’extension Codex pour « Salut assistant » quand son panneau est ouvert.
+Fichier : `~/.config/voicewake/config.json`, créé à partir de [`config.example.json`](config.example.json). Après modification :
 
-### Utiliser une application de dictée externe sur macOS
+```bash
+launchctl kickstart -k gui/$(id -u)/io.github.voicewake
+```
 
-Dans l’application de dictée, configure un raccourci clavier global qui insère le texte dans le champ actif. Dans `~/.config/voicewake/config.json`, remplace `"externalDictation": null` par un bloc comme celui-ci, en reprenant tes propres raccourcis.
+### Réglages généraux
+
+| Clé | Rôle | Défaut |
+| --- | --- | --- |
+| `locale` | langue de reconnaissance | `fr-FR` |
+| `requireOnDevice` | reconnaissance exclusivement locale | `true` |
+| `cooldownSeconds` | délai minimal entre deux activations | `5` |
+| `debug` | écrit les transcriptions dans le log | `false` |
+| `defaultTarget` | cible de « Salut assistant » hors application connue | `claude` |
+| `frontmostPhrases` | phrases visant l'application au premier plan | « salut assistant »… |
+| `sendPhrases`, `stopPhrases` | commandes d'envoi et d'arrêt pendant la dictée | voir l'exemple |
+| `sendSilenceSeconds` | silence requis après une commande | `1.2` |
+| `sendPauseBeforeSeconds` | pause requise avant une commande (`0` pour désactiver) | `0.6` |
+| `reviewSeconds` | attente de « OK envoie » après « OK arrête » | `180` |
+| `readPausePhrases`, `readResumePhrases`, `interruptPhrases` | commandes pendant la lecture | voir l'exemple |
+| `conversation.startGraceSeconds` | délai laissé à l'application pour ouvrir son micro | `8` |
+| `conversation.idleSecondsBeforeResume` | micro libre pendant ce délai = conversation terminée | `6` |
+| `conversation.maxPauseMinutes` | retour forcé en veille | `30` |
+
+### Réglages par application (`targets`)
+
+| Clé | Rôle |
+| --- | --- |
+| `id`, `appName`, `bundleID` | identification de l'application (le `bundleID` est prioritaire) |
+| `phrases` | phrases d'activation ; ajoutez les variantes mal transcrites (voir `debug`) |
+| `shortcut` | ouverture du micro |
+| `stopShortcut` | arrêt du micro (défaut : `shortcut`) |
+| `submitShortcut` | envoi (défaut : `return`) |
+| `readAloudShortcut`, `readAloudMenuItem` | bouton de lecture à voix haute, et option de menu s'il ouvre un menu |
+| `pauseReadShortcut`, `resumeReadShortcut` | pause et reprise de la lecture |
+| `busyLabels` | libellés visibles tant que l'assistant répond |
+| `activate`, `launchDelaySeconds` | mise au premier plan, attente après un lancement (`3` s) |
+| `windows` | réglages propres à Windows (voir [Windows](#windows)) |
+
+### Syntaxe des raccourcis
+
+| Forme | Exemple | Usage |
+| --- | --- | --- |
+| bouton de l'application | `button:Dicter\|Dictate` | clic par l'Accessibilité, libellé exact, alternatives séparées par `\|` |
+| combinaison | `ctrl+shift+v`, `cmd+shift+d` | cas courant |
+| touche seule | `capslock`, `fn`, `f13` | touche dédiée |
+| double appui | `double option` | raccourcis à double appui |
+| maintien | `hold 1.5 fn` | push-to-talk |
+| enchaînement | `cmd+k then v` | raccourcis en deux temps |
+| code brut | `keycode:57` | touche non reconnue |
+
+Les lettres suivent la disposition active (AZERTY, QWERTY…). Modificateurs : `ctrl`, `option`, `shift`, `cmd`, `fn`, et `rcmd`, `roption`… pour ceux de droite. Les libellés des boutons se relèvent avec **Accessibility Inspector** (Xcode > Open Developer Tool).
+
+---
+
+## Application de dictée externe
+
+Pour utiliser Whisper, SuperWhisper, MacWhisper, Wispr Flow, VoiceInk ou un outil équivalent à la place des micros intégrés, configurez dans cet outil un raccourci global qui insère le texte dans le champ actif, puis :
 
 ```json
 "externalDictation": {
@@ -158,101 +199,114 @@ Dans l’application de dictée, configure un raccourci clavier global qui insè
 }
 ```
 
-Ce réglage devient la dictée par défaut pour tous les assistants. « Salut Claude », « Salut Codex » et les autres phrases nominatives ouvrent l’assistant de bureau correspondant. Dans VS Code, Cursor ou un éditeur de la liste `editors`, « Salut assistant » lance la dictée dans le champ déjà actif, par exemple le composeur d’une extension ou le fichier en cours d’édition.
+- Ce raccourci remplace le micro de toutes les applications. `null` rétablit les micros intégrés.
+- Les phrases nominatives (« Dis Claude ») ouvrent l'application de bureau. Dans un éditeur, « Salut assistant » dicte dans le champ déjà actif.
+- « OK arrête » termine la dictée ; l'envoi se fait ensuite manuellement.
+- Outil à maintien : `"shortcut": "hold 3 fn"`, sans `stopShortcut`.
+- Dictée macOS par le menu Édition : `"useMacOSDictationMenu": true`, sans `stopShortcut`.
+- Si le curseur n'est pas placé dans le bon champ : `"dictationFieldLabels": ["libellé exact du champ"]` dans la cible concernée.
 
-VoiceWake vérifie que le champ est modifiable et toujours actif avant de lancer le raccourci. Si un assistant ne place pas le curseur dans son composeur à l’ouverture, clique le champ avant de parler ou ajoute `"dictationFieldLabels": ["libellé exact du champ"]` à sa cible. Le libellé d’accessibilité se relève avec Accessibility Inspector.
+---
 
-Pour la dictée intégrée à macOS, ajoute `"useMacOSDictationMenu": true` au bloc et omets `stopShortcut`. VoiceWake utilise la commande « Démarrer Dictée… » du menu Édition quand elle est disponible dans l’application cible.
-
-Pour une dictée qui démarre et s’arrête avec le même raccourci, renseigne les deux clés avec la même valeur. Pour une dictée à maintien, utilise par exemple `"shortcut": "hold 3 fn"` et omets `stopShortcut`. Avec un raccourci d’arrêt configuré, « OK arrête » termine la dictée. Relis le texte puis envoie-le manuellement. Garde le champ actif jusqu’à l’insertion du texte, que l’application de dictée effectue elle-même. La valeur `null` rétablit les raccourcis intégrés.
-
-Après modification, relance le service avec `launchctl kickstart -k gui/$(id -u)/io.github.voicewake`. `voicewake check` affiche la dictée configurée et `voicewake test codex` permet d’essayer son raccourci.
-
-### Autres réglages
-
-- `phrases` : ajoute les variantes mal transcrites (voir les logs en mode `debug`).
-- `activate` : mettre l'app au premier plan avant le raccourci (`false` pour un raccourci global).
-
-Pause pendant la conversation (`conversation`) :
-
-| Clé | Rôle | Défaut |
-| --- | --- | --- |
-| `startGraceSeconds` | délai laissé à l'assistant pour ouvrir le micro | 8 |
-| `idleSecondsBeforeResume` | micro libre pendant ce temps = conversation terminée | 6 |
-| `maxPauseMinutes` | reprise forcée de sécurité | 30 |
-
-Après modification : `launchctl kickstart -k gui/$(id -u)/io.github.voicewake`
-
-## Commandes
+## Commandes du terminal
 
 ```bash
-voicewake check                 # configuration, applications trouvées, autorisations
-voicewake test claude           # envoie le raccourci de Claude dans 3 s
-voicewake record claude         # enregistre le raccourci tapé au clavier
-voicewake set codex "ctrl+shift+v"
-voicewake route "salut codex"   # quelle cible une phrase déclenche
+voicewake check                    # configuration, applications trouvées, autorisations
+voicewake test claude              # déclenche Claude dans 3 s, sans la voix
+voicewake route "dis claude"       # cible ou commande associée à une phrase
+voicewake set codex "cmd+shift+d"  # change le raccourci d'une cible
+voicewake record claude            # enregistre un raccourci tapé au clavier
 tail -f ~/Library/Logs/voicewake.log
 ```
 
-`voicewake` est installé dans `~/.local/bin` (à ajouter au `PATH` si besoin).
+---
+
+## Dépannage
+
+Le journal `~/Library/Logs/voicewake.log` indique chaque étape. Pour y voir aussi les transcriptions, passez `"debug": true` puis relancez le service.
+
+| Message ou symptôme | Cause probable | Solution |
+| --- | --- | --- |
+| Rien dans le log quand vous parlez | phrase transcrite autrement | activez `debug`, puis ajoutez la variante dans `phrases` |
+| « Phrase ignorée : lecture à voix haute … en cours » | une lecture est en cours | dites « Arrête la lecture » ou « Écoute » |
+| « bouton introuvable » | panneau fermé, interface dans une autre langue ou libellé modifié | ouvrez le panneau ; vérifiez le libellé avec Accessibility Inspector |
+| « envoi annulé » | une autre application est passée au premier plan | gardez l'application devant jusqu'à l'envoi |
+| « OK envoie » sans effet | `externalDictation` actif ou `sendPhrases` vide | remettez `"externalDictation": null` et la liste `sendPhrases` |
+| Dictée macOS au lieu du micro de l'application | `externalDictation` actif | `"externalDictation": null` |
+| « Autoriser VoiceWake » au démarrage | Accessibilité refusée | Réglages Système > Confidentialité et sécurité > Accessibilité |
+
+`voicewake check` affiche l'Accessibilité de l'application qui lance la commande (le Terminal), pas celle du service : pour le service, fiez-vous au log. Évitez de faire modifier la configuration par un autre outil pendant une dictée : chaque redémarrage du service interrompt la dictée en cours.
+
+---
 
 ## Limites connues
 
-- L'indicateur orange du micro reste allumé en veille : protection de macOS, impossible à masquer.
-- Une application qui garde le micro ouvert (visio, enregistrement) prolonge la pause, jusqu'à `maxPauseMinutes`.
-- `record` demande l'autorisation « Surveillance de l'entrée » pour le Terminal (une seule fois), et `test` demande l'Accessibilité pour le Terminal.
-- `voicewake check` affiche l'Accessibilité de l'application qui lance la commande (Terminal), pas celle du service : vérifie le service dans le log (pas de ligne « Autoriser VoiceWake » au démarrage).
-- Verr. Maj. simulé : certaines applications ne réagissent qu'à la vraie touche. Dans ce cas, choisis un autre raccourci dans l'application et enregistre-le.
-- La reconnaissance locale en français dépend de la version de macOS ; sinon mettre `"requireOnDevice": false`.
+- L'indicateur orange du micro reste allumé en veille : protection de macOS.
+- La commande d'envoi est aussi transcrite par le micro de l'application et apparaît en fin de message.
+- Sans casque, une réponse lue qui contient une commande (« écoute »…) peut s'appliquer d'elle-même.
+- Une application qui garde le micro ouvert (visio, enregistrement) prolonge la pause jusqu'à `maxPauseMinutes`.
+- Codex : pas encore de pause ni de reprise de la lecture à la voix.
+- Les libellés des boutons dépendent de la langue et des versions des applications.
+- `record` demande l'autorisation « Surveillance de l'entrée » pour le Terminal ; `test` demande l'Accessibilité pour le Terminal.
+- La reconnaissance locale en français dépend de la version de macOS ; à défaut, `"requireOnDevice": false`.
 
-## Désinstallation
+---
 
-```bash
-./uninstall.sh            # garde la configuration
-./uninstall.sh --purge    # supprime aussi la configuration et le certificat
-```
+## Windows
 
-## Windows (10 / 11)
+> **Version préliminaire, non testée sur une machine Windows.**
 
-Même fonctionnement et **même fichier de configuration** que sur macOS. Code dans `windows/` (C# / .NET 8). Version **non testée sur une vraie machine Windows** : vérifie avec `voicewake check` puis `voicewake test <cible>`.
+Même fonctionnement et même fichier de configuration. Code dans [`windows/`](windows) (C# / .NET 8).
 
 ```powershell
 cd voicewake\windows
-.\install.ps1          # compile, installe dans %LOCALAPPDATA%\VoiceWake, démarre avec la session
-.\install.ps1 -Restart # après modification de la config
-.\uninstall.ps1        # -Purge pour supprimer aussi la config
+.\install.ps1           # compile, installe dans %LOCALAPPDATA%\VoiceWake, démarre avec la session
+.\install.ps1 -Restart  # après modification de la configuration
 ```
 
-Prérequis : SDK .NET 8 (`winget install Microsoft.DotNet.SDK.8`), langue **Français** avec l'option **Reconnaissance vocale** installée, et « Autoriser les applications de bureau à accéder au micro » activé.
+**Prérequis** : SDK .NET 8 (`winget install Microsoft.DotNet.SDK.8`), langue **Français** avec l'option **Reconnaissance vocale**, et « Autoriser les applications de bureau à accéder au micro » activé.
 
 | macOS | Windows |
 | --- | --- |
 | `~/.config/voicewake/config.json` | `%APPDATA%\voicewake\config.json` |
 | `~/Library/Logs/voicewake.log` | `%LOCALAPPDATA%\VoiceWake\voicewake.log` |
-| Reconnaissance Apple (texte libre) | Reconnaissance Windows **sur liste fermée** : seules les phrases de la config, dites seules (petite pause avant et après), hors ligne |
+| reconnaissance Apple, texte libre | reconnaissance Windows sur liste fermée, hors ligne |
 | Accessibilité (`button:`) | UI Automation (`button:`, mêmes libellés) |
-| Dictée macOS (`ctrl+option+d`) | Saisie vocale Windows (`win+h`) |
-| `option` / `cmd` | `alt` / `win` |
+| Dictée macOS (`ctrl+option+d`) | saisie vocale Windows (`win+h`) |
+| `option`, `cmd` | `alt`, `win` |
 
-Chaque cible a un bloc `windows` facultatif :
+Bloc `windows` facultatif par cible :
 
 ```json
 "windows": { "processName": "Claude", "launch": "startmenu:Claude", "shortcut": "win+h" }
 ```
 
-- `processName` : nom du processus sans `.exe` (Gestionnaire des tâches > Détails).
-- `launch` : `startmenu:<nom dans le menu Démarrer>` (défaut), `shell:AppsFolder\<AUMID>` (`Get-StartApps` dans PowerShell) ou chemin d'un `.exe` (`%LOCALAPPDATA%\…` accepté).
-- `shortcut`, `stopShortcut`, `submitShortcut`, `readAloudShortcut`, `pauseReadShortcut` : surcharges Windows ; sinon la valeur commune est utilisée.
-- `voicewake set <cible> "…"` écrit dans le bloc `windows`, sans toucher au raccourci macOS.
-- `minConfidence` (0,5) : confiance minimale de la reconnaissance Windows.
+- `processName` : nom du processus sans `.exe`.
+- `launch` : `startmenu:<nom>` (défaut), `shell:AppsFolder\<AUMID>` ou chemin d'un `.exe`.
+- `shortcut`, `stopShortcut`, `submitShortcut`, `readAloudShortcut`, `pauseReadShortcut` : surcharges propres à Windows.
+- `minConfidence` (`0.5`) : confiance minimale de la reconnaissance.
 
-Limites Windows : `record` n'existe pas (utilise `set`) ; « micro utilisé par une autre app » est lu dans le registre (`CapabilityAccessManager`) ; les libellés des boutons et noms de processus de ChatGPT, Codex et Gemini sur Windows restent à confirmer.
+Non pris en charge sous Windows pour l'instant : `record`, éditeurs de code, commandes de lecture.
+
+---
+
+## Désinstallation
+
+```bash
+./uninstall.sh            # conserve la configuration
+./uninstall.sh --purge    # supprime aussi la configuration et le certificat
+```
+
+Windows : `.\uninstall.ps1` (`-Purge` pour supprimer aussi la configuration).
+
+---
 
 ## Feuille de route
 
-- Linux (Vosk)
-- Détection plus fine de la fin de conversation
+- Version Linux (Vosk)
+- Lecture à voix haute dans les éditeurs de code
+- Version anglaise de la documentation
 
 ## Licence
 
-MIT
+[MIT](LICENSE)
