@@ -312,5 +312,6 @@
     "commence à partir de",
     "reprends à partir de",
     "reprends la lecture à partir de"
-  ]
+  ],
+  "showReadingProgress": false
 }

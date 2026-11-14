@@ -67,7 +67,7 @@ final class Coordinator {
             return
         }
         // Lecture à voix haute d'une app en cours : on la suit à l'oreille pour afficher le mot en cours.
-        if config.showReadingProgress ?? true, let r = trigger.readingTarget(),
+        if config.showReadingProgress ?? false, let r = trigger.readingTarget(),
            let app = ShortcutTrigger.runningApp(for: r) {
             if config.debug, follower.onProgress == nil { follower.onProgress = { log("Suivi de lecture : mot \($0) sur \($1).") } }
             follower.follow(text, target: r, app: app)
@@ -128,6 +128,16 @@ final class Coordinator {
 
     /// La commande entendue vient-elle de la voix de lecture ? Oui si le texte affiché par l'app
     /// contient cette phrase précédée du même mot (ou si on n'a pas entendu de mot avant).
+    private var lastSuppressedAt = Date.distantPast
+
+    /// Une commande ignorée (attribuée à la voix de lecture) passe si elle est redite dans les 6 s :
+    /// l'utilisateur ne peut jamais être bloqué par le contenu lu.
+    private func insisted() -> Bool {
+        let repeated = Date().timeIntervalSince(lastSuppressedAt) < 6
+        lastSuppressedAt = repeated ? .distantPast : Date()
+        return repeated
+    }
+
     private func spokenByReader(_ text: String, _ reader: Target) -> Bool {
         let phrases = (config.readPausePhrases ?? []) + (config.interruptPhrases ?? [])
         guard let hit = router.lastMatch(text, phrases), let app = ShortcutTrigger.runningApp(for: reader) else { return false }
@@ -158,7 +168,7 @@ final class Coordinator {
             detector.reset()
             // Le lecteur intégré ne doit pas se relancer lui-même en lisant « à partir de … ».
             if reader.isActive, !reader.isPaused,
-               router.containsAny(reader.fullText, config.readFromPhrases) {
+               router.containsAny(reader.spokenNow, config.readFromPhrases) {
                 return log("Commande ignorée : prononcée par le lecteur intégré.")
             }
             guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
@@ -170,7 +180,7 @@ final class Coordinator {
         // Lecteur intégré en cours : pause, reprise, écoute.
         if reader.isActive {
             defer { detector.reset() }
-            if spokenByOwnReader(text) { return log("Commande ignorée : prononcée par le lecteur intégré.") }
+            if spokenByOwnReader(text), !insisted() { return log("Commande ignorée : prononcée par le lecteur intégré.") }
             if interrupt, let t = readerTarget {
                 reader.stop()
                 lastWake = Date()
@@ -207,7 +217,7 @@ final class Coordinator {
         // (Une app peut garder sa sortie audio ouverte sans rien lire : on ne bloque que nos lectures.)
         // La lecture reste « en cours » jusqu'à 3 s de silence continu (voir startReading).
         if let reader = trigger.readingTarget() {
-            if (pauseRead || interrupt), spokenByReader(text, reader) {
+            if (pauseRead || interrupt), spokenByReader(text, reader), !insisted() {
                 log("Commande ignorée : prononcée par la voix de lecture de \(reader.id).")
                 detector.reset()
                 return

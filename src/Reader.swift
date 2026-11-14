@@ -108,7 +108,6 @@ final class ReaderOverlay {
         p.backgroundColor = .clear
         p.hasShadow = true
         p.ignoresMouseEvents = true
-        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         let box = NSVisualEffectView(frame: NSRect(origin: .zero, size: frame.size))
         box.material = .hudWindow
         box.state = .active
@@ -190,6 +189,7 @@ final class ReadingFollower {
     private var flat: [(word: String, token: Int)] = []     // mots normalisés → mot affiché
     private var position: Int?                              // indice dans `flat`
     private var hideWork: DispatchWorkItem?
+    private var loadedAt = Date.distantPast
 
     /// Charge le texte affiché par l'app (une fois par lecture).
     private func load(_ app: NSRunningApplication) {
@@ -215,14 +215,22 @@ final class ReadingFollower {
 
     /// `transcript` : ce que le micro entend pendant la lecture de `target`.
     func follow(_ transcript: String, target: Target, app: NSRunningApplication) {
-        if targetID != target.id || flat.isEmpty { targetID = target.id; load(app) }
+        // Un seul chargement par lecture (même s'il est vide), puis au plus un toutes les 10 s.
+        if targetID != target.id || (flat.isEmpty && Date().timeIntervalSince(loadedAt) > 10) {
+            targetID = target.id
+            loadedAt = Date()
+            load(app)
+        }
         let words = normalize(transcript).split(separator: " ").map(String.init)
-        guard words.count >= 3 else { return }
-        let tail = Array(words.suffix(3))
+        // Premier accrochage : 5 mots exacts (preuve que c'est bien la lecture). Ensuite 3 mots, tolérants.
+        let need = position == nil ? 5 : 3
+        guard words.count >= need else { return }
+        let tail = Array(words.suffix(need))
+        let exact = position == nil
         // Près de la position connue d'abord (la lecture avance), sinon partout, en partant de la fin.
         func search(_ range: ReversedCollection<Range<Int>>) -> Int? {
             for i in range where i + tail.count <= flat.count {
-                if (0..<tail.count).allSatisfy({ same(flat[i + $0].word, tail[$0]) }) { return i + tail.count - 1 }
+                if (0..<tail.count).allSatisfy({ exact ? flat[i + $0].word == tail[$0] : same(flat[i + $0].word, tail[$0]) }) { return i + tail.count - 1 }
             }
             return nil
         }
