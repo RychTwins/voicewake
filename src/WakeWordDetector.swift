@@ -4,7 +4,8 @@ import Speech
 
 /// Transcrit le micro en local et transmet le texte partiel à `onText`.
 final class WakeWordDetector {
-    var onText: ((String) -> Void)?
+    /// (texte, définitif) : `true` quand le moteur a fini de corriger l'énoncé.
+    var onText: ((String, Bool) -> Void)?
 
     private let config: Config
     private let hints: [String]
@@ -139,8 +140,17 @@ final class WakeWordDetector {
             DispatchQueue.main.async {
                 guard let self, gen == self.generation else { return }
                 if let text = result?.bestTranscription.formattedString, !text.isEmpty {
-                    if self.config.debug { log("… \(text)") }
-                    self.onText?(text)
+                    if self.config.debug {
+                        log("… \(text)")
+                        let alts = (result?.transcriptions ?? []).dropFirst().prefix(4).map(\.formattedString)
+                        let segs = (result?.bestTranscription.segments ?? []).map {
+                            "\($0.substring)[\(String(format: "%.2f", $0.confidence)): \($0.alternativeSubstrings.prefix(4).joined(separator: ","))]"
+                        }
+                        if !alts.isEmpty || segs.contains(where: { $0.contains(",") || !$0.contains("[0.00") }) {
+                            log("   alt: \(alts.joined(separator: " / ")) | \(segs.joined(separator: " "))")
+                        }
+                    }
+                    self.onText?(text, result?.isFinal == true)
                     if gen != self.generation { return } // reset() ou stop() appelé
                 }
                 if error != nil || result?.isFinal == true {

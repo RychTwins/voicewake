@@ -67,7 +67,9 @@ Chaque commande se dit **seule**, avec une courte pause avant et environ une sec
 | « Salut ChatGPT » | dictée dans ChatGPT |
 | « Salut assistant », « Dis assistant » | assistant de l'application au premier plan, sinon `defaultTarget` |
 
-L'application est lancée si elle est fermée, puis mise au premier plan.
+L'application est lancée si elle est fermée, puis mise au premier plan. VoiceWake attend le résultat définitif de la reconnaissance (environ une seconde après la fin de la phrase) avant d'agir : le moteur corrige souvent sa première hypothèse, par exemple « Salut Claude » en « Salut Codex ». « Salut … » est la forme la mieux reconnue.
+
+Pendant une dictée, une phrase d'activation dite seule (« Salut Gemini ») arrête la dictée en cours sans l'envoyer et ouvre l'autre assistant.
 
 ### Pendant la dictée
 
@@ -152,6 +154,8 @@ launchctl kickstart -k gui/$(id -u)/io.github.voicewake
 | `requireOnDevice` | reconnaissance exclusivement locale | `true` |
 | `cooldownSeconds` | délai minimal entre deux activations | `5` |
 | `debug` | écrit les transcriptions dans le log | `false` |
+| `dryRun` | essai à blanc : journalise la cible reconnue sans rien ouvrir, pour régler les phrases | `false` |
+| `wakeMaxWaitSeconds` | attente maximale du résultat définitif avant d'agir | `1.8` |
 | `echoCancellation` | annulation d'écho de macOS (expérimental : peut empêcher la reconnaissance de votre voix) | `false` |
 | `defaultTarget` | cible de « Salut assistant » hors application connue | `claude` |
 | `frontmostPhrases` | phrases visant l'application au premier plan | « salut assistant »… |

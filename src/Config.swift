@@ -96,7 +96,11 @@ struct Config: Codable {
     /// Annulation d'écho : VoiceWake n'entend pas la voix de lecture des haut-parleurs (défaut true).
     var echoCancellation: Bool?
     var cooldownSeconds: Double
+    /// Attente maximale du résultat définitif du moteur avant d'agir sur une phrase d'activation (défaut 1,8 s).
+    var wakeMaxWaitSeconds: Double?
     var debug: Bool
+    /// Essai à blanc : journalise la cible reconnue sans rien déclencher (pour régler les phrases).
+    var dryRun: Bool?
     var conversation: ConversationSettings
     /// Phrases qui visent l'application au premier plan.
     var frontmostPhrases: [String]

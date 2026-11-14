@@ -13,7 +13,7 @@ final class Coordinator {
         self.config = config
         self.router = Router(config: config)
         self.detector = try WakeWordDetector(config: config, hints: router.hints)
-        detector.onText = { [weak self] text in self?.handle(text) }
+        detector.onText = { [weak self] text, isFinal in self?.handle(text, isFinal: isFinal) }
     }
 
     /// Bundle IDs des apps et éditeurs pilotés.
@@ -59,13 +59,46 @@ final class Coordinator {
     /// Le texte transcrit (tes paroles) n'est écrit dans le log qu'en mode debug.
     private func said(_ text: String) -> String { config.debug ? " (« \(text) »)" : "" }
 
-    private func handle(_ text: String) {
+    private func handle(_ text: String, isFinal: Bool = false) {
         // Pas de garde « un assistant parle » ici : Claude garde une sortie audio ouverte pendant sa dictée.
         if let t = active {
             if let other = switchTarget(text, from: t) { switchDictation(from: t, to: other); return }
             checkSend(text, t)
             return
         }
+        // Le moteur corrige souvent sa première hypothèse (« Salut Claude » → « Salut Codex ») :
+        // on attend que la transcription se stabilise avant d'agir.
+        // Le moteur corrige souvent sa première hypothèse (« Salut Claude » → « Salut Codex ») :
+        // on agit sur son résultat définitif, ou au plus tard `wakeMaxWaitSeconds` après la première
+        // détection (un flux continu, comme la voix de lecture, ne bloque donc pas les commandes).
+        latestWakeText = text
+        guard wakeKey(text) != nil || pendingWake != nil else { return }
+        let fire = { [weak self] in
+            guard let self else { return }
+            self.pendingWake?.cancel()
+            self.pendingWake = nil
+            guard self.active == nil else { return }
+            self.handleWake(self.latestWakeText)
+        }
+        if isFinal { return fire() }
+        guard pendingWake == nil else { return }
+        let work = DispatchWorkItem(block: fire)
+        pendingWake = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + (config.wakeMaxWaitSeconds ?? 1.8), execute: work)
+    }
+
+    private var pendingWake: DispatchWorkItem?
+    private var latestWakeText = ""
+
+    /// Ce que la phrase déclencherait (cible ou commande de lecture), ou nil.
+    private func wakeKey(_ text: String) -> String? {
+        if router.containsInterruptPhrase(text) { return "#interrupt" }
+        if router.containsAny(text, config.readPausePhrases) { return "#pause" }
+        if router.containsAny(text, config.readResumePhrases) { return "#resume" }
+        return router.route(text)?.id
+    }
+
+    private func handleWake(_ text: String) {
         let interrupt = router.containsInterruptPhrase(text)
         let pauseRead = router.containsAny(text, config.readPausePhrases)
         let resumeRead = router.containsAny(text, config.readResumePhrases)
@@ -116,6 +149,12 @@ final class Coordinator {
         let target = config.externalDictation == nil ? (router.inEditor(routedTarget) ?? routedTarget) : routedTarget
         let now = Date()
         guard now.timeIntervalSince(lastWake) >= config.cooldownSeconds else {
+            detector.reset()
+            return
+        }
+        if config.dryRun == true {
+            // Essai à blanc : on montre ce qui serait déclenché, sans rien ouvrir.
+            log("[essai] → \(target.id) (« \(text) »)")
             detector.reset()
             return
         }
