@@ -31,7 +31,11 @@ final class Coordinator {
     private var pendingSend: DispatchWorkItem?
     private var sendEnabled: Bool { !(config.sendPhrases ?? []).isEmpty }
 
+    /// Le texte transcrit (tes paroles) n'est écrit dans le log qu'en mode debug.
+    private func said(_ text: String) -> String { config.debug ? " (« \(text) »)" : "" }
+
     private func handle(_ text: String) {
+        // Pas de garde « un assistant parle » ici : Claude garde une sortie audio ouverte pendant sa dictée.
         if let t = active { checkSend(text, t); return }
         let interrupt = router.containsInterruptPhrase(text)
         let routed = router.route(text)
@@ -41,7 +45,7 @@ final class Coordinator {
         if let speaking = MicMonitor.outputtingPrefix(config.targets.compactMap(\.bundleID)) {
             if interrupt, let t = config.targets.first(where: { $0.bundleID == speaking }) {
                 lastWake = Date()
-                log("Interruption de la lecture → \(t.id) (« \(text) »).")
+                log("Interruption de la lecture → \(t.id)\(said(text)).")
                 detector.stop()
                 trigger.interruptAndDictate(t) { [weak self] in self?.pauseUntilConversationEnds(t) }
             } else {
@@ -57,7 +61,7 @@ final class Coordinator {
             return
         }
         lastWake = now
-        log("Phrase détectée → \(target.id) (« \(text) »).")
+        log("Phrase détectée → \(target.id)\(said(text)).")
 
         // On libère le micro avant d'appuyer sur le raccourci.
         detector.stop()
@@ -99,14 +103,14 @@ final class Coordinator {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.active?.id == t.id else { return }
             if stop {
-                log("Phrase d'arrêt détectée → \(t.id) (« \(text) »). En attente de « ok envoie ».")
+                log("Phrase d'arrêt détectée → \(t.id)\(self.said(text)). En attente de « ok envoie ».")
                 self.recording = false
                 self.reviewUntil = Date().addingTimeInterval(self.config.reviewSeconds ?? 180)
                 self.detector.reset()
                 self.trigger.stopDictation(t)
                 return
             }
-            log("Phrase d'envoi détectée → \(t.id) (« \(text) »).")
+            log("Phrase d'envoi détectée → \(t.id)\(self.said(text)).")
             let stopFirst = self.recording
             self.endPause()
             self.detector.stop()
