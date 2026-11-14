@@ -87,6 +87,7 @@ case "check":
     }
     if let external = config.externalDictation {
         print("- dictée externe par défaut : « \(external.shortcut.spec) »")
+        if external.useMacOSDictationMenu == true { print("- démarrage via le menu Dictée macOS") }
         print("- arrêt vocal : \(external.stopShortcut?.spec ?? "désactivé") | envoi vocal : désactivé")
     } else {
         print("- envoi vocal : \((config.sendPhrases ?? []).isEmpty ? "désactivé" : (config.sendPhrases ?? []).joined(separator: ", "))")

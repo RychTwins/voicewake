@@ -69,6 +69,7 @@ struct EditorAssistant: Codable {
 struct Editor: Codable {
     var id: String
     var bundleIDs: [String]
+    var preferredAssistant: String?
     /// Clé = id de la cible (claude, codex, gemini…).
     var assistants: [String: EditorAssistant]
 }
@@ -84,6 +85,7 @@ struct ConversationSettings: Codable {
 
 struct ExternalDictation: Codable {
     var shortcut: Shortcut
+    var useMacOSDictationMenu: Bool?
     /// Omettre pour les outils à maintien, ou si l'arrêt se fait dans l'outil.
     var stopShortcut: Shortcut?
 }

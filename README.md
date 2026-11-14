@@ -145,6 +145,8 @@ Testé : extension Claude Code dans VS Code. Les extensions Codex et Gemini Code
 
 Avec `option+space` (fenêtre compagnon, sans micro), VoiceWake ne détecte pas de conversation et reprend la veille après `startGraceSeconds`.
 
+Dans un bloc `editors`, `"preferredAssistant": "codex"` donne la priorité au micro intégré de l’extension Codex pour « Salut assistant » quand son panneau est ouvert.
+
 ### Utiliser une application de dictée externe sur macOS
 
 Dans l’application de dictée, configure un raccourci clavier global qui insère le texte dans le champ actif. Dans `~/.config/voicewake/config.json`, remplace `"externalDictation": null` par un bloc comme celui-ci, en reprenant tes propres raccourcis.
@@ -159,6 +161,8 @@ Dans l’application de dictée, configure un raccourci clavier global qui insè
 Ce réglage devient la dictée par défaut pour tous les assistants. « Salut Claude », « Salut Codex » et les autres phrases nominatives ouvrent l’assistant de bureau correspondant. Dans VS Code, Cursor ou un éditeur de la liste `editors`, « Salut assistant » lance la dictée dans le champ déjà actif, par exemple le composeur d’une extension ou le fichier en cours d’édition.
 
 VoiceWake vérifie que le champ est modifiable et toujours actif avant de lancer le raccourci. Si un assistant ne place pas le curseur dans son composeur à l’ouverture, clique le champ avant de parler ou ajoute `"dictationFieldLabels": ["libellé exact du champ"]` à sa cible. Le libellé d’accessibilité se relève avec Accessibility Inspector.
+
+Pour la dictée intégrée à macOS, ajoute `"useMacOSDictationMenu": true` au bloc et omets `stopShortcut`. VoiceWake utilise la commande « Démarrer Dictée… » du menu Édition quand elle est disponible dans l’application cible.
 
 Pour une dictée qui démarre et s’arrête avec le même raccourci, renseigne les deux clés avec la même valeur. Pour une dictée à maintien, utilise par exemple `"shortcut": "hold 3 fn"` et omets `stopShortcut`. Avec un raccourci d’arrêt configuré, « OK arrête » termine la dictée. Relis le texte puis envoie-le manuellement. Garde le champ actif jusqu’à l’insertion du texte, que l’application de dictée effectue elle-même. La valeur `null` rétablit les raccourcis intégrés.
 

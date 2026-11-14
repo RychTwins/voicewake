@@ -36,6 +36,23 @@ enum AXButtonPresser {
         AXUIElementSetAttributeValue(field, kAXFocusedAttribute as CFString, kCFBooleanTrue) == .success
     }
 
+    static func startMacOSDictation(in app: NSRunningApplication, while allowed: () -> Bool) -> Bool {
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        guard let bar: AXUIElement = value(root, kAXMenuBarAttribute) else { return false }
+        let menus: [AXUIElement] = value(bar, kAXChildrenAttribute) ?? []
+        for menu in menus {
+            let groups: [AXUIElement] = value(menu, kAXChildrenAttribute) ?? []
+            for group in groups {
+                let items: [AXUIElement] = value(group, kAXChildrenAttribute) ?? []
+                for item in items where (value(item, kAXIdentifierAttribute) as String?) == "startDictation:" {
+                    guard (value(item, kAXEnabledAttribute) as Bool?) != false, allowed() else { return false }
+                    return AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
+                }
+            }
+        }
+        return false
+    }
+
     private static func isEditable(_ element: AXUIElement) -> Bool {
         let role: String? = value(element, kAXRoleAttribute)
         guard role == "AXTextArea" || role == "AXTextField" || role == "AXComboBox",

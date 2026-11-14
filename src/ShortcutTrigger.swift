@@ -141,10 +141,19 @@ final class ShortcutTrigger {
             completion?(false)
             return
         }
-        ShortcutPlayer.play(external.shortcut, while: {
+        let allowed = {
             AXIsProcessTrusted() && window.isFocused &&
                 AXButtonPresser.focusedTextField(in: app).map { CFEqual($0, field) } == true
-        }) { played in
+        }
+        if external.useMacOSDictationMenu == true {
+            let started = AXButtonPresser.startMacOSDictation(in: app, while: allowed)
+            if started { externalDictationWindow = window }
+            log(started ? "\(target.id) : commande Dictée macOS activée." :
+                "\(target.id) : commande Dictée macOS indisponible ou champ inactif.")
+            completion?(started)
+            return
+        }
+        ShortcutPlayer.play(external.shortcut, while: allowed) { played in
             if played { self.externalDictationWindow = window }
             log(played ? "\(target.id) : raccourci de dictée externe envoyé." : "\(target.id) : dictée externe annulée, champ inactif.")
             completion?(played)

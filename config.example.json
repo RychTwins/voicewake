@@ -245,6 +245,11 @@
         "com.exafunction.windsurf"
       ],
       "assistants": {
+        "codex": {
+          "shortcut": "button:Dicter|Dictate",
+          "stopShortcut": "button:Arrêter la dictée|Stop dictation",
+          "submitShortcut": "button:Envoyer|Send"
+        },
         "claude": {
           "shortcut": "button:Voice dictation",
           "stopShortcut": "button:Stop recording",

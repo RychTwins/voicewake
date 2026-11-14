@@ -95,7 +95,8 @@ final class Coordinator {
 
         // On libère le micro avant d'appuyer sur le raccourci.
         detector.stop()
-        trigger.fire(target, external: config.externalDictation) { [weak self] started in
+        let external = target.id.contains("@") ? nil : config.externalDictation
+        trigger.fire(target, external: external) { [weak self] started in
             self?.didTrigger(target, started: started)
         }
     }

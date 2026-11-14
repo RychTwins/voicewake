@@ -91,6 +91,10 @@ struct Router {
 
     func frontmostTarget() -> Target? {
         guard let front = NSWorkspace.shared.frontmostApplication else { return config.defaultTarget.flatMap(config.target(id:)) }
+        if let bid = front.bundleIdentifier,
+           let editor = config.editors?.first(where: { $0.bundleIDs.contains(bid) }),
+           let id = editor.preferredAssistant, let target = config.target(id: id),
+           let integrated = inEditor(target) { return integrated }
         if let bid = front.bundleIdentifier, let target = activeEditorTarget(bundleID: bid) { return target }
         if let t = config.targets.first(where: { ShortcutTrigger.matches(front, $0) }) {
             return t
