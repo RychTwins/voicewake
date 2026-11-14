@@ -50,7 +50,7 @@ final class Coordinator {
                 lastWake = Date()
                 log("Interruption de la lecture → \(t.id)\(said(text)).")
                 detector.stop()
-                trigger.interruptAndDictate(t) { [weak self] in self?.pauseUntilConversationEnds(t) }
+                trigger.interruptAndDictate(t) { [weak self] started in self?.didTrigger(t, started: started) }
             } else {
                 log("Phrase ignorée : lecture à voix haute de \(reader.id) en cours\(said(text)).")
                 detector.reset()
@@ -70,11 +70,13 @@ final class Coordinator {
 
         // On libère le micro avant d'appuyer sur le raccourci.
         detector.stop()
-        trigger.fire(target) { [weak self] in self?.pauseUntilConversationEnds(target) }
+        trigger.fire(target) { [weak self] started in self?.didTrigger(target, started: started) }
     }
 
     /// Micro de l'app encore ouvert (false après « ok arrête »).
     private var recording = false
+    private var stopping = false
+    private var dictationWindow: ShortcutTrigger.DictationWindow?
     /// Après « ok arrête » : attente de « ok envoie » jusqu'à cette date.
     private var reviewUntil: Date?
 
@@ -93,6 +95,7 @@ final class Coordinator {
     }
 
     private func checkSend(_ text: String, _ t: Target) {
+        guard !stopping else { return }
         pendingSend?.cancel()
         history.append((Date(), normalize(text)))
         if history.count > 60 { history.removeFirst(history.count - 60) }
@@ -108,21 +111,31 @@ final class Coordinator {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.active?.id == t.id else { return }
             if stop {
-                log("Phrase d'arrêt détectée → \(t.id)\(self.said(text)). En attente de « ok envoie ».")
-                self.recording = false
-                self.reviewUntil = Date().addingTimeInterval(self.config.reviewSeconds ?? 180)
-                self.detector.reset()
-                self.trigger.stopDictation(t)
+                log("Phrase d'arrêt détectée → \(t.id)\(self.said(text)).")
+                self.stopping = true
+                self.trigger.stopDictation(t, in: self.dictationWindow) { [weak self] stopped in
+                    guard let self, self.active?.id == t.id else { return }
+                    self.stopping = false
+                    if stopped {
+                        self.recording = false
+                        self.reviewUntil = Date().addingTimeInterval(self.config.reviewSeconds ?? 180)
+                        log("Dictée arrêtée. En attente de « ok envoie ».")
+                    } else {
+                        log("Arrêt de la dictée non effectué.")
+                    }
+                    self.detector.reset()
+                }
                 return
             }
             log("Phrase d'envoi détectée → \(t.id)\(self.said(text)).")
             let stopFirst = self.recording
+            let window = self.dictationWindow
             self.endPause()
             self.detector.stop()
-            self.trigger.submit(t, stopFirst: stopFirst) { [weak self] in
-                log("Reprise de la veille (message envoyé).")
+            self.trigger.submit(t, in: window, stopFirst: stopFirst) { [weak self] submitted in
+                log(submitted ? "Reprise de la veille (action d'envoi déclenchée)." : "Reprise de la veille (envoi annulé).")
                 self?.detector.start()
-                self?.trigger.readAloudWhenDone(t)
+                if submitted { self?.trigger.readAloudWhenDone(t) }
             }
         }
         pendingSend = work
@@ -134,8 +147,14 @@ final class Coordinator {
         pauseTimer?.invalidate()
         pendingSend?.cancel()
         active = nil
+        dictationWindow = nil
         recording = false
+        stopping = false
         reviewUntil = nil
+    }
+
+    private func didTrigger(_ target: Target, started: Bool) {
+        if started { pauseUntilConversationEnds(target) } else { detector.start() }
     }
 
     /// Reste en pause tant qu'une application utilise le micro.
@@ -149,6 +168,7 @@ final class Coordinator {
         log("Pause pendant la conversation\(listening ? " (envoi vocal actif)" : "").")
         if listening {
             active = target
+            dictationWindow = ShortcutTrigger.dictationWindow(for: target)
             recording = true
             reviewUntil = nil
             detector.start()

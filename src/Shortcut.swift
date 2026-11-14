@@ -99,7 +99,12 @@ struct Shortcut: Codable {
 enum ShortcutPlayer {
     private static let queue = DispatchQueue(label: "voicewake.shortcut")
 
-    static func play(_ shortcut: Shortcut, completion: @escaping () -> Void) {
+    static func play(
+        _ shortcut: Shortcut,
+        to pid: pid_t? = nil,
+        while allowed: @escaping () -> Bool,
+        completion: @escaping (Bool) -> Void
+    ) {
         queue.async {
             for (i, step) in shortcut.steps.enumerated() {
                 if i > 0 { wait(0.15) }
@@ -107,51 +112,53 @@ enum ShortcutPlayer {
                 case let .press(combo, times):
                     for t in 0..<times {
                         if t > 0 { wait(0.1) }
-                        down(combo); wait(0.03); up(combo)
+                        guard allowed() else { DispatchQueue.main.async { completion(false) }; return }
+                        down(combo, to: pid); wait(0.03); up(combo, to: pid)
                     }
                 case let .hold(combo, seconds):
-                    down(combo); wait(seconds); up(combo)
+                    guard allowed() else { DispatchQueue.main.async { completion(false) }; return }
+                    down(combo, to: pid); wait(seconds); up(combo, to: pid)
                 }
             }
-            DispatchQueue.main.async(execute: completion)
+            DispatchQueue.main.async { completion(true) }
         }
     }
 
     private static let source = CGEventSource(stateID: .hidSystemState)
 
-    private static func down(_ c: KeyCombo) {
+    private static func down(_ c: KeyCombo, to pid: pid_t?) {
         var flags: CGEventFlags = []
         for m in c.modifiers {
-            if m.code == KeyMap.capsLock { toggleCapsLock(); continue }
+            if m.code == KeyMap.capsLock { toggleCapsLock(to: pid); continue }
             flags.formUnion(m.flags)
-            post(m.code, type: .flagsChanged, flags: flags)
+            post(m.code, type: .flagsChanged, flags: flags, to: pid)
             wait(0.02)
         }
-        if let k = c.main { post(k.code, type: .keyDown, flags: flags) }
+        if let k = c.main { post(k.code, type: .keyDown, flags: flags, to: pid) }
     }
 
-    private static func up(_ c: KeyCombo) {
+    private static func up(_ c: KeyCombo, to pid: pid_t?) {
         var held = c.modifiers.filter { $0.code != KeyMap.capsLock }
         var flags = held.reduce(CGEventFlags()) { $0.union($1.flags) }
-        if let k = c.main { post(k.code, type: .keyUp, flags: flags) }
+        if let k = c.main { post(k.code, type: .keyUp, flags: flags, to: pid) }
         while let m = held.popLast() {
             wait(0.02)
             flags = held.reduce(CGEventFlags()) { $0.union($1.flags) }
-            post(m.code, type: .flagsChanged, flags: flags)
+            post(m.code, type: .flagsChanged, flags: flags, to: pid)
         }
     }
 
     /// Verr. Maj. se bascule : un seul événement, dans l'état opposé à l'état actuel.
-    private static func toggleCapsLock() {
+    private static func toggleCapsLock(to pid: pid_t?) {
         let on = !CGEventSource.flagsState(.hidSystemState).contains(.maskAlphaShift)
-        post(KeyMap.capsLock, type: .flagsChanged, flags: on ? .maskAlphaShift : [])
+        post(KeyMap.capsLock, type: .flagsChanged, flags: on ? .maskAlphaShift : [], to: pid)
     }
 
-    private static func post(_ code: CGKeyCode, type: CGEventType, flags: CGEventFlags) {
+    private static func post(_ code: CGKeyCode, type: CGEventType, flags: CGEventFlags, to pid: pid_t?) {
         guard let e = CGEvent(keyboardEventSource: source, virtualKey: code, keyDown: type != .keyUp) else { return }
         e.type = type
         e.flags = flags
-        e.post(tap: .cghidEventTap)
+        if let pid { e.postToPid(pid) } else { e.post(tap: .cghidEventTap) }
     }
 
     private static func wait(_ seconds: Double) { usleep(UInt32(max(0, seconds) * 1_000_000)) }

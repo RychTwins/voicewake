@@ -96,7 +96,9 @@ case "test":
         // Même règle que la voix : un éditeur au premier plan avec l'assistant intégré est prioritaire.
         let target = Router(config: config).inEditor(t) ?? t
         print("→ \(target.id)")
-        ShortcutTrigger().fire(target) { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exit(0) } }
+        ShortcutTrigger().fire(target) { started in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exit(started ? 0 : 1) }
+        }
     }
     app.run()
 

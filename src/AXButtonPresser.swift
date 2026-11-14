@@ -5,20 +5,29 @@ import ApplicationServices
 enum AXButtonPresser {
     private static let roles: Set<String> = ["AXButton", "AXCheckBox", "AXMenuButton", "AXRadioButton"]
 
+    static func focusedWindow(in app: NSRunningApplication) -> AXUIElement? {
+        value(AXUIElementCreateApplication(app.processIdentifier), kAXFocusedWindowAttribute)
+    }
+
     /// Renvoie le libellé du bouton pressé, ou nil.
-    static func press(_ labels: [String], in app: NSRunningApplication) -> String? {
+    static func press(_ labels: [String], in app: NSRunningApplication, window: AXUIElement? = nil) -> String? {
         let root = AXUIElementCreateApplication(app.processIdentifier)
         // Applications Electron/Chromium : exposer l'arbre d'accessibilité.
         AXUIElementSetAttributeValue(root, "AXManualAccessibility" as CFString, kCFBooleanTrue)
 
-        var windows: [AXUIElement] = []
-        if let focused: AXUIElement = value(root, kAXFocusedWindowAttribute) { windows.append(focused) }
-        windows += (value(root, kAXWindowsAttribute) as [AXUIElement]?) ?? []
+        let windows: [AXUIElement]
+        if let window {
+            windows = [window]
+        } else {
+            let focused: AXUIElement? = value(root, kAXFocusedWindowAttribute)
+            windows = [focused].compactMap { $0 } + ((value(root, kAXWindowsAttribute) as [AXUIElement]?) ?? [])
+        }
 
         let wanted = labels.map { $0.lowercased() }
         // Libellé exact uniquement : évite de cliquer un message qui contient le mot.
         for w in windows {
             if let (el, name) = find(w, wanted, depth: 0),
+               window == nil || (app.isActive && focusedWindow(in: app).map { CFEqual($0, w) } == true),
                AXUIElementPerformAction(el, kAXPressAction as CFString) == .success {
                 return name
             }

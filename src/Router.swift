@@ -22,11 +22,11 @@ struct Router {
     }
 
     func route(_ text: String) -> Target? {
-        let n = normalize(text)
-        if let hit = targetPhrases.first(where: { n.contains($0.phrase) }) {
+        let n = " " + normalize(text) + " "
+        if let hit = targetPhrases.first(where: { n.contains(" " + $0.phrase + " ") }) {
             return config.target(id: hit.id)
         }
-        if frontmostPhrases.contains(where: { n.contains($0) }) {
+        if frontmostPhrases.contains(where: { n.contains(" " + $0 + " ") }) {
             return frontmostTarget()
         }
         return nil
@@ -40,8 +40,8 @@ struct Router {
 
     /// Vrai si la transcription contient une phrase d'interruption de la lecture.
     func containsInterruptPhrase(_ text: String) -> Bool {
-        let n = normalize(text)
-        return (config.interruptPhrases ?? []).map(normalize).contains { !$0.isEmpty && n.contains($0) }
+        let n = " " + normalize(text) + " "
+        return (config.interruptPhrases ?? []).map(normalize).contains { !$0.isEmpty && n.contains(" " + $0 + " ") }
     }
 
     private func endsWith(_ text: String, _ phrases: [String]?) -> Bool { suffix(text, phrases) != nil }
@@ -49,13 +49,13 @@ struct Router {
     /// Ce qui précède la phrase finale (texte normalisé), ou nil si la phrase n'y est pas.
     func bodyBeforeCommand(_ text: String) -> String? {
         guard let p = suffix(text, (config.sendPhrases ?? []) + (config.stopPhrases ?? [])) else { return nil }
-        return String(normalize(text).dropLast(p.count))
+        return String(normalize(text).dropLast(p.count + 1))
     }
 
     /// La plus longue phrase normalisée qui termine le texte.
     private func suffix(_ text: String, _ phrases: [String]?) -> String? {
-        let n = normalize(text)
-        return (phrases ?? []).map(normalize).filter { !$0.isEmpty && n.hasSuffix($0) }.max { $0.count < $1.count }
+        let n = " " + normalize(text)
+        return (phrases ?? []).map(normalize).filter { !$0.isEmpty && n.hasSuffix(" " + $0) }.max { $0.count < $1.count }
     }
 
     /// Éditeur au premier plan qui intègre cet assistant → cible « dans l'éditeur ».

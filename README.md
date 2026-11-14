@@ -101,6 +101,8 @@ Pendant la dictée, VoiceWake continue d'écouter (micro partagé). Termine par 
 - `sendSilenceSeconds` (1,2) : silence requis après la phrase. Une phrase d'envoi en milieu de phrase ne déclenche rien.
 - `sendPauseBeforeSeconds` (0,6) : pause requise aussi *avant* « ok envoie » / « ok arrête ». Évite l'envoi quand tu cites la phrase en parlant. `0` = désactivé.
 
+Sur macOS, garde la fenêtre de dictée au premier plan jusqu'à l'envoi. VoiceWake annule l'action si la fenêtre a changé ou si l'arrêt demandé de la dictée échoue.
+
 **Lecture à voix haute automatique** : après un envoi vocal, VoiceWake attend la fin de la réponse puis clique le dernier bouton de lecture (`readAloudShortcut`, ex. `button:Lire à voix haute`). Fin de réponse = disparition des libellés `busyLabels` (Claude : « Arrêter », « Message en cours de génération ») ou apparition d'un nouveau bouton de lecture, stable 2 s. Attente max : `readAloudTimeoutSeconds` (600). Configuré pour Claude et Codex. Pendant une lecture lancée par VoiceWake, les phrases d'activation sont ignorées (VoiceWake ne se déclenche pas sur la voix de lecture) ; le log l'indique (« Phrase ignorée »).
 
 **Interrompre la lecture** : pendant la lecture, dis une phrase de `interruptPhrases` (« stop lecture », « arrête la lecture », « stop stop »). VoiceWake clique `pauseReadShortcut` (Claude : `button:Pause`), rouvre le micro de l'app, puis tu dictes ta nouvelle demande et « ok envoie ». Limite : si la réponse lue contient elle-même une phrase d'interruption, la lecture s'interrompt toute seule (pas de distinction entre ta voix et celle des haut-parleurs ; un casque évite le problème).

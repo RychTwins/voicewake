@@ -5,11 +5,12 @@ func log(_ message: String) {
     print("[\(ISO8601DateFormatter().string(from: Date()))] \(message)")
 }
 
-/// "Salut, Chat GPT !" -> "salutchatgpt"
+/// "Salut, Chat GPT !" -> "salut chat gpt"
 func normalize(_ s: String) -> String {
     s.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "fr_FR"))
         .lowercased()
-        .filter { $0.isLetter || $0.isNumber }
+        .split { !$0.isLetter && !$0.isNumber }
+        .joined(separator: " ")
 }
 
 struct ConfigError: LocalizedError {
