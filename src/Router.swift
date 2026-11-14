@@ -51,6 +51,19 @@ struct Router {
     /// Vrai si la transcription se termine par une phrase d'arrêt du micro.
     func endsWithStopPhrase(_ text: String) -> Bool { endsWith(text, config.stopPhrases) }
 
+    /// Dernière phrase de `phrases` présente dans le texte, avec le mot qui la précède (texte normalisé).
+    func lastMatch(_ text: String, _ phrases: [String]?) -> (phrase: String, previous: String?)? {
+        let n = " " + normalize(text) + " "
+        var best: (phrase: String, previous: String?, at: String.Index)?
+        for p in (phrases ?? []).map(normalize) where !p.isEmpty {
+            guard let r = n.range(of: " " + p + " ", options: .backwards) else { continue }
+            if let b = best, b.at > r.lowerBound || (b.at == r.lowerBound && b.phrase.count >= p.count) { continue }
+            let before = n[..<r.lowerBound].split(separator: " ").last.map(String.init)
+            best = (p, before, r.lowerBound)
+        }
+        return best.map { ($0.phrase, $0.previous) }
+    }
+
     func containsAny(_ text: String, _ phrases: [String]?) -> Bool {
         let n = " " + normalize(text) + " "
         return (phrases ?? []).map(normalize).contains { !$0.isEmpty && n.contains(" " + $0 + " ") }

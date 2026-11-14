@@ -87,6 +87,17 @@ final class Coordinator {
         DispatchQueue.main.asyncAfter(deadline: .now() + (config.wakeMaxWaitSeconds ?? 1.8), execute: work)
     }
 
+    /// La commande entendue vient-elle de la voix de lecture ? Oui si le texte affiché par l'app
+    /// contient cette phrase précédée du même mot (ou si on n'a pas entendu de mot avant).
+    private func spokenByReader(_ text: String, _ reader: Target) -> Bool {
+        let phrases = (config.readPausePhrases ?? []) + (config.interruptPhrases ?? [])
+        guard let hit = router.lastMatch(text, phrases), let app = ShortcutTrigger.runningApp(for: reader) else { return false }
+        let shown = " " + normalize(AXButtonPresser.windowTexts(in: app).joined(separator: " ")) + " "
+        guard shown.contains(" " + hit.phrase + " ") else { return false }
+        guard let previous = hit.previous else { return true }
+        return shown.contains(" " + previous + " " + hit.phrase + " ")
+    }
+
     private var pendingWake: DispatchWorkItem?
     private var latestWakeText = ""
 
@@ -126,6 +137,11 @@ final class Coordinator {
         // (Une app peut garder sa sortie audio ouverte sans rien lire : on ne bloque que nos lectures.)
         // La lecture reste « en cours » jusqu'à 3 s de silence continu (voir startReading).
         if let reader = trigger.readingTarget() {
+            if (pauseRead || interrupt), spokenByReader(text, reader) {
+                log("Commande ignorée : prononcée par la voix de lecture de \(reader.id).")
+                detector.reset()
+                return
+            }
             if pauseRead && !interrupt {
                 log("Lecture mise en pause → \(reader.id).")
                 detector.reset()

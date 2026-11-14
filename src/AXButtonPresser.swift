@@ -76,6 +76,22 @@ enum AXButtonPresser {
         return pid == app.processIdentifier
     }
 
+    /// Tout le texte affiché dans les fenêtres de l'app (messages, titres), dans l'ordre de l'écran.
+    static func windowTexts(in app: NSRunningApplication) -> [String] {
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        var out: [String] = []
+        func walk(_ e: AXUIElement, _ depth: Int) {
+            if depth > 150 || out.count > 6000 { return }
+            let role: String? = value(e, kAXRoleAttribute)
+            if role == "AXMenuBar" { return }
+            if role == "AXStaticText", let s: String = value(e, kAXValueAttribute), !s.isEmpty { out.append(s) }
+            else if role == "AXHeading", let s: String = value(e, kAXTitleAttribute) ?? value(e, kAXDescriptionAttribute) { out.append(s) }
+            for child in (value(e, kAXChildrenAttribute) as [AXUIElement]?) ?? [] { walk(child, depth + 1) }
+        }
+        for w in (value(root, kAXWindowsAttribute) as [AXUIElement]?) ?? [] { walk(w, 0) }
+        return out
+    }
+
     /// Demande à une app Electron/Chromium de construire son arbre d'accessibilité.
     /// La construction est asynchrone : à faire à l'avance, pas au moment du clic.
     static func enableAccessibility(_ app: NSRunningApplication) {

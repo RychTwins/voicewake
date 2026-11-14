@@ -172,7 +172,16 @@ final class ShortcutTrigger {
         }
         if stopFirst && (t.stopBeforeSubmit ?? true) {
             stopDictation(t, in: window) { stopped in
-                if stopped { finish() } else { completion(false) }
+                if stopped { return finish() }
+                // Bouton d'arrêt introuvable : si le bouton d'ouverture du micro est là, l'app a déjà
+                // coupé sa dictée d'elle-même (silence) ; on peut envoyer.
+                let open = t.shortcut.buttons
+                if !open.isEmpty, !AXButtonPresser.all(open, in: window.app).isEmpty {
+                    log("\(t.id) : micro déjà fermé par l'application, envoi.")
+                    finish()
+                } else {
+                    completion(false)
+                }
             }
         } else {
             finish()
