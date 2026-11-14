@@ -17,6 +17,7 @@ final class WakeWordDetector {
     private var rotateTimer: Timer?
     private var wanted = false
     private var observersInstalled = false
+    private var waitedForModel = 0
 
     init(config: Config, hints: [String]) throws {
         guard let r = SFSpeechRecognizer(locale: Locale(identifier: config.locale)) else {
@@ -25,7 +26,8 @@ final class WakeWordDetector {
         self.config = config
         self.hints = hints
         self.recognizer = r
-        audio.echoCancellation = config.echoCancellation ?? true
+        audio.echoCancellation = config.echoCancellation ?? false
+        audio.debugLevels = config.debug
     }
 
     func requestPermissions(_ done: @escaping (Bool) -> Void) {
@@ -44,11 +46,18 @@ final class WakeWordDetector {
 
     func start() {
         if !recognizer.supportsOnDeviceRecognition {
-            log("Reconnaissance locale indisponible pour \(config.locale).")
             if config.requireOnDevice {
-                log("Arrêt : mettre \"requireOnDevice\": false pour passer par les serveurs d'Apple.")
+                // Juste après le démarrage du Mac, le modèle local n'est pas toujours chargé : on réessaie.
+                waitedForModel += 1
+                if waitedForModel <= 24 {
+                    if waitedForModel == 1 { log("Modèle vocal \(config.locale) pas encore prêt, nouvel essai toutes les 5 s.") }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in self?.start() }
+                    return
+                }
+                log("Reconnaissance locale indisponible pour \(config.locale). Mettre \"requireOnDevice\": false pour passer par les serveurs d'Apple.")
                 exit(1)
             }
+            log("Reconnaissance locale indisponible pour \(config.locale) : serveurs d'Apple.")
         }
         installObserversOnce()
         wanted = true

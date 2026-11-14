@@ -9,7 +9,7 @@ final class ShortcutTrigger {
         let element: AXUIElement
 
         /// L'app de la dictée est toujours au premier plan (sa fenêtre active peut changer en cours de route).
-        var isFocused: Bool { app.isActive }
+        var isFocused: Bool { AXButtonPresser.isFrontmost(app) }
     }
 
     static func dictationWindow(for target: Target) -> DictationWindow? {
@@ -122,7 +122,7 @@ final class ShortcutTrigger {
         _ external: ExternalDictation, for target: Target, in app: NSRunningApplication,
         _ completion: ((Bool) -> Void)?
     ) {
-        guard app.isActive, let element = AXButtonPresser.focusedWindow(in: app) else {
+        guard AXButtonPresser.isFrontmost(app), let element = AXButtonPresser.focusedWindow(in: app) else {
             log("\(target.id) : fenêtre de dictée indisponible.")
             completion?(false)
             return
@@ -321,7 +321,7 @@ final class ShortcutTrigger {
     /// Depuis macOS 14, `activate()` appelé par une app en arrière-plan peut être refusé :
     /// on passe alors par LaunchServices (comme un clic dans le Dock), qui affiche aussi une app masquée.
     static func bringToFront(_ app: NSRunningApplication, target t: Target, completion: @escaping (Bool) -> Void) {
-        if app.isActive { return completion(true) }
+        if AXButtonPresser.isFrontmost(app) { return completion(true) }
         app.unhide()
         activate(app)
         // Accessibilité : accepté même depuis un service en arrière-plan (activate() peut être refusé).
@@ -337,7 +337,7 @@ final class ShortcutTrigger {
         }
         var fallbackDone = false
         func poll(_ remaining: Int) {
-            if app.isActive { return completion(true) }
+            if AXButtonPresser.isFrontmost(app) { return completion(true) }
             if remaining <= 0 { return completion(false) }
             if remaining == 4, !fallbackDone, let url = app.bundleURL ?? appURL(for: t) {
                 fallbackDone = true
@@ -364,7 +364,7 @@ final class ShortcutTrigger {
         systemShortcut: Bool = false, foregroundApp: NSRunningApplication? = nil, _ completion: ((Bool) -> Void)?
     ) {
         let s = t.shortcut
-        let allowed = { AXIsProcessTrusted() && (window?.isFocused ?? foregroundApp?.isActive ?? true) }
+        let allowed = { AXIsProcessTrusted() && (window?.isFocused ?? foregroundApp.map(AXButtonPresser.isFrontmost) ?? true) }
         guard allowed() else {
             log("\(t.id) : action ignorée, fenêtre de dictée inactive ou accès refusé.")
             completion?(false)

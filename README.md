@@ -88,7 +88,7 @@ Après un envoi vocal, VoiceWake attend la fin de la réponse puis lance la lect
 | « Reprends la lecture », « Continue la lecture » | reprise là où elle s'était arrêtée (10 min max) |
 | « Écoute » | pause et micro rouvert pour une nouvelle demande |
 
-VoiceWake n'entend pas la voix de lecture : l'**annulation d'écho** de macOS (celle des appels vidéo) retire du micro le son joué par le Mac. Une commande prononcée par l'assistant (« arrête la lecture »…) n'a donc aucun effet ; seule votre voix compte. Par sécurité, les phrases d'activation restent ignorées pendant une lecture lancée par VoiceWake.
+Pendant une lecture lancée par VoiceWake, les phrases d'activation sont ignorées, pour ne pas réagir à la voix de l'assistant. Sans casque, une commande prononcée par la voix de lecture peut s'appliquer ; l'annulation d'écho (`echoCancellation`) est disponible mais expérimentale.
 
 ---
 
@@ -152,7 +152,7 @@ launchctl kickstart -k gui/$(id -u)/io.github.voicewake
 | `requireOnDevice` | reconnaissance exclusivement locale | `true` |
 | `cooldownSeconds` | délai minimal entre deux activations | `5` |
 | `debug` | écrit les transcriptions dans le log | `false` |
-| `echoCancellation` | annulation d'écho : la voix des haut-parleurs n'est pas entendue | `true` |
+| `echoCancellation` | annulation d'écho de macOS (expérimental : peut empêcher la reconnaissance de votre voix) | `false` |
 | `defaultTarget` | cible de « Salut assistant » hors application connue | `claude` |
 | `frontmostPhrases` | phrases visant l'application au premier plan | « salut assistant »… |
 | `sendPhrases`, `stopPhrases` | commandes d'envoi et d'arrêt pendant la dictée | voir l'exemple |
@@ -242,6 +242,8 @@ Le journal `~/Library/Logs/voicewake.log` indique chaque étape. Pour y voir aus
 | « OK envoie » sans effet | `externalDictation` actif ou `sendPhrases` vide | remettez `"externalDictation": null` et la liste `sendPhrases` |
 | Dictée macOS au lieu du micro de l'application | `externalDictation` actif | `"externalDictation": null` |
 | « Autoriser VoiceWake » au démarrage | Accessibilité refusée | Réglages Système > Confidentialité et sécurité > Accessibilité |
+| « impossible de mettre l'app au premier plan » | écran verrouillé, ou une fenêtre système au premier plan | déverrouillez le Mac |
+| « Modèle vocal fr-FR pas encore prêt » | juste après le démarrage du Mac | rien à faire, VoiceWake réessaie toutes les 5 s |
 
 `voicewake check` affiche l'Accessibilité de l'application qui lance la commande (le Terminal), pas celle du service : pour le service, fiez-vous au log. Évitez de faire modifier la configuration par un autre outil pendant une dictée : chaque redémarrage du service interrompt la dictée en cours.
 
@@ -251,7 +253,7 @@ Le journal `~/Library/Logs/voicewake.log` indique chaque étape. Pour y voir aus
 
 - L'indicateur orange du micro reste allumé en veille : protection de macOS.
 - La commande d'envoi est aussi transcrite par le micro de l'application et apparaît en fin de message.
-- L'annulation d'écho couvre le son joué par le Mac ; un son très fort ou une autre source dans la pièce peut encore être entendu.
+- Sans casque, une réponse lue qui contient une commande (« arrête la lecture », « écoute »…) peut s'appliquer d'elle-même.
 - Une application qui garde le micro ouvert (visio, enregistrement) prolonge la pause jusqu'à `maxPauseMinutes`.
 - Codex : pas encore de pause ni de reprise de la lecture à la voix.
 - Les libellés des boutons dépendent de la langue et des versions des applications.

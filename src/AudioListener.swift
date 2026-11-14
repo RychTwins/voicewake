@@ -6,6 +6,8 @@ final class AudioListener {
     var onBuffer: ((AVAudioPCMBuffer) -> Void)?
     /// Annulation d'écho de macOS : retire du micro le son joué par le Mac (voix de lecture des assistants).
     var echoCancellation = false
+    /// Mode debug : journalise le niveau du micro toutes les 2 s.
+    var debugLevels = false
 
     func start() throws {
         stop()
@@ -25,7 +27,15 @@ final class AudioListener {
         }
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0 else { throw ConfigError("Aucun micro disponible") }
+        var peak: Float = 0, lastReport = Date()
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            if self?.debugLevels == true, let data = buffer.floatChannelData?[0] {
+                for i in 0..<Int(buffer.frameLength) { peak = max(peak, abs(data[i])) }
+                if Date().timeIntervalSince(lastReport) > 2 {
+                    log("Niveau micro : \(String(format: "%.4f", peak))")
+                    peak = 0; lastReport = Date()
+                }
+            }
             self?.onBuffer?(buffer)
         }
         engine.prepare()

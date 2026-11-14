@@ -63,6 +63,26 @@ enum AXButtonPresser {
             && settable.boolValue
     }
 
+    /// L'app est-elle réellement au premier plan ? `isActive` peut rester périmé dans un service
+    /// en arrière-plan : on confirme par l'app active du système et par l'Accessibilité.
+    static func isFrontmost(_ app: NSRunningApplication) -> Bool {
+        if app.isActive { return true }
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier { return true }
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(), kAXFocusedApplicationAttribute as CFString, &focused) == .success,
+              let el = focused, CFGetTypeID(el) == AXUIElementGetTypeID() else { return false }
+        var pid: pid_t = 0
+        AXUIElementGetPid(el as! AXUIElement, &pid)
+        return pid == app.processIdentifier
+    }
+
+    /// Demande à une app Electron/Chromium de construire son arbre d'accessibilité.
+    /// La construction est asynchrone : à faire à l'avance, pas au moment du clic.
+    static func enableAccessibility(_ app: NSRunningApplication) {
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetAttributeValue(root, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+    }
+
     /// Renvoie le libellé du bouton pressé, ou nil.
     static func press(_ labels: [String], in app: NSRunningApplication, window: AXUIElement? = nil) -> String? {
         let root = AXUIElementCreateApplication(app.processIdentifier)
@@ -81,7 +101,7 @@ enum AXButtonPresser {
         // Libellé exact uniquement : évite de cliquer un message qui contient le mot.
         for w in windows {
             if let (el, name) = find(w, wanted, depth: 0),
-               window == nil || (app.isActive && focusedWindow(in: app).map { CFEqual($0, w) } == true),
+               window == nil || (isFrontmost(app) && focusedWindow(in: app).map { CFEqual($0, w) } == true),
                AXUIElementPerformAction(el, kAXPressAction as CFString) == .success {
                 return name
             }

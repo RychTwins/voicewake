@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 /// Veille -> déclenchement -> pause pendant la conversation -> veille.
 final class Coordinator {
@@ -16,8 +16,33 @@ final class Coordinator {
         detector.onText = { [weak self] text in self?.handle(text) }
     }
 
+    /// Bundle IDs des apps et éditeurs pilotés.
+    private var managedBundleIDs: Set<String> {
+        Set(config.targets.compactMap(\.bundleID) + (config.editors ?? []).flatMap(\.bundleIDs))
+    }
+
+    /// Prépare l'arbre d'accessibilité des apps pilotées dès qu'elles tournent : sinon, juste après
+    /// un redémarrage du Mac ou de l'app, le premier « Dis Claude » ne trouve pas le bouton micro.
+    private func warmUpAccessibility() {
+        let ids = managedBundleIDs
+        for app in NSWorkspace.shared.runningApplications where app.bundleIdentifier.map(ids.contains) == true {
+            AXButtonPresser.enableAccessibility(app)
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self, let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.bundleIdentifier.map(self.managedBundleIDs.contains) == true else { return }
+            // Laisser l'app ouvrir sa fenêtre, puis demander l'arbre.
+            for delay in [2.0, 6.0] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { AXButtonPresser.enableAccessibility(app) }
+            }
+        }
+    }
+
     func start() {
         _ = ShortcutTrigger.checkAccessibility(prompt: true)
+        warmUpAccessibility()
         detector.requestPermissions { [weak self] granted in
             guard granted, let self else { exit(1) }
             self.detector.start()

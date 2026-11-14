@@ -277,7 +277,7 @@
     "relance la lecture",
     "reprends"
   ],
-  "echoCancellation": true,
+  "echoCancellation": false,
   "sendVerbs": [
     "envoie",
     "envoies",
