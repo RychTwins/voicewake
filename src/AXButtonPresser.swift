@@ -72,7 +72,7 @@ enum AXButtonPresser {
         guard AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(), kAXFocusedApplicationAttribute as CFString, &focused) == .success,
               let el = focused, CFGetTypeID(el) == AXUIElementGetTypeID() else { return false }
         var pid: pid_t = 0
-        AXUIElementGetPid(el as! AXUIElement, &pid)
+        guard AXUIElementGetPid(el as! AXUIElement, &pid) == .success else { return false }
         return pid == app.processIdentifier
     }
 
