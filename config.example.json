@@ -1,0 +1,157 @@
+{
+  "locale": "fr-FR",
+  "requireOnDevice": true,
+  "cooldownSeconds": 5,
+  "debug": false,
+  "conversation": {
+    "startGraceSeconds": 8,
+    "idleSecondsBeforeResume": 6,
+    "maxPauseMinutes": 30
+  },
+  "frontmostPhrases": [
+    "salut assistant",
+    "dis assistant",
+    "hey assistant"
+  ],
+  "defaultTarget": "claude",
+  "_noteEnvoi": "Pendant la dictée : finis par une phrase d'arrêt (couper le micro pour relire) ou d'envoi, puis ~1 s de silence. Liste vide = désactivé.",
+  "stopPhrases": [
+    "ok arrête",
+    "ok arrêt",
+    "ok arrêter",
+    "ok stop",
+    "okay stop",
+    "okay arrête",
+    "c'est bon arrête"
+  ],
+  "sendPhrases": [
+    "ok envoie",
+    "ok envoi",
+    "ok envoyé",
+    "okay envoie",
+    "c'est bon envoie",
+    "vas-y envoie",
+    "envoie le message"
+  ],
+  "sendSilenceSeconds": 1.2,
+  "reviewSeconds": 180,
+  "targets": [
+    {
+      "id": "claude",
+      "appName": "Claude",
+      "bundleID": "com.anthropic.claudefordesktop",
+      "phrases": [
+        "salut claude",
+        "salut clode",
+        "salut clod",
+        "dis claude",
+        "hey claude",
+        "hé claude",
+        "say claude"
+      ],
+      "shortcut": "button:Maintenez appuyé pour enregistrer|Hold to record",
+      "stopShortcut": "button:Arrêter la dictée|Stop dictation",
+      "submitShortcut": "return",
+      "_note": "Clique le micro de la zone de saisie de Claude. Libellés de l'interface en français et en anglais.",
+      "activate": true,
+      "launchDelaySeconds": 3,
+      "readAloudShortcut": "button:Lire à voix haute|Read aloud",
+      "busyLabels": [
+        "Arrêter",
+        "Message en cours de génération",
+        "Stop",
+        "Stop response"
+      ],
+      "pauseReadShortcut": "button:Pause",
+      "windows": {
+        "processName": "Claude",
+        "launch": "startmenu:Claude"
+      }
+    },
+    {
+      "id": "chatgpt",
+      "bundleID": "com.openai.chat",
+      "phrases": [
+        "salut chatgpt",
+        "salut chat gpt",
+        "salut chat gbt",
+        "salut chat jpt",
+        "dis chatgpt",
+        "hey chatgpt",
+        "say chatgpt"
+      ],
+      "shortcut": "ctrl+option+d",
+      "_note": "ChatGPT classique (« ChatGPT Classic », retiré le 30/01/2027). Son bouton Dictée ne réagit pas au clic automatique : Dictée macOS (Réglages Système > Clavier > Dictée > Raccourci > Personnaliser → ⌃⌥D).",
+      "activate": true,
+      "launchDelaySeconds": 3,
+      "windows": {
+        "processName": "ChatGPT",
+        "launch": "startmenu:ChatGPT",
+        "shortcut": "win+h",
+        "stopShortcut": "win+h"
+      }
+    },
+    {
+      "id": "codex",
+      "bundleID": "com.openai.codex",
+      "phrases": [
+        "salut codex",
+        "salut codecs",
+        "dis codex",
+        "hey codex",
+        "say codex"
+      ],
+      "shortcut": "button:Dicter|Dictate",
+      "stopShortcut": "button:Arrêter la dictée|Stop dictation",
+      "submitShortcut": "button:Envoyer|Send",
+      "_note": "App Codex (peut être installée sous le nom ChatGPT.app). Vérifier le bundle ID : mdls -name kMDItemCFBundleIdentifier /Applications/*.app",
+      "activate": true,
+      "launchDelaySeconds": 3,
+      "readAloudShortcut": "button:Lire à voix haute|Read aloud",
+      "windows": {
+        "processName": "Codex",
+        "launch": "startmenu:Codex"
+      }
+    },
+    {
+      "id": "gemini",
+      "appName": "Gemini",
+      "bundleID": "com.google.GeminiMacOS",
+      "phrases": [
+        "salut gemini",
+        "salut jemini",
+        "salut jenny",
+        "dis gemini",
+        "hey gemini",
+        "say gemini"
+      ],
+      "shortcut": "button:Utiliser le micro (⌘D)|Use microphone (⌘D)",
+      "_note": "Clique le micro de la zone de saisie de Gemini (raccourci natif ⌘D). Libellés français/anglais.",
+      "activate": true,
+      "launchDelaySeconds": 3,
+      "stopShortcut": "button:Arrêter (⌘D)|Stop (⌘D)",
+      "submitShortcut": "button:Envoyer|Send",
+      "windows": {
+        "processName": "Gemini",
+        "launch": "startmenu:Gemini"
+      }
+    }
+  ],
+  "interruptPhrases": [
+    "stop lecture",
+    "stop la lecture",
+    "arrête la lecture",
+    "arrête de lire",
+    "stop stop",
+    "attends attends",
+    "stop à la lecture",
+    "stoppe la lecture",
+    "stop de lecture",
+    "stop sur la lecture",
+    "stop la lecteur",
+    "arrête lecture"
+  ],
+  "sendPauseBeforeSeconds": 0.6,
+  "_noteWindows": "Bloc \"windows\" de chaque cible : nom du processus, lancement (startmenu:<nom>, shell:AppsFolder\\\\<AUMID> ou chemin d'exe) et surcharges de raccourcis. win+h = saisie vocale Windows (équivalent de la Dictée macOS).",
+  "minConfidence": 0.5
+}
