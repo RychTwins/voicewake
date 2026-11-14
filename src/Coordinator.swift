@@ -122,13 +122,31 @@ final class Coordinator {
         return history[i + 1].at.timeIntervalSince(history[i].at)
     }
 
+    /// Ce qui a été dit après la dernière pause d'au moins `minPause` secondes (texte normalisé), sinon nil.
+    private func spokenAfterPause(_ n: String, minPause: Double) -> String? {
+        guard history.count >= 2 else { return nil }
+        for i in stride(from: history.count - 2, through: 0, by: -1) {
+            let h = history[i].text
+            guard !h.isEmpty, n.hasPrefix(h + " ") else { continue }
+            if history[i + 1].at.timeIntervalSince(history[i].at) >= minPause { return String(n.dropFirst(h.count + 1)) }
+        }
+        return nil
+    }
+
+    /// « OK tu peux envoyer », « vas-y envoie »… : courte phrase après une pause, terminée par le verbe d'envoi.
+    private func isFlexibleSend(_ text: String) -> Bool {
+        let n = normalize(text)
+        let candidate = spokenAfterPause(n, minPause: config.sendPauseBeforeSeconds ?? 0.6) ?? n
+        return router.isShortSendCommand(candidate)
+    }
+
     private func checkSend(_ text: String, _ t: Target) {
         guard !stopping else { return }
         pendingSend?.cancel()
         history.append((Date(), normalize(text)))
         if history.count > 60 { history.removeFirst(history.count - 60) }
         let external = config.externalDictation
-        let send = external == nil && router.endsWithSendPhrase(text)
+        let send = external == nil && (router.endsWithSendPhrase(text) || isFlexibleSend(text))
         let stop = !send && recording && router.endsWithStopPhrase(text)
         guard send || stop else { return }
         // « ok envoie » cité en pleine phrase (sans pause avant) : ignoré.

@@ -277,5 +277,29 @@
     "relance la lecture",
     "reprends"
   ],
-  "echoCancellation": true
+  "echoCancellation": true,
+  "sendVerbs": [
+    "envoie",
+    "envoies",
+    "envoyer",
+    "envoyez",
+    "envoyé",
+    "envoi",
+    "envoyons"
+  ],
+  "sendMaxWords": 5,
+  "sendLeadWords": [
+    "ok",
+    "okay",
+    "vas-y",
+    "allez",
+    "bon",
+    "c'est bon",
+    "alors",
+    "maintenant",
+    "tu",
+    "et",
+    "oui",
+    "voilà"
+  ]
 }

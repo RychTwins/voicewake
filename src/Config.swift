@@ -106,6 +106,13 @@ struct Config: Codable {
     var sendPhrases: [String]?
     /// Pause minimale (s) avant « ok envoie » / « ok arrête » : évite l'envoi quand la phrase est citée en pleine phrase. 0 = désactivé.
     var sendPauseBeforeSeconds: Double?
+    /// Formes du verbe d'envoi : une courte phrase (≤ sendMaxWords mots, après une pause) qui se termine
+    /// par l'une d'elles envoie (« ok tu peux envoyer », « vas-y envoie »). Vide = désactivé.
+    var sendVerbs: [String]?
+    /// Longueur maximale de cette courte phrase (défaut 5 mots).
+    var sendMaxWords: Int?
+    /// Premier mot accepté pour cette courte phrase (« ok », « vas-y », « tu »…). Vide = tout premier mot.
+    var sendLeadWords: [String]?
     /// Phrases qui coupent seulement le micro (« ok arrête ») pour relire avant « ok envoie ».
     var stopPhrases: [String]?
     /// Silence après la phrase d'envoi ou d'arrêt avant d'agir (défaut 1,2 s).

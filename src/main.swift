@@ -141,7 +141,7 @@ case "route":
     let text = args.dropFirst().joined(separator: " ")
     let router = Router(config: config)
     print(router.route(text).map { "→ \($0.id)" } ?? "→ aucune cible")
-    if config.externalDictation == nil && router.endsWithSendPhrase(text) {
+    if config.externalDictation == nil && (router.endsWithSendPhrase(text) || router.isShortSendCommand(text)) {
         print("→ phrase d'envoi (pendant une dictée)")
     } else if (config.externalDictation == nil || config.externalDictation?.stopShortcut != nil) && router.endsWithStopPhrase(text) {
         print("→ phrase d'arrêt du micro (pendant une dictée)")

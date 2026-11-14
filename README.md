@@ -73,7 +73,7 @@ L'application est lancée si elle est fermée, puis mise au premier plan.
 
 | Phrase | Effet |
 | --- | --- |
-| « OK envoie », « C'est bon, vas-y, envoie » | coupe le micro, laisse le texte s'afficher, puis envoie |
+| « OK envoie », « OK tu peux envoyer », « Vas-y, envoie », « Bon, tu envoies »… | coupe le micro, laisse le texte s'afficher, puis envoie |
 | « OK arrête », « OK stop » | coupe seulement le micro, pour relire ; dites ensuite « OK envoie » (3 min max) |
 
 Gardez l'application au premier plan jusqu'à l'envoi : si une autre application passe devant, l'envoi est annulé.
@@ -157,6 +157,7 @@ launchctl kickstart -k gui/$(id -u)/io.github.voicewake
 | `frontmostPhrases` | phrases visant l'application au premier plan | « salut assistant »… |
 | `sendPhrases`, `stopPhrases` | commandes d'envoi et d'arrêt pendant la dictée | voir l'exemple |
 | `sendSilenceSeconds` | silence requis après une commande | `1.2` |
+| `sendVerbs`, `sendLeadWords`, `sendMaxWords` | courte phrase d'envoi libre : commence par un mot d'amorce (« ok », « vas-y », « tu »…), finit par le verbe (« envoie », « envoyer »…), 5 mots max | voir l'exemple |
 | `sendPauseBeforeSeconds` | pause requise avant une commande (`0` pour désactiver) | `0.6` |
 | `reviewSeconds` | attente de « OK envoie » après « OK arrête » | `180` |
 | `readPausePhrases`, `readResumePhrases`, `interruptPhrases` | commandes pendant la lecture | voir l'exemple |

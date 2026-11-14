@@ -32,6 +32,12 @@ expect_route 'OK, envoie !' $'→ aucune cible\n→ phrase d\'envoi (pendant une
 expect_route 'Voici ma demande. OK, ARRÊTE !' $'→ aucune cible\n→ phrase d\'arrêt du micro (pendant une dictée)'
 expect_route 'Voici ma demande. Vas-y, envoie !' $'→ aucune cible\n→ phrase d\'envoi (pendant une dictée)'
 
+expect_route 'OK, tu peux envoyer.' $'→ aucune cible\n→ phrase d\'envoi (pendant une dictée)'
+expect_route 'OK tu envoies' $'→ aucune cible\n→ phrase d\'envoi (pendant une dictée)'
+expect_route 'Vas-y, envoie !' $'→ aucune cible\n→ phrase d\'envoi (pendant une dictée)'
+expect_route 'Je vais envoyer le fichier demain' '→ aucune cible'
+expect_route 'Il faudrait que tu me dises comment on peut envoyer' '→ aucune cible'
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 config="$tmp/config.json"

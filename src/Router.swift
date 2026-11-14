@@ -35,6 +35,19 @@ struct Router {
     /// Vrai si la transcription se termine par une phrase d'envoi.
     func endsWithSendPhrase(_ text: String) -> Bool { endsWith(text, config.sendPhrases) }
 
+    /// Courte commande d'envoi : au plus `sendMaxWords` mots, dont le dernier est une forme de `sendVerbs`.
+    func isShortSendCommand(_ text: String) -> Bool {
+        let words = normalize(text).split(separator: " ").map(String.init)
+        let verbs = Set((config.sendVerbs ?? []).map(normalize))
+        guard let last = words.last, !verbs.isEmpty else { return false }
+        guard words.count <= (config.sendMaxWords ?? 5), verbs.contains(last) else { return false }
+        // « Le Chromebook envoie » n'est pas un ordre : la phrase doit commencer par un mot d'amorce.
+        let leads = (config.sendLeadWords ?? []).map(normalize).filter { !$0.isEmpty }
+        if words.count == 1 || leads.isEmpty { return true }
+        let joined = words.joined(separator: " ") + " "
+        return leads.contains { joined.hasPrefix($0 + " ") }
+    }
+
     /// Vrai si la transcription se termine par une phrase d'arrêt du micro.
     func endsWithStopPhrase(_ text: String) -> Bool { endsWith(text, config.stopPhrases) }
 
