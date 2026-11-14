@@ -154,7 +154,7 @@ final class Coordinator {
         }
         if config.dryRun == true {
             // Essai à blanc : on montre ce qui serait déclenché, sans rien ouvrir.
-            log("[essai] → \(target.id) (« \(text) »)")
+            log("[essai] → \(target.id)\(said(text))")
             detector.reset()
             return
         }

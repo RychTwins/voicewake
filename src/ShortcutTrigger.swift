@@ -335,19 +335,20 @@ final class ShortcutTrigger {
             AXUIElementSetAttributeValue(first, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
             AXUIElementPerformAction(first, kAXRaiseAction as CFString)
         }
-        var fallbackDone = false
+        // Jusqu'à 5 s. Si l'activation directe est refusée, on repasse par LaunchServices
+        // (comme un clic dans le Dock) après 0,75 s, puis une seconde fois après 3 s.
         func poll(_ remaining: Int) {
             if AXButtonPresser.isFrontmost(app) { return completion(true) }
             if remaining <= 0 { return completion(false) }
-            if remaining == 4, !fallbackDone, let url = app.bundleURL ?? appURL(for: t) {
-                fallbackDone = true
+            if remaining == 17 || remaining == 8, let url = app.bundleURL ?? appURL(for: t) {
                 let cfg = NSWorkspace.OpenConfiguration()
                 cfg.activates = true
                 NSWorkspace.shared.openApplication(at: url, configuration: cfg) { _, _ in }
+                AXUIElementSetAttributeValue(el, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { poll(remaining - 1) }
         }
-        poll(12)
+        poll(20)
     }
 
     private static func activate(_ app: NSRunningApplication) {
