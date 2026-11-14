@@ -185,7 +185,12 @@ final class ShortcutTrigger {
                 let grew = AXButtonPresser.all(labels, in: app).count > initial
                 stable = (sawBusy || grew) ? stable + 1 : 0
                 if stable >= 2 {
-                    let ok = AXButtonPresser.pressLast(labels, in: app)
+                    var ok = AXButtonPresser.pressLast(labels, in: app)
+                    if let item = t.readAloudMenuItem {
+                        // Le bouton ouvre un menu (certaines apps signalent un échec alors que le menu s'ouvre).
+                        usleep(500_000)
+                        ok = AXButtonPresser.pressMenuItem(item, in: app)
+                    }
                     DispatchQueue.main.async {
                         if ok { self.startReading(t, app: app) }
                         log(ok ? "\(t.id) : lecture à voix haute lancée." : "\(t.id) : bouton de lecture introuvable.")

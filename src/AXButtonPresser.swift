@@ -53,6 +53,23 @@ enum AXButtonPresser {
         return AXUIElementPerformAction(last, kAXPressAction as CFString) == .success
     }
 
+    /// Choisit une option dans un menu ouvert de l'app (menu contextuel ou déroulant), libellé exact.
+    static func pressMenuItem(_ label: String, in app: NSRunningApplication) -> Bool {
+        let wanted = label.lowercased()
+        func search(_ e: AXUIElement, _ depth: Int) -> AXUIElement? {
+            if depth > 60 { return nil }
+            let role: String? = value(e, kAXRoleAttribute)
+            if role == "AXMenuBar" { return nil } // pas la barre de menus en haut de l'écran
+            if role == "AXMenuItem", (value(e, kAXTitleAttribute) as String?)?.lowercased() == wanted { return e }
+            for child in (value(e, kAXChildrenAttribute) as [AXUIElement]?) ?? [] {
+                if let hit = search(child, depth + 1) { return hit }
+            }
+            return nil
+        }
+        guard let item = search(AXUIElementCreateApplication(app.processIdentifier), 0) else { return false }
+        return AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
+    }
+
     private static func collect(_ e: AXUIElement, _ wanted: [String], anyRole: Bool, depth: Int, into out: inout [AXUIElement]) {
         if depth > 120 { return }
         let role: String? = value(e, kAXRoleAttribute)

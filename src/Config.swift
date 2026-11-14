@@ -37,6 +37,8 @@ struct Target: Codable {
     var stopShortcut: Shortcut?
     /// Après un envoi vocal : bouton de lecture à cliquer quand la réponse est finie. Ex. "button:Lire à voix haute".
     var readAloudShortcut: Shortcut?
+    /// Option à choisir dans le menu ouvert par readAloudShortcut (ex. Gemini : « Autres actions » puis « Écouter »).
+    var readAloudMenuItem: String?
     /// Libellés visibles tant que l'assistant répond (ex. "Arrêter"). Optionnel.
     var busyLabels: [String]?
     /// Attente maximale de la fin de la réponse (défaut 600 s).
