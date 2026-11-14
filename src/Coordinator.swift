@@ -38,19 +38,43 @@ final class Coordinator {
         // Pas de garde « un assistant parle » ici : Claude garde une sortie audio ouverte pendant sa dictée.
         if let t = active { checkSend(text, t); return }
         let interrupt = router.containsInterruptPhrase(text)
+        let pauseRead = router.containsAny(text, config.readPausePhrases)
+        let resumeRead = router.containsAny(text, config.readResumePhrases)
         let routed = router.route(text)
-        guard interrupt || routed != nil else { return }
+        guard interrupt || pauseRead || resumeRead || routed != nil else { return }
+        // Lecture en pause : « reprends la lecture » la relance, « écoute » ouvre le micro.
+        if trigger.readingTarget() == nil, let paused = trigger.pausedTarget(), resumeRead || interrupt {
+            lastWake = Date()
+            detector.reset()
+            if resumeRead {
+                log("Reprise de la lecture → \(paused.id).")
+                trigger.resumeReading(paused)
+            } else {
+                log("Écoute → \(paused.id) (micro).")
+                detector.stop()
+                trigger.fire(paused, external: config.externalDictation) { [weak self] started in
+                    self?.didTrigger(paused, started: started)
+                }
+            }
+            return
+        }
         // Lecture à voix haute lancée par VoiceWake et encore en cours : seule une phrase
         // d'interruption compte, pour ne pas se déclencher sur la voix de l'assistant.
         // (Une app peut garder sa sortie audio ouverte sans rien lire : on ne bloque que nos lectures.)
         // La lecture reste « en cours » jusqu'à 3 s de silence continu (voir startReading).
         if let reader = trigger.readingTarget() {
-            if interrupt {
+            if pauseRead && !interrupt {
+                log("Lecture mise en pause → \(reader.id).")
+                detector.reset()
+                trigger.pauseReading(reader)
+            } else if interrupt {
                 let t = reader
                 lastWake = Date()
                 log("Interruption de la lecture → \(t.id)\(said(text)).")
                 detector.stop()
-                trigger.interruptAndDictate(t) { [weak self] started in self?.didTrigger(t, started: started) }
+                trigger.interruptAndDictate(t, external: config.externalDictation) { [weak self] started in
+                    self?.didTrigger(t, started: started)
+                }
             } else {
                 log("Phrase ignorée : lecture à voix haute de \(reader.id) en cours\(said(text)).")
                 detector.reset()
@@ -59,7 +83,7 @@ final class Coordinator {
         }
         guard let routedTarget = routed else { detector.reset(); return }
         // Éditeur de code au premier plan avec cet assistant intégré : on vise l'éditeur.
-        let target = router.inEditor(routedTarget) ?? routedTarget
+        let target = config.externalDictation == nil ? (router.inEditor(routedTarget) ?? routedTarget) : routedTarget
         let now = Date()
         guard now.timeIntervalSince(lastWake) >= config.cooldownSeconds else {
             detector.reset()
@@ -70,7 +94,9 @@ final class Coordinator {
 
         // On libère le micro avant d'appuyer sur le raccourci.
         detector.stop()
-        trigger.fire(target) { [weak self] started in self?.didTrigger(target, started: started) }
+        trigger.fire(target, external: config.externalDictation) { [weak self] started in
+            self?.didTrigger(target, started: started)
+        }
     }
 
     /// Micro de l'app encore ouvert (false après « ok arrête »).
@@ -99,7 +125,8 @@ final class Coordinator {
         pendingSend?.cancel()
         history.append((Date(), normalize(text)))
         if history.count > 60 { history.removeFirst(history.count - 60) }
-        let send = router.endsWithSendPhrase(text)
+        let external = config.externalDictation
+        let send = external == nil && router.endsWithSendPhrase(text)
         let stop = !send && recording && router.endsWithStopPhrase(text)
         guard send || stop else { return }
         // « ok envoie » cité en pleine phrase (sans pause avant) : ignoré.
@@ -113,10 +140,16 @@ final class Coordinator {
             if stop {
                 log("Phrase d'arrêt détectée → \(t.id)\(self.said(text)).")
                 self.stopping = true
-                self.trigger.stopDictation(t, in: self.dictationWindow) { [weak self] stopped in
+                self.trigger.stopDictation(t, in: self.dictationWindow, external: external) { [weak self] stopped in
                     guard let self, self.active?.id == t.id else { return }
                     self.stopping = false
                     if stopped {
+                        if external != nil {
+                            self.endPause()
+                            log("Dictée externe arrêtée. Reprise de la veille.")
+                            self.detector.reset()
+                            return
+                        }
                         self.recording = false
                         self.reviewUntil = Date().addingTimeInterval(self.config.reviewSeconds ?? 180)
                         log("Dictée arrêtée. En attente de « ok envoie ».")
@@ -164,11 +197,13 @@ final class Coordinator {
         let started = Date()
         var lastActive = started
         var sawConversation = false
-        let listening = sendEnabled
-        log("Pause pendant la conversation\(listening ? " (envoi vocal actif)" : "").")
+        let external = config.externalDictation
+        let listening = external == nil ? sendEnabled : external?.stopShortcut != nil && !(config.stopPhrases ?? []).isEmpty
+        let mode = external == nil ? "envoi vocal actif" : "arrêt vocal actif"
+        log("Pause pendant la conversation\(listening ? " (\(mode))" : "").")
         if listening {
             active = target
-            dictationWindow = ShortcutTrigger.dictationWindow(for: target)
+            dictationWindow = external == nil ? ShortcutTrigger.dictationWindow(for: target) : trigger.externalDictationWindow
             recording = true
             reviewUntil = nil
             detector.start()
@@ -204,4 +239,5 @@ final class Coordinator {
             if listening { self.detector.reset() } else { self.detector.start() }
         }
     }
+
 }

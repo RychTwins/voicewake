@@ -29,6 +29,8 @@ struct Target: Codable {
     var activate: Bool?
     /// Attente après le lancement d'une application fermée.
     var launchDelaySeconds: Double?
+    /// Libellés AX exacts du champ de saisie pour la dictée externe.
+    var dictationFieldLabels: [String]?
     /// Envoi vocal : touche d'envoi (défaut "return").
     var submitShortcut: Shortcut?
     /// Couper le micro de l'app avant l'envoi (défaut true).
@@ -45,6 +47,8 @@ struct Target: Codable {
     var readAloudTimeoutSeconds: Double?
     /// Met la lecture à voix haute en pause (ex. "button:Pause"), avant de rouvrir le micro.
     var pauseReadShortcut: Shortcut?
+    /// Reprend la lecture en pause (ex. "button:Reprendre").
+    var resumeReadShortcut: Shortcut?
     /// Attente entre l'arrêt du micro et l'envoi, le temps que le texte s'affiche (défaut 1,5 s).
     var submitDelaySeconds: Double?
 }
@@ -57,6 +61,8 @@ struct EditorAssistant: Codable {
     var readAloudShortcut: Shortcut?
     var busyLabels: [String]?
     var pauseReadShortcut: Shortcut?
+    /// Reprend la lecture en pause (ex. "button:Reprendre").
+    var resumeReadShortcut: Shortcut?
 }
 
 /// Éditeur de code : s'il est au premier plan, « Dis Claude » vise l'assistant intégré plutôt que l'app de bureau.
@@ -74,6 +80,12 @@ struct ConversationSettings: Codable {
     var idleSecondsBeforeResume: Double
     /// Sécurité : reprise forcée après cette durée.
     var maxPauseMinutes: Double
+}
+
+struct ExternalDictation: Codable {
+    var shortcut: Shortcut
+    /// Omettre pour les outils à maintien, ou si l'arrêt se fait dans l'outil.
+    var stopShortcut: Shortcut?
 }
 
 struct Config: Codable {
@@ -94,13 +106,25 @@ struct Config: Codable {
     var stopPhrases: [String]?
     /// Silence après la phrase d'envoi ou d'arrêt avant d'agir (défaut 1,2 s).
     var sendSilenceSeconds: Double?
-    /// Pendant la lecture à voix haute d'un assistant : interrompt la lecture et rouvre son micro.
+    /// Pendant la lecture à voix haute : met la lecture en pause et rouvre le micro (« écoute »).
     var interruptPhrases: [String]?
+    /// Pendant la lecture : pause seulement (« arrête la lecture »).
+    var readPausePhrases: [String]?
+    /// Lecture en pause : reprise (« reprends la lecture »).
+    var readResumePhrases: [String]?
     /// Après « ok arrête », durée d'attente de « ok envoie » (défaut 180 s).
     var reviewSeconds: Double?
     var targets: [Target]
     /// Éditeurs de code avec assistants intégrés (prioritaires quand ils sont au premier plan).
     var editors: [Editor]?
+    /// Si renseigné, utilise ce raccourci de dictée pour toutes les cibles macOS.
+    var externalDictation: ExternalDictation?
+
+    func editorID(for bundleID: String) -> String? {
+        if let editor = editors?.first(where: { $0.bundleIDs.contains(bundleID) }) { return editor.id }
+        return ["com.microsoft.VSCode": "vscode", "com.microsoft.VSCodeInsiders": "vscode",
+                "com.todesktop.230313mzl4w4u92": "cursor"][bundleID]
+    }
 
     static func defaultPath() -> String {
         (NSHomeDirectory() as NSString).appendingPathComponent(".config/voicewake/config.json")
@@ -114,6 +138,10 @@ struct Config: Codable {
     }
 
     func validate() throws {
+        if let dictation = externalDictation,
+           !dictation.shortcut.buttons.isEmpty || dictation.stopShortcut?.buttons.isEmpty == false {
+            throw ConfigError("externalDictation : utiliser des raccourcis clavier.")
+        }
         guard !targets.isEmpty else { throw ConfigError("Aucune cible définie.") }
         var ids = Set<String>()
         for t in targets {

@@ -38,6 +38,11 @@ struct Router {
     /// Vrai si la transcription se termine par une phrase d'arrêt du micro.
     func endsWithStopPhrase(_ text: String) -> Bool { endsWith(text, config.stopPhrases) }
 
+    func containsAny(_ text: String, _ phrases: [String]?) -> Bool {
+        let n = " " + normalize(text) + " "
+        return (phrases ?? []).map(normalize).contains { !$0.isEmpty && n.contains(" " + $0 + " ") }
+    }
+
     /// Vrai si la transcription contient une phrase d'interruption de la lecture.
     func containsInterruptPhrase(_ text: String) -> Bool {
         let n = " " + normalize(text) + " "
@@ -79,12 +84,14 @@ struct Router {
         e.readAloudShortcut = a.readAloudShortcut
         e.busyLabels = a.busyLabels
         e.pauseReadShortcut = a.pauseReadShortcut
+        e.resumeReadShortcut = a.resumeReadShortcut
         e.activate = true
         return e
     }
 
     func frontmostTarget() -> Target? {
         guard let front = NSWorkspace.shared.frontmostApplication else { return config.defaultTarget.flatMap(config.target(id:)) }
+        if let bid = front.bundleIdentifier, let target = activeEditorTarget(bundleID: bid) { return target }
         if let t = config.targets.first(where: { ShortcutTrigger.matches(front, $0) }) {
             return t
         }
@@ -96,5 +103,11 @@ struct Router {
         if let d = config.defaultTarget { return config.target(id: d) }
         log("Phrase générale : aucune cible au premier plan et pas de defaultTarget.")
         return nil
+    }
+
+    /// Cible temporaire qui conserve le champ déjà actif, sans choisir un assistant dans l'éditeur.
+    func activeEditorTarget(bundleID: String) -> Target? {
+        guard let dictation = config.externalDictation, let editor = config.editorID(for: bundleID) else { return nil }
+        return Target(id: editor, appName: nil, bundleID: bundleID, phrases: [], shortcut: dictation.shortcut)
     }
 }

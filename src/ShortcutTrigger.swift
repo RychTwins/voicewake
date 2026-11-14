@@ -2,13 +2,14 @@ import AppKit
 import ApplicationServices
 
 final class ShortcutTrigger {
+    private(set) var externalDictationWindow: DictationWindow?
+
     struct DictationWindow {
         let app: NSRunningApplication
         let element: AXUIElement
 
-        var isFocused: Bool {
-            app.isActive && AXButtonPresser.focusedWindow(in: app).map { CFEqual($0, element) } == true
-        }
+        /// L'app de la dictée est toujours au premier plan (sa fenêtre active peut changer en cours de route).
+        var isFocused: Bool { app.isActive }
     }
 
     static func dictationWindow(for target: Target) -> DictationWindow? {
@@ -54,15 +55,27 @@ final class ShortcutTrigger {
     }
 
     /// Ouvre l'application si besoin, puis envoie son raccourci vocal.
-    func fire(_ t: Target, completion: ((Bool) -> Void)? = nil) {
+    func fire(_ t: Target, external: ExternalDictation? = nil, completion: ((Bool) -> Void)? = nil) {
         guard AXIsProcessTrusted() else {
             log("Accessibilité non accordée : raccourci ignoré.")
             completion?(false)
             return
         }
-        let activate = t.activate ?? true
+        let activate = external != nil || (t.activate ?? true)
         readGeneration += 1 // nouvelle demande : annule une lecture en attente
         reading = nil
+        pausedReading = nil
+        externalDictationWindow = nil
+
+        // Une cible temporaire d'éditeur garde le champ qui a déjà le focus.
+        if let external, t.phrases.isEmpty {
+            guard let app = NSWorkspace.shared.frontmostApplication, app.bundleIdentifier == t.bundleID else {
+                completion?(false)
+                return
+            }
+            startExternalDictation(external, for: t, in: app, completion)
+            return
+        }
 
         if let app = Self.runningApp(for: t) {
             guard activate else {
@@ -77,7 +90,8 @@ final class ShortcutTrigger {
                     return
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    self.send(t, patience: 5, foregroundApp: app, completion)
+                    if let external { self.startExternalDictation(external, for: t, in: app, completion) }
+                    else { self.send(t, patience: 5, foregroundApp: app, completion) }
                 }
             }
             return
@@ -98,8 +112,42 @@ final class ShortcutTrigger {
                     completion?(false)
                     return
                 }
-                self.send(t, patience: 20, foregroundApp: activate ? app : nil, completion)
+                if let external { self.startExternalDictation(external, for: t, in: app, completion) }
+                else { self.send(t, patience: 20, foregroundApp: activate ? app : nil, completion) }
             }
+        }
+    }
+
+    private func startExternalDictation(
+        _ external: ExternalDictation, for target: Target, in app: NSRunningApplication,
+        _ completion: ((Bool) -> Void)?
+    ) {
+        guard app.isActive, let element = AXButtonPresser.focusedWindow(in: app) else {
+            log("\(target.id) : fenêtre de dictée indisponible.")
+            completion?(false)
+            return
+        }
+        let window = DictationWindow(app: app, element: element)
+        let focused = AXButtonPresser.focusedTextField(in: app)
+        let field: AXUIElement?
+        if let labels = target.dictationFieldLabels, !labels.isEmpty {
+            field = AXButtonPresser.textField(in: element, labeled: labels)
+        } else {
+            field = focused
+        }
+        guard let field, window.isFocused,
+              focused.map({ CFEqual($0, field) }) == true || AXButtonPresser.focus(field) else {
+            log("\(target.id) : champ de saisie indisponible pour la dictée externe.")
+            completion?(false)
+            return
+        }
+        ShortcutPlayer.play(external.shortcut, while: {
+            AXIsProcessTrusted() && window.isFocused &&
+                AXButtonPresser.focusedTextField(in: app).map { CFEqual($0, field) } == true
+        }) { played in
+            if played { self.externalDictationWindow = window }
+            log(played ? "\(target.id) : raccourci de dictée externe envoyé." : "\(target.id) : dictée externe annulée, champ inactif.")
+            completion?(played)
         }
     }
 
@@ -125,6 +173,36 @@ final class ShortcutTrigger {
     private var readGeneration = 0
     /// Lecture à voix haute lancée par VoiceWake (cible et date), effacée à la demande suivante.
     private(set) var reading: (target: Target, since: Date)?
+    /// Lecture mise en pause à la voix (« arrête la lecture »), reprenable 10 min.
+    private(set) var pausedReading: (target: Target, since: Date)?
+
+    func pausedTarget() -> Target? {
+        guard let p = pausedReading, Date().timeIntervalSince(p.since) < 600 else { return nil }
+        return p.target
+    }
+
+    /// « Arrête la lecture » : pause seulement.
+    func pauseReading(_ t: Target) {
+        guard let pause = t.pauseReadShortcut else { return log("\(t.id) : pas de bouton de pause configuré.") }
+        var pauseTarget = t
+        pauseTarget.shortcut = pause
+        reading = nil
+        pausedReading = (t, Date())
+        send(pauseTarget) { ok in if !ok { log("\(t.id) : pause de la lecture non effectuée.") } }
+    }
+
+    /// « Reprends la lecture » : reprise là où elle s'était arrêtée.
+    func resumeReading(_ t: Target) {
+        guard let resume = t.resumeReadShortcut, let app = Self.runningApp(for: t) else {
+            return log("\(t.id) : pas de bouton de reprise configuré.")
+        }
+        var resumeTarget = t
+        resumeTarget.shortcut = resume
+        pausedReading = nil
+        send(resumeTarget) { ok in
+            if ok { self.startReading(t, app: app) } else { log("\(t.id) : reprise de la lecture non effectuée.") }
+        }
+    }
 
     /// Cible dont VoiceWake a lancé la lecture il y a moins de `within` secondes.
     func readingTarget(within seconds: TimeInterval = 900) -> Target? {
@@ -203,23 +281,31 @@ final class ShortcutTrigger {
     }
 
     /// Met la lecture à voix haute en pause (pauseReadShortcut), puis rouvre le micro de l'app.
-    func interruptAndDictate(_ t: Target, completion: ((Bool) -> Void)? = nil) {
-        guard let pause = t.pauseReadShortcut else { return fire(t, completion: completion) }
+    func interruptAndDictate(_ t: Target, external: ExternalDictation? = nil, completion: ((Bool) -> Void)? = nil) {
+        guard let pause = t.pauseReadShortcut else { return fire(t, external: external, completion: completion) }
         var pauseTarget = t
         pauseTarget.shortcut = pause
         send(pauseTarget) { _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.fire(t, completion: completion) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.fire(t, external: external, completion: completion) }
         }
     }
 
     /// Coupe le micro de l'app (stopShortcut, sinon le raccourci d'ouverture).
-    func stopDictation(_ t: Target, in window: DictationWindow?, completion: @escaping (Bool) -> Void) {
+    func stopDictation(
+        _ t: Target, in window: DictationWindow?, external: ExternalDictation? = nil,
+        completion: @escaping (Bool) -> Void
+    ) {
         guard let window else { completion(false); return }
         var stopTarget = t
-        stopTarget.shortcut = t.stopShortcut ?? t.shortcut
+        if let external {
+            guard let stop = external.stopShortcut else { completion(false); return }
+            stopTarget.shortcut = stop
+        } else {
+            stopTarget.shortcut = t.stopShortcut ?? t.shortcut
+        }
         // Le raccourci de la Dictée macOS doit passer par le système.
         let usesOpeningShortcut = stopTarget.shortcut.spec == t.shortcut.spec
-        send(stopTarget, in: window, systemShortcut: usesOpeningShortcut, completion)
+        send(stopTarget, in: window, systemShortcut: external != nil || usesOpeningShortcut, completion)
     }
 
     /// Met l'app au premier plan et attend qu'elle le soit (3 s max).
@@ -289,7 +375,7 @@ final class ShortcutTrigger {
                 if attempt > 0 { usleep(500_000) }
                 guard allowed() else { break }
                 if let app = window?.app ?? Self.runningApp(for: t) {
-                    pressed = AXButtonPresser.press(s.buttons, in: app, window: window?.element)
+                    pressed = AXButtonPresser.press(s.buttons, in: app)
                 }
             }
             DispatchQueue.main.async {

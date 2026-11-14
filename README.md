@@ -105,7 +105,15 @@ Sur macOS, garde la fenêtre de dictée au premier plan jusqu'à l'envoi. VoiceW
 
 **Lecture à voix haute automatique** : après un envoi vocal, VoiceWake attend la fin de la réponse puis clique le dernier bouton de lecture (`readAloudShortcut`, ex. `button:Lire à voix haute`). Fin de réponse = disparition des libellés `busyLabels` (Claude : « Arrêter », « Message en cours de génération ») ou apparition d'un nouveau bouton de lecture, stable 2 s. Attente max : `readAloudTimeoutSeconds` (600). Configuré pour Claude, Codex et Gemini. Si le bouton ouvre un menu, `readAloudMenuItem` choisit l'option (Gemini : « Autres actions » puis « Écouter »). Fin de lecture : disparition du bouton `pauseReadShortcut` (Claude « Pause », Gemini « Mettre en pause ») pendant 3 s, sinon arrêt du son de l'app. Pendant une lecture lancée par VoiceWake, les phrases d'activation sont ignorées (VoiceWake ne se déclenche pas sur la voix de lecture) ; le log l'indique (« Phrase ignorée »).
 
-**Interrompre la lecture** : pendant la lecture, dis une phrase de `interruptPhrases` (« stop lecture », « arrête la lecture », « stop stop »). VoiceWake clique `pauseReadShortcut` (Claude : `button:Pause`), rouvre le micro de l'app, puis tu dictes ta nouvelle demande et « ok envoie ». Limite : si la réponse lue contient elle-même une phrase d'interruption, la lecture s'interrompt toute seule (pas de distinction entre ta voix et celle des haut-parleurs ; un casque évite le problème).
+**Commandes pendant la lecture** (Claude, Gemini ; dites seules, à tout moment de la lecture) :
+
+| Tu dis | Effet | Config |
+| --- | --- | --- |
+| « arrête la lecture », « stop la lecture » | pause | `readPausePhrases`, bouton `pauseReadShortcut` |
+| « reprends la lecture », « continue la lecture » | reprise là où elle s'était arrêtée (10 min max) | `readResumePhrases`, bouton `resumeReadShortcut` (« Reprendre ») |
+| « écoute » | pause + micro rouvert pour une nouvelle demande, puis « ok envoie » | `interruptPhrases` |
+
+Limite : si la réponse lue contient elle-même une de ces phrases (« écoute »…), elle peut s'appliquer toute seule ; un casque évite le problème.
 
 App fermée : VoiceWake la lance, attend `launchDelaySeconds` (3), puis cherche le bouton micro pendant 20 s maximum.
 
@@ -136,6 +144,25 @@ Testé : extension Claude Code dans VS Code. Les extensions Codex et Gemini Code
 **Dicter dans la session ouverte (toutes applications)** : le `capslock` de Claude dicte dans la fenêtre Quick Entry, pas dans la conversation ouverte. Pour écrire directement dans le champ actif de l'application, utilise la Dictée macOS : Réglages Système > Clavier > Dictée > Raccourci > Personnaliser → `⌃⌥D`, puis `"shortcut": "ctrl+option+d"` et `"activate": true` pour chaque cible. Une cible s'ajoute librement, ex. Gemini (`"bundleID": "com.google.GeminiMacOS"`, phrase « salut gemini »).
 
 Avec `option+space` (fenêtre compagnon, sans micro), VoiceWake ne détecte pas de conversation et reprend la veille après `startGraceSeconds`.
+
+### Utiliser une application de dictée externe sur macOS
+
+Dans l’application de dictée, configure un raccourci clavier global qui insère le texte dans le champ actif. Dans `~/.config/voicewake/config.json`, remplace `"externalDictation": null` par un bloc comme celui-ci, en reprenant tes propres raccourcis.
+
+```json
+"externalDictation": {
+  "shortcut": "ctrl+option+space",
+  "stopShortcut": "ctrl+option+space"
+}
+```
+
+Ce réglage devient la dictée par défaut pour tous les assistants. « Salut Claude », « Salut Codex » et les autres phrases nominatives ouvrent l’assistant de bureau correspondant. Dans VS Code, Cursor ou un éditeur de la liste `editors`, « Salut assistant » lance la dictée dans le champ déjà actif, par exemple le composeur d’une extension ou le fichier en cours d’édition.
+
+VoiceWake vérifie que le champ est modifiable et toujours actif avant de lancer le raccourci. Si un assistant ne place pas le curseur dans son composeur à l’ouverture, clique le champ avant de parler ou ajoute `"dictationFieldLabels": ["libellé exact du champ"]` à sa cible. Le libellé d’accessibilité se relève avec Accessibility Inspector.
+
+Pour une dictée qui démarre et s’arrête avec le même raccourci, renseigne les deux clés avec la même valeur. Pour une dictée à maintien, utilise par exemple `"shortcut": "hold 3 fn"` et omets `stopShortcut`. Avec un raccourci d’arrêt configuré, « OK arrête » termine la dictée. Relis le texte puis envoie-le manuellement. Garde le champ actif jusqu’à l’insertion du texte, que l’application de dictée effectue elle-même. La valeur `null` rétablit les raccourcis intégrés.
+
+Après modification, relance le service avec `launchctl kickstart -k gui/$(id -u)/io.github.voicewake`. `voicewake check` affiche la dictée configurée et `voicewake test codex` permet d’essayer son raccourci.
 
 ### Autres réglages
 

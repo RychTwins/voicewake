@@ -9,6 +9,43 @@ enum AXButtonPresser {
         value(AXUIElementCreateApplication(app.processIdentifier), kAXFocusedWindowAttribute)
     }
 
+    static func focusedTextField(in app: NSRunningApplication) -> AXUIElement? {
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetAttributeValue(root, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        guard let field: AXUIElement = value(root, kAXFocusedUIElementAttribute), isEditable(field) else { return nil }
+        return field
+    }
+
+    static func textField(in window: AXUIElement, labeled labels: [String]) -> AXUIElement? {
+        guard !labels.isEmpty else { return nil }
+        let wanted = Set(labels.map(normalize))
+        func findField(_ element: AXUIElement, depth: Int) -> AXUIElement? {
+            guard depth <= 120 else { return nil }
+            if isEditable(element) {
+                let names: [String] = [kAXTitleAttribute, kAXDescriptionAttribute, kAXPlaceholderValueAttribute]
+                    .compactMap { value(element, $0) }
+                if names.contains(where: { wanted.contains(normalize($0)) }) { return element }
+            }
+            let children: [AXUIElement] = value(element, kAXChildrenAttribute) ?? []
+            return children.lazy.compactMap { findField($0, depth: depth + 1) }.first
+        }
+        return findField(window, depth: 0)
+    }
+
+    static func focus(_ field: AXUIElement) -> Bool {
+        AXUIElementSetAttributeValue(field, kAXFocusedAttribute as CFString, kCFBooleanTrue) == .success
+    }
+
+    private static func isEditable(_ element: AXUIElement) -> Bool {
+        let role: String? = value(element, kAXRoleAttribute)
+        guard role == "AXTextArea" || role == "AXTextField" || role == "AXComboBox",
+              (value(element, kAXSubroleAttribute) as String?) != "AXSecureTextField",
+              (value(element, kAXEnabledAttribute) as Bool?) != false else { return false }
+        var settable: DarwinBoolean = false
+        return AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable) == .success
+            && settable.boolValue
+    }
+
     /// Renvoie le libellé du bouton pressé, ou nil.
     static func press(_ labels: [String], in app: NSRunningApplication, window: AXUIElement? = nil) -> String? {
         let root = AXUIElementCreateApplication(app.processIdentifier)
@@ -56,17 +93,19 @@ enum AXButtonPresser {
     /// Choisit une option dans un menu ouvert de l'app (menu contextuel ou déroulant), libellé exact.
     static func pressMenuItem(_ label: String, in app: NSRunningApplication) -> Bool {
         let wanted = label.lowercased()
+        // Jamais dans la barre de menus en haut de l'écran ; option active uniquement, libellé exact.
         func search(_ e: AXUIElement, _ depth: Int) -> AXUIElement? {
             if depth > 60 { return nil }
             let role: String? = value(e, kAXRoleAttribute)
-            if role == "AXMenuBar" { return nil } // pas la barre de menus en haut de l'écran
-            if role == "AXMenuItem", (value(e, kAXTitleAttribute) as String?)?.lowercased() == wanted { return e }
+            if role == "AXMenuBar" { return nil }
+            if role == "AXMenuItem", (value(e, kAXTitleAttribute) as String?)?.lowercased() == wanted,
+               (value(e, kAXEnabledAttribute) as Bool?) != false { return e }
             for child in (value(e, kAXChildrenAttribute) as [AXUIElement]?) ?? [] {
                 if let hit = search(child, depth + 1) { return hit }
             }
             return nil
         }
-        guard let item = search(AXUIElementCreateApplication(app.processIdentifier), 0) else { return false }
+        guard AXIsProcessTrusted(), let item = search(AXUIElementCreateApplication(app.processIdentifier), 0) else { return false }
         return AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
     }
 

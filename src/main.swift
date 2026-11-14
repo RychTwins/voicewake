@@ -85,18 +85,24 @@ case "check":
     for e in config.editors ?? [] {
         print("- éditeur \(e.id) (\(e.bundleIDs.joined(separator: ", "))) : \(e.assistants.keys.sorted().joined(separator: ", "))")
     }
-    print("- envoi vocal : \((config.sendPhrases ?? []).isEmpty ? "désactivé" : (config.sendPhrases ?? []).joined(separator: ", "))")
+    if let external = config.externalDictation {
+        print("- dictée externe par défaut : « \(external.shortcut.spec) »")
+        print("- arrêt vocal : \(external.stopShortcut?.spec ?? "désactivé") | envoi vocal : désactivé")
+    } else {
+        print("- envoi vocal : \((config.sendPhrases ?? []).isEmpty ? "désactivé" : (config.sendPhrases ?? []).joined(separator: ", "))")
+    }
     print("Accessibilité : \(ShortcutTrigger.checkAccessibility(prompt: false) ? "OK" : "NON")")
 
 case "test":
     let t = requireTarget(args)
     guard ShortcutTrigger.checkAccessibility(prompt: true) else { exit(1) }
-    print("Raccourci de \(t.id) (« \(t.shortcut.spec) ») dans 3 s…")
+    let external = config.externalDictation
+    print("Raccourci de \(t.id) (« \((external?.shortcut ?? t.shortcut).spec) ») dans 3 s…")
     DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
         // Même règle que la voix : un éditeur au premier plan avec l'assistant intégré est prioritaire.
-        let target = Router(config: config).inEditor(t) ?? t
+        let target = external == nil ? (Router(config: config).inEditor(t) ?? t) : t
         print("→ \(target.id)")
-        ShortcutTrigger().fire(target) { started in
+        ShortcutTrigger().fire(target, external: external) { started in
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { exit(started ? 0 : 1) }
         }
     }
@@ -134,8 +140,11 @@ case "route":
     let text = args.dropFirst().joined(separator: " ")
     let router = Router(config: config)
     print(router.route(text).map { "→ \($0.id)" } ?? "→ aucune cible")
-    if router.endsWithSendPhrase(text) { print("→ phrase d'envoi (pendant une dictée)") }
-    else if router.endsWithStopPhrase(text) { print("→ phrase d'arrêt du micro (pendant une dictée)") }
+    if config.externalDictation == nil && router.endsWithSendPhrase(text) {
+        print("→ phrase d'envoi (pendant une dictée)")
+    } else if (config.externalDictation == nil || config.externalDictation?.stopShortcut != nil) && router.endsWithStopPhrase(text) {
+        print("→ phrase d'arrêt du micro (pendant une dictée)")
+    }
 
 default:
     print(usage)
