@@ -17,12 +17,19 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
         synth.delegate = self
     }
 
-    /// Texte normalisé en cours de lecture (pour reconnaître la voix du lecteur dans le micro).
-    var spokenText: String { text }
+    private var position = 0
+    /// Ce que le lecteur vient de dire et va dire dans l'instant (autour du mot en cours) :
+    /// sert à reconnaître sa propre voix dans le micro, sans bloquer une commande dite ailleurs dans le texte.
+    var spokenNow: String {
+        let ns = text as NSString
+        let lo = max(0, position - 220), hi = min(ns.length, position + 60)
+        return ns.substring(with: NSRange(location: lo, length: hi - lo))
+    }
 
     func speak(_ text: String, locale: String) {
         stop()
         self.text = text
+        position = 0
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = Self.bestVoice(locale: locale, preferred: voiceName)
         isActive = true
@@ -62,7 +69,10 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     func speechSynthesizer(_ s: AVSpeechSynthesizer, willSpeakRangeOfSpeechString range: NSRange, utterance: AVSpeechUtterance) {
-        DispatchQueue.main.async { [self] in if isActive { overlay.show(text: text, range: range) } }
+        DispatchQueue.main.async { [self] in
+            position = range.location
+            if isActive { overlay.show(text: text, range: range) }
+        }
     }
 
     func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {

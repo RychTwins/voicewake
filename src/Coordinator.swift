@@ -99,13 +99,13 @@ final class Coordinator {
         let tokens = AXButtonPresser.windowTexts(in: app).joined(separator: " ")
             .split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
         let start = PassageFinder.find(query, in: tokens)
-        guard let start else { return log("Lecture : passage introuvable (« \(query.joined(separator: " ")) »).") }
+        guard let start else { return log("Lecture : passage introuvable\(said(query.joined(separator: " "))).") }
         if trigger.readingTarget() != nil { trigger.pauseReading(target) }
         readerTarget = target
         reader.voiceName = config.readerVoice
         reader.onFinish = { log("Lecteur intégré : lecture terminée.") }
         let passage = tokens[start..<min(tokens.count, start + 500)].joined(separator: " ")
-        log("Lecteur intégré → \(target.id), à partir de « \(tokens[start..<min(tokens.count, start + 4)].joined(separator: " ")) ».")
+        log("Lecteur intégré → \(target.id), à partir du mot \(start) sur \(tokens.count)\(said(tokens[start..<min(tokens.count, start + 4)].joined(separator: " "))).")
         reader.speak(passage, locale: config.locale)
     }
 
@@ -113,7 +113,7 @@ final class Coordinator {
     private func spokenByOwnReader(_ text: String) -> Bool {
         let phrases = (config.readPausePhrases ?? []) + (config.interruptPhrases ?? []) + (config.readResumePhrases ?? [])
         guard let hit = router.lastMatch(text, phrases) else { return false }
-        let spoken = " " + normalize(reader.spokenText) + " "
+        let spoken = " " + normalize(reader.spokenNow) + " "
         guard spoken.contains(" " + hit.phrase + " ") else { return false }
         guard let previous = hit.previous else { return true }
         return spoken.contains(" " + previous + " " + hit.phrase + " ")
@@ -149,6 +149,14 @@ final class Coordinator {
         let routed = router.route(text)
         if let query = router.readFromQuery(text) {
             detector.reset()
+            // Le lecteur intégré ne doit pas se relancer lui-même en lisant « à partir de … ».
+            if reader.isActive, !reader.isPaused,
+               router.containsAny(reader.spokenNow, config.readFromPhrases) {
+                return log("Commande ignorée : prononcée par le lecteur intégré.")
+            }
+            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
+            lastWake = Date()
+            if config.dryRun == true { return log("[essai] → lecture à partir d'un passage\(said(text))") }
             readFrom(query)
             return
         }
