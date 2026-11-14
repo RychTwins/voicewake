@@ -18,11 +18,17 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     private var position = 0
+    /// Tout le texte en cours de lecture.
+    var fullText: String { text }
     /// Ce que le lecteur vient de dire et va dire dans l'instant (autour du mot en cours) :
     /// sert à reconnaître sa propre voix dans le micro, sans bloquer une commande dite ailleurs dans le texte.
     var spokenNow: String {
+        // Large fenêtre vers l'arrière : la transcription du micro a plusieurs secondes de retard.
         let ns = text as NSString
-        let lo = max(0, position - 220), hi = min(ns.length, position + 60)
+        guard ns.length > 0 else { return "" }
+        let p = min(max(0, position), ns.length)
+        let lo = max(0, p - 700), hi = min(ns.length, p + 80)
+        guard hi > lo else { return "" }
         return ns.substring(with: NSRange(location: lo, length: hi - lo))
     }
 
@@ -69,7 +75,9 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     func speechSynthesizer(_ s: AVSpeechSynthesizer, willSpeakRangeOfSpeechString range: NSRange, utterance: AVSpeechUtterance) {
+        let spoken = utterance.speechString
         DispatchQueue.main.async { [self] in
+            guard spoken == text else { return } // rappel d'une lecture précédente
             position = range.location
             if isActive { overlay.show(text: text, range: range) }
         }
@@ -167,5 +175,74 @@ enum PassageFinder {
             length -= 1
         }
         return nil
+    }
+}
+
+/// Suit la lecture à voix haute d'une application en l'écoutant : la transcription du micro est
+/// alignée sur le texte affiché, et le bandeau montre le mot en cours.
+final class ReadingFollower {
+    /// (mot en cours, nombre de mots) : pour le journal en mode debug.
+    var onProgress: ((Int, Int) -> Void)?
+    private let overlay = ReaderOverlay()
+    private var targetID: String?
+    private var text = ""
+    private var ranges: [NSRange] = []                      // position de chaque mot affiché dans `text`
+    private var flat: [(word: String, token: Int)] = []     // mots normalisés → mot affiché
+    private var position: Int?                              // indice dans `flat`
+    private var hideWork: DispatchWorkItem?
+
+    /// Charge le texte affiché par l'app (une fois par lecture).
+    private func load(_ app: NSRunningApplication) {
+        let tokens = AXButtonPresser.windowTexts(in: app).joined(separator: " ")
+            .split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
+        text = tokens.joined(separator: " ")
+        ranges = []; flat = []
+        var offset = 0
+        for (i, t) in tokens.enumerated() {
+            let length = (t as NSString).length
+            ranges.append(NSRange(location: offset, length: length))
+            offset += length + 1
+            for w in normalize(t).split(separator: " ") { flat.append((String(w), i)) }
+        }
+        position = nil
+    }
+
+    private func same(_ a: String, _ b: String) -> Bool {
+        if a == b { return true }
+        let (short, long) = a.count <= b.count ? (a, b) : (b, a)
+        return short.count >= 4 && long.hasPrefix(short) && long.count - short.count <= 2
+    }
+
+    /// `transcript` : ce que le micro entend pendant la lecture de `target`.
+    func follow(_ transcript: String, target: Target, app: NSRunningApplication) {
+        if targetID != target.id || flat.isEmpty { targetID = target.id; load(app) }
+        let words = normalize(transcript).split(separator: " ").map(String.init)
+        guard words.count >= 3 else { return }
+        let tail = Array(words.suffix(3))
+        // Près de la position connue d'abord (la lecture avance), sinon partout, en partant de la fin.
+        func search(_ range: ReversedCollection<Range<Int>>) -> Int? {
+            for i in range where i + tail.count <= flat.count {
+                if (0..<tail.count).allSatisfy({ same(flat[i + $0].word, tail[$0]) }) { return i + tail.count - 1 }
+            }
+            return nil
+        }
+        var hit: Int?
+        if let p = position { hit = search((max(0, p - 4)..<min(flat.count, p + 80)).reversed()) }
+        if hit == nil, position == nil { hit = search((0..<flat.count).reversed()) }
+        guard let hit else { return }
+        position = hit
+        overlay.show(text: text, range: ranges[flat[hit].token])
+        onProgress?(flat[hit].token, ranges.count)
+        hideWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.stop() }
+        hideWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6, execute: work)
+    }
+
+    func stop() {
+        hideWork?.cancel()
+        overlay.hide()
+        targetID = nil
+        flat = []
     }
 }

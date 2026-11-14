@@ -66,6 +66,12 @@ final class Coordinator {
             checkSend(text, t)
             return
         }
+        // Lecture à voix haute d'une app en cours : on la suit à l'oreille pour afficher le mot en cours.
+        if config.showReadingProgress ?? true, let r = trigger.readingTarget(),
+           let app = ShortcutTrigger.runningApp(for: r) {
+            if config.debug, follower.onProgress == nil { follower.onProgress = { log("Suivi de lecture : mot \($0) sur \($1).") } }
+            follower.follow(text, target: r, app: app)
+        }
         // Le moteur corrige souvent sa première hypothèse (« Salut Claude » → « Salut Codex ») :
         // on attend que la transcription se stabilise avant d'agir.
         // Le moteur corrige souvent sa première hypothèse (« Salut Claude » → « Salut Codex ») :
@@ -90,6 +96,7 @@ final class Coordinator {
     }
 
     private let reader = Reader()
+    private let follower = ReadingFollower()
     private var readerTarget: Target?
 
     /// « Lis à partir de … » : cherche le passage dans le texte affiché par l'assistant et le lit depuis là.
@@ -151,7 +158,7 @@ final class Coordinator {
             detector.reset()
             // Le lecteur intégré ne doit pas se relancer lui-même en lisant « à partir de … ».
             if reader.isActive, !reader.isPaused,
-               router.containsAny(reader.spokenNow, config.readFromPhrases) {
+               router.containsAny(reader.fullText, config.readFromPhrases) {
                 return log("Commande ignorée : prononcée par le lecteur intégré.")
             }
             guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
