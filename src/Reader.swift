@@ -123,13 +123,27 @@ final class ReaderOverlay {
         return p
     }
 
-    /// Affiche ~25 mots autour du mot en cours.
+    /// Affiche ce qui vient d'être lu et la fin de la phrase en cours, jamais au-delà :
+    /// le texte qui suit la réponse (éléments de l'interface de l'app) n'apparaît donc pas.
     func show(text: String, range: NSRange) {
         let ns = text as NSString
-        let start = max(0, range.location - 70), end = min(ns.length, range.location + range.length + 110)
+        let wordEnd = min(ns.length, range.location + range.length)
+        let start = max(0, range.location - 70), end = min(ns.length, wordEnd + 110)
         var lo = start, hi = end
         while lo > 0, ns.character(at: lo) != 32 { lo -= 1 }                 // début de mot
         while hi < ns.length, ns.character(at: hi) != 32 { hi += 1 }          // fin de mot
+        // Fin de phrase : . ? ! … suivi d'un espace ou de la fin du texte.
+        func endsSentence(_ i: Int) -> Bool {
+            guard i >= 0, i < ns.length else { return false }
+            let c = ns.character(at: i)
+            guard c == 46 || c == 63 || c == 33 || c == 0x2026 else { return false }
+            return i + 1 >= ns.length || ns.character(at: i + 1) == 32 || ns.character(at: i + 1) == 10
+        }
+        var i = max(range.location, wordEnd - 1)
+        while i < hi {
+            if endsSentence(i) { hi = i + 1; break }
+            i += 1
+        }
         let window = NSRange(location: lo, length: hi - lo)
         let shown = NSMutableAttributedString(
             string: ns.substring(with: window).replacingOccurrences(of: "\n", with: " "),
