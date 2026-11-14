@@ -61,7 +61,11 @@ final class Coordinator {
 
     private func handle(_ text: String) {
         // Pas de garde « un assistant parle » ici : Claude garde une sortie audio ouverte pendant sa dictée.
-        if let t = active { checkSend(text, t); return }
+        if let t = active {
+            if let other = switchTarget(text, from: t) { switchDictation(from: t, to: other); return }
+            checkSend(text, t)
+            return
+        }
         let interrupt = router.containsInterruptPhrase(text)
         let pauseRead = router.containsAny(text, config.readPausePhrases)
         let resumeRead = router.containsAny(text, config.readResumePhrases)
@@ -159,6 +163,36 @@ final class Coordinator {
     }
 
     /// « OK tu peux envoyer », « vas-y envoie »… : courte phrase après une pause, terminée par le verbe d'envoi.
+    /// Pendant une dictée : « Salut Codex », dit seul après une pause, vise un autre assistant.
+    private func switchTarget(_ text: String, from current: Target) -> Target? {
+        let n = normalize(text)
+        let candidate = spokenAfterPause(n, minPause: config.sendPauseBeforeSeconds ?? 0.6) ?? n
+        guard candidate.split(separator: " ").count <= 4, let routed = router.route(candidate) else { return nil }
+        let next = router.inEditor(routed) ?? routed
+        return next.id == current.id ? nil : next
+    }
+
+    /// Arrête la dictée en cours (sans envoyer) puis ouvre le micro de l'autre assistant.
+    private func switchDictation(from current: Target, to next: Target) {
+        guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
+        lastWake = Date()
+        log("Changement d'assistant : \(current.id) → \(next.id).")
+        let window = dictationWindow
+        let wasRecording = recording
+        endPause()
+        detector.stop()
+        let open = { [weak self] in
+            guard let self else { return }
+            self.trigger.fire(next, external: self.config.externalDictation) { [weak self] started in
+                self?.didTrigger(next, started: started)
+            }
+        }
+        guard wasRecording, let window else { return open() }
+        trigger.stopDictation(current, in: window, external: config.externalDictation) { _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { open() }
+        }
+    }
+
     private func isFlexibleSend(_ text: String) -> Bool {
         let n = normalize(text)
         let candidate = spokenAfterPause(n, minPause: config.sendPauseBeforeSeconds ?? 0.6) ?? n
