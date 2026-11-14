@@ -25,6 +25,7 @@ final class WakeWordDetector {
         self.config = config
         self.hints = hints
         self.recognizer = r
+        audio.echoCancellation = config.echoCancellation ?? true
     }
 
     func requestPermissions(_ done: @escaping (Bool) -> Void) {

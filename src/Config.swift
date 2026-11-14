@@ -93,6 +93,8 @@ struct ExternalDictation: Codable {
 struct Config: Codable {
     var locale: String
     var requireOnDevice: Bool
+    /// Annulation d'écho : VoiceWake n'entend pas la voix de lecture des haut-parleurs (défaut true).
+    var echoCancellation: Bool?
     var cooldownSeconds: Double
     var debug: Bool
     var conversation: ConversationSettings

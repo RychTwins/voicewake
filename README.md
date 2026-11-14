@@ -88,7 +88,7 @@ Après un envoi vocal, VoiceWake attend la fin de la réponse puis lance la lect
 | « Reprends la lecture », « Continue la lecture » | reprise là où elle s'était arrêtée (10 min max) |
 | « Écoute » | pause et micro rouvert pour une nouvelle demande |
 
-Pendant une lecture lancée par VoiceWake, les phrases d'activation sont ignorées, pour ne pas réagir à la voix de l'assistant.
+VoiceWake n'entend pas la voix de lecture : l'**annulation d'écho** de macOS (celle des appels vidéo) retire du micro le son joué par le Mac. Une commande prononcée par l'assistant (« arrête la lecture »…) n'a donc aucun effet ; seule votre voix compte. Par sécurité, les phrases d'activation restent ignorées pendant une lecture lancée par VoiceWake.
 
 ---
 
@@ -152,6 +152,7 @@ launchctl kickstart -k gui/$(id -u)/io.github.voicewake
 | `requireOnDevice` | reconnaissance exclusivement locale | `true` |
 | `cooldownSeconds` | délai minimal entre deux activations | `5` |
 | `debug` | écrit les transcriptions dans le log | `false` |
+| `echoCancellation` | annulation d'écho : la voix des haut-parleurs n'est pas entendue | `true` |
 | `defaultTarget` | cible de « Salut assistant » hors application connue | `claude` |
 | `frontmostPhrases` | phrases visant l'application au premier plan | « salut assistant »… |
 | `sendPhrases`, `stopPhrases` | commandes d'envoi et d'arrêt pendant la dictée | voir l'exemple |
@@ -249,7 +250,7 @@ Le journal `~/Library/Logs/voicewake.log` indique chaque étape. Pour y voir aus
 
 - L'indicateur orange du micro reste allumé en veille : protection de macOS.
 - La commande d'envoi est aussi transcrite par le micro de l'application et apparaît en fin de message.
-- Sans casque, une réponse lue qui contient une commande (« écoute »…) peut s'appliquer d'elle-même.
+- L'annulation d'écho couvre le son joué par le Mac ; un son très fort ou une autre source dans la pièce peut encore être entendu.
 - Une application qui garde le micro ouvert (visio, enregistrement) prolonge la pause jusqu'à `maxPauseMinutes`.
 - Codex : pas encore de pause ni de reprise de la lecture à la voix.
 - Les libellés des boutons dépendent de la langue et des versions des applications.

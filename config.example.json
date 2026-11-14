@@ -276,5 +276,6 @@
     "continue la lecture",
     "relance la lecture",
     "reprends"
-  ]
+  ],
+  "echoCancellation": true
 }
