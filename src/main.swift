@@ -64,6 +64,7 @@ app.setActivationPolicy(.prohibited) // aucune fenêtre, aucune icône dans le D
 
 switch command {
 case "run":
+    app.setActivationPolicy(.accessory) // pas d'icône dans le Dock, mais le bandeau de lecture peut s'afficher
     do {
         let coordinator = try Coordinator(config: config)
         coordinator.start()
@@ -136,6 +137,21 @@ case "record":
     }
     print("Tape maintenant le raccourci vocal de \(t.id) (15 s)…")
     withExtendedLifetime(recorder) { app.run() }
+
+case "passage":
+    // voicewake passage <cible> "citation" : montre où commencerait « lis à partir de … » (sans lire).
+    let t = requireTarget(args)
+    guard let app = ShortcutTrigger.runningApp(for: t) else { print("\(t.id) n'est pas ouverte."); exit(1) }
+    AXButtonPresser.enableAccessibility(app)
+    usleep(800_000)
+    let tokens = AXButtonPresser.windowTexts(in: app).joined(separator: " ")
+        .split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
+    let query = normalize(args.dropFirst(2).joined(separator: " ")).split(separator: " ").map(String.init)
+    if let i = PassageFinder.find(query, in: tokens) {
+        print("→ « \(tokens[i..<min(tokens.count, i + 14)].joined(separator: " ")) … »")
+    } else {
+        print("→ passage introuvable (\(tokens.count) mots affichés)")
+    }
 
 case "route":
     let text = args.dropFirst().joined(separator: " ")

@@ -90,7 +90,11 @@ Après un envoi vocal, VoiceWake attend la fin de la réponse puis lance la lect
 | « Reprends la lecture », « Continue la lecture » | reprise là où elle s'était arrêtée (10 min max) |
 | « Écoute » | pause et micro rouvert pour une nouvelle demande |
 
-Pendant une lecture lancée par VoiceWake, les phrases d'activation sont ignorées, pour ne pas réagir à la voix de l'assistant. Sans casque, une commande prononcée par la voix de lecture peut s'appliquer ; l'annulation d'écho (`echoCancellation`) est disponible mais expérimentale.
+| « Lis à partir de … » suivi de quelques mots du passage | le lecteur intégré reprend la lecture à cet endroit |
+
+La voix de lecture ne déclenche pas ses propres commandes : une commande entendue pendant une lecture est ignorée si le texte affiché par l'assistant la contient, précédée du même mot. Pendant une lecture lancée par VoiceWake, les phrases d'activation sont ignorées.
+
+**Lecteur intégré** : les applications ne savent pas démarrer leur lecture au milieu d'une réponse. « Lis à partir de … » fait donc lire le texte affiché par VoiceWake lui-même, avec une voix du Mac, depuis la dernière occurrence des mots cités (deux mots au moins, petites différences tolérées). Un bandeau en bas de l'écran affiche le passage en cours, mot prononcé surligné. « Arrête la lecture », « Reprends la lecture » et « Écoute » s'appliquent aussi à ce lecteur. Pour une meilleure voix : Réglages Système > Accessibilité > Contenu énoncé > Voix du système > Gérer les voix (voix « Premium » ou « Améliorée »), ou `"readerVoice": "Thomas"`. Vérifier sans parler : `voicewake passage claude "quelques mots"`.
 
 ---
 
@@ -165,6 +169,7 @@ launchctl kickstart -k gui/$(id -u)/io.github.voicewake
 | `sendPauseBeforeSeconds` | pause requise avant une commande (`0` pour désactiver) | `0.6` |
 | `reviewSeconds` | attente de « OK envoie » après « OK arrête » | `180` |
 | `readPausePhrases`, `readResumePhrases`, `interruptPhrases` | commandes pendant la lecture | voir l'exemple |
+| `readFromPhrases`, `readerVoice` | « lis à partir de … » et voix du lecteur intégré | voir l'exemple |
 | `conversation.startGraceSeconds` | délai laissé à l'application pour ouvrir son micro | `8` |
 | `conversation.idleSecondsBeforeResume` | micro libre pendant ce délai = conversation terminée | `6` |
 | `conversation.maxPauseMinutes` | retour forcé en veille | `30` |
@@ -257,7 +262,7 @@ Le journal `~/Library/Logs/voicewake.log` indique chaque étape. Pour y voir aus
 
 - L'indicateur orange du micro reste allumé en veille : protection de macOS.
 - La commande d'envoi est aussi transcrite par le micro de l'application et apparaît en fin de message.
-- Sans casque, une réponse lue qui contient une commande (« arrête la lecture », « écoute »…) peut s'appliquer d'elle-même.
+- Le lecteur intégré lit le texte affiché à l'écran : une réponse ancienne, que l'application n'affiche plus, n'est pas retrouvée.
 - Une application qui garde le micro ouvert (visio, enregistrement) prolonge la pause jusqu'à `maxPauseMinutes`.
 - Codex : pas encore de pause ni de reprise de la lecture à la voix.
 - Les libellés des boutons dépendent de la langue et des versions des applications.

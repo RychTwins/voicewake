@@ -88,7 +88,14 @@ enum AXButtonPresser {
             else if role == "AXHeading", let s: String = value(e, kAXTitleAttribute) ?? value(e, kAXDescriptionAttribute) { out.append(s) }
             for child in (value(e, kAXChildrenAttribute) as [AXUIElement]?) ?? [] { walk(child, depth + 1) }
         }
-        for w in (value(root, kAXWindowsAttribute) as [AXUIElement]?) ?? [] { walk(w, 0) }
+        // Fenêtre active d'abord (certaines apps ne listent pas toutes leurs fenêtres), puis les autres.
+        var windows: [AXUIElement] = []
+        if let focused: AXUIElement = value(root, kAXFocusedWindowAttribute) { windows.append(focused) }
+        if let main: AXUIElement = value(root, kAXMainWindowAttribute), !windows.contains(where: { CFEqual($0, main) }) { windows.append(main) }
+        for w in (value(root, kAXWindowsAttribute) as [AXUIElement]?) ?? [] where !windows.contains(where: { CFEqual($0, w) }) {
+            windows.append(w)
+        }
+        for w in windows { walk(w, 0) }
         return out
     }
 

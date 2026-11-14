@@ -84,7 +84,39 @@ final class Coordinator {
         guard pendingWake == nil else { return }
         let work = DispatchWorkItem(block: fire)
         pendingWake = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + (config.wakeMaxWaitSeconds ?? 1.8), execute: work)
+        // « Lis à partir de … » : laisser le temps de dire la citation.
+        let wait = router.containsAny(text, config.readFromPhrases) ? 6 : (config.wakeMaxWaitSeconds ?? 1.8)
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: work)
+    }
+
+    private let reader = Reader()
+    private var readerTarget: Target?
+
+    /// « Lis à partir de … » : cherche le passage dans le texte affiché par l'assistant et le lit depuis là.
+    private func readFrom(_ query: [String]) {
+        guard let target = trigger.pausedTarget() ?? trigger.readingTarget() ?? router.frontmostTarget(),
+              let app = ShortcutTrigger.runningApp(for: target) else { return log("Lecture : aucun assistant ouvert.") }
+        let tokens = AXButtonPresser.windowTexts(in: app).joined(separator: " ")
+            .split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
+        let start = PassageFinder.find(query, in: tokens)
+        guard let start else { return log("Lecture : passage introuvable (« \(query.joined(separator: " ")) »).") }
+        if trigger.readingTarget() != nil { trigger.pauseReading(target) }
+        readerTarget = target
+        reader.voiceName = config.readerVoice
+        reader.onFinish = { log("Lecteur intégré : lecture terminée.") }
+        let passage = tokens[start..<min(tokens.count, start + 500)].joined(separator: " ")
+        log("Lecteur intégré → \(target.id), à partir de « \(tokens[start..<min(tokens.count, start + 4)].joined(separator: " ")) ».")
+        reader.speak(passage, locale: config.locale)
+    }
+
+    /// Le micro entend aussi le lecteur intégré : une commande présente dans son texte, précédée du même mot, est ignorée.
+    private func spokenByOwnReader(_ text: String) -> Bool {
+        let phrases = (config.readPausePhrases ?? []) + (config.interruptPhrases ?? []) + (config.readResumePhrases ?? [])
+        guard let hit = router.lastMatch(text, phrases) else { return false }
+        let spoken = " " + normalize(reader.spokenText) + " "
+        guard spoken.contains(" " + hit.phrase + " ") else { return false }
+        guard let previous = hit.previous else { return true }
+        return spoken.contains(" " + previous + " " + hit.phrase + " ")
     }
 
     /// La commande entendue vient-elle de la voix de lecture ? Oui si le texte affiché par l'app
@@ -103,6 +135,7 @@ final class Coordinator {
 
     /// Ce que la phrase déclencherait (cible ou commande de lecture), ou nil.
     private func wakeKey(_ text: String) -> String? {
+        if router.readFromQuery(text) != nil || router.containsAny(text, config.readFromPhrases) { return "#readfrom" }
         if router.containsInterruptPhrase(text) { return "#interrupt" }
         if router.containsAny(text, config.readPausePhrases) { return "#pause" }
         if router.containsAny(text, config.readResumePhrases) { return "#resume" }
@@ -114,6 +147,28 @@ final class Coordinator {
         let pauseRead = router.containsAny(text, config.readPausePhrases)
         let resumeRead = router.containsAny(text, config.readResumePhrases)
         let routed = router.route(text)
+        if let query = router.readFromQuery(text) {
+            detector.reset()
+            readFrom(query)
+            return
+        }
+        // Lecteur intégré en cours : pause, reprise, écoute.
+        if reader.isActive {
+            defer { detector.reset() }
+            if spokenByOwnReader(text) { return log("Commande ignorée : prononcée par le lecteur intégré.") }
+            if interrupt, let t = readerTarget {
+                reader.stop()
+                lastWake = Date()
+                log("Écoute → \(t.id) (micro).")
+                detector.stop()
+                trigger.fire(t, external: config.externalDictation) { [weak self] started in self?.didTrigger(t, started: started) }
+            } else if pauseRead {
+                reader.pause(); log("Lecteur intégré : pause.")
+            } else if resumeRead {
+                reader.resume(); log("Lecteur intégré : reprise.")
+            }
+            return
+        }
         guard interrupt || pauseRead || resumeRead || routed != nil else { return }
         // Lecture en pause : « reprends la lecture » la relance, « écoute » ouvre le micro.
         if trigger.readingTarget() == nil, let paused = trigger.pausedTarget(), resumeRead || interrupt {

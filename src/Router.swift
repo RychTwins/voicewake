@@ -64,6 +64,18 @@ struct Router {
         return best.map { ($0.phrase, $0.previous) }
     }
 
+    /// Mots dits après « lis à partir de » (normalisés), ou nil.
+    func readFromQuery(_ text: String) -> [String]? {
+        let n = " " + normalize(text) + " "
+        var best: Range<String.Index>?
+        for p in (config.readFromPhrases ?? []).map(normalize) where !p.isEmpty {
+            if let r = n.range(of: " " + p + " ", options: .backwards), best == nil || r.lowerBound > best!.lowerBound { best = r }
+        }
+        guard let best else { return nil }
+        let words = n[best.upperBound...].split(separator: " ").map(String.init)
+        return words.isEmpty ? nil : words
+    }
+
     func containsAny(_ text: String, _ phrases: [String]?) -> Bool {
         let n = " " + normalize(text) + " "
         return (phrases ?? []).map(normalize).contains { !$0.isEmpty && n.contains(" " + $0 + " ") }

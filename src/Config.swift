@@ -127,6 +127,10 @@ struct Config: Codable {
     var readPausePhrases: [String]?
     /// Lecture en pause : reprise (« reprends la lecture »).
     var readResumePhrases: [String]?
+    /// « Lis à partir de <quelques mots du passage> » : le lecteur intégré lit depuis cet endroit.
+    var readFromPhrases: [String]?
+    /// Voix du lecteur intégré (nom, ex. "Thomas") ; défaut : la meilleure voix installée pour `locale`.
+    var readerVoice: String?
     /// Après « ok arrête », durée d'attente de « ok envoie » (défaut 180 s).
     var reviewSeconds: Double?
     var targets: [Target]

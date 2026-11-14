@@ -301,5 +301,15 @@
     "et",
     "oui",
     "voilà"
+  ],
+  "readFromPhrases": [
+    "lis à partir de",
+    "lis moi à partir de",
+    "lis depuis",
+    "commence la lecture à partir de",
+    "commence à partir de",
+    "reprends à partir de",
+    "lecture à partir de",
+    "à partir de"
   ]
 }
