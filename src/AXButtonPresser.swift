@@ -391,6 +391,49 @@ enum AXButtonPresser {
         return nil
     }
 
+    /// Toutes les options actives de la barre de menus (sous-menus compris, menu Apple exclu), avec leur chemin
+    /// (« Affichage > Vue divisée ») et leur raccourci éventuel.
+    static func allMenuBarItems(in app: NSRunningApplication) -> [(title: String, path: String, element: AXUIElement)] {
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        guard let bar: AXUIElement = value(root, kAXMenuBarAttribute) else { return [] }
+        var out: [(title: String, path: String, element: AXUIElement)] = []
+        func collect(_ menu: AXUIElement, _ path: String, _ depth: Int) {
+            guard depth < 4, out.count < 1500 else { return }
+            for item in (value(menu, kAXChildrenAttribute) as [AXUIElement]?) ?? []
+            where (value(item, kAXEnabledAttribute) as Bool?) != false {
+                guard let title: String = value(item, kAXTitleAttribute), !title.isEmpty else { continue }
+                let subs = (value(item, kAXChildrenAttribute) as [AXUIElement]?) ?? []
+                if subs.isEmpty { out.append((title, path, item)) }
+                for sub in subs { collect(sub, path + " > " + title, depth + 1) }
+            }
+        }
+        for top in (value(bar, kAXChildrenAttribute) as [AXUIElement]?) ?? [] {
+            guard let t: String = value(top, kAXTitleAttribute), t != "Apple", !t.isEmpty else { continue }
+            for menu in (value(top, kAXChildrenAttribute) as [AXUIElement]?) ?? [] { collect(menu, t, 0) }
+        }
+        return out
+    }
+
+    /// Boutons actifs de la fenêtre au premier plan, avec leur libellé (titre ou description).
+    static func visibleButtons(in app: NSRunningApplication) -> [(title: String, element: AXUIElement)] {
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetAttributeValue(root, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        guard let window: AXUIElement = value(root, kAXFocusedWindowAttribute) ?? value(root, kAXMainWindowAttribute) else { return [] }
+        var out: [(title: String, element: AXUIElement)] = []
+        func walk(_ e: AXUIElement, _ depth: Int) {
+            guard depth < 80, out.count < 1500 else { return }
+            if let role: String = value(e, kAXRoleAttribute), roles.contains(role) || role == "AXLink",
+               (value(e, kAXEnabledAttribute) as Bool?) != false,
+               let t = [value(e, kAXTitleAttribute), value(e, kAXDescriptionAttribute)].compactMap({ $0 as String? })
+                   .first(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) {
+                out.append((t, e))
+            }
+            for child in (value(e, kAXChildrenAttribute) as [AXUIElement]?) ?? [] { walk(child, depth + 1) }
+        }
+        walk(window, 0)
+        return out
+    }
+
     /// Options actives des menus de la barre de menus dont le titre est dans `tops` (ex. « Discussions »).
     static func menuBarItems(under tops: [String], in app: NSRunningApplication) -> [(title: String, element: AXUIElement)] {
         let root = AXUIElementCreateApplication(app.processIdentifier)

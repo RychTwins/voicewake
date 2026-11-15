@@ -148,6 +148,25 @@ struct ReaderTests {
         check(!NavCommands.isConversationTitle("Afficher toutes les discussions", for: geminiTarget), "commande de l'app refusée")
         check(!NavCommands.isConversationTitle("Récentes", for: geminiTarget), "en-tête de menu refusé")
 
+        // Commandes universelles.
+        func uni(_ t: String) -> String {
+            guard let m = Universal.match(t, config: config) else { return "-" }
+            return (m.kind == .menu ? "menu:" : "click:") + m.query.joined(separator: " ")
+        }
+        check(uni("menu afficher le terminal") == "menu:afficher le terminal", "menu <libellé>")
+        check(uni("clique sur artéfacts") == "click:artefacts", "clique sur <libellé>")
+        check(uni("appuie sur le bouton partager") == "click:partager", "appuie sur le bouton <libellé>")
+        check(uni("je clique sur le lien") == "-", "« clique » au milieu d'une phrase : rien")
+        let menuItems: [(title: String, value: Int)] = [("Afficher le terminal", 1), ("Afficher les fichiers", 2), ("Terminal", 3), ("Zoom avant", 4)]
+        check(Universal.best(["terminal"], in: menuItems)?.value == 3, "libellé exact préféré")
+        check(Universal.best(["afficher", "terminal"], in: menuItems)?.value == 1, "plusieurs mots")
+        check(Universal.best(["zoom", "avant"], in: menuItems)?.value == 4, "zoom avant")
+        check(Universal.best(["inexistant"], in: menuItems) == nil, "rien ne correspond")
+        check(Universal.isDangerous("Supprimer la conversation"), "supprimer : sensible")
+        check(Universal.isDangerous("Se déconnecter"), "se déconnecter : sensible")
+        check(Universal.isDangerous("Sign out"), "sign out : sensible")
+        check(!Universal.isDangerous("Afficher le terminal"), "afficher : pas sensible")
+
         // Indices de reconnaissance.
         let hints = Coordinator.hints(base: ["salut claude", "Salut Claude"], names: ["VoxTV", "Equality Holding"],
                                       config: config, target: claudeTarget)

@@ -130,6 +130,9 @@ struct Config: Codable {
     var statusPhrases: [String]?
     /// « Ouvre <projet ou session> » et « Nouvelle session dans <projet> » (défauts dans `NavCommands`).
     var openPhrases: [String]?
+    /// Commandes universelles : « menu <libellé> », « clique sur <libellé> » (défauts dans `Universal`).
+    var menuPhrases: [String]?
+    var clickPhrases: [String]?
     var newSessionInPhrases: [String]?
     /// Navigation du lecteur intégré (« lis à partir de … ») : vitesse, phrase précédente ou suivante (défauts dans `ReaderNav`).
     var readFasterPhrases: [String]?

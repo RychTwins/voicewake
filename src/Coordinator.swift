@@ -121,9 +121,45 @@ final class Coordinator {
         // « Ouvre … » / « Nouvelle session dans … » : laisser le temps de dire le nom.
         var wait = config.wakeMaxWaitSeconds ?? 1.8
         if router.containsAny(text, config.readFromPhrases) { wait = 6 }
+        else if Universal.match(text, config: config) != nil { wait = 3 }
         else if case .open? = NavCommands.match(text, target: nil, config: config) { wait = 3 }
         else if case .newSessionIn? = NavCommands.match(text, target: nil, config: config) { wait = 3 }
         DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: work)
+    }
+
+    // MARK: Commandes universelles
+
+    /// Libellé lu dans l'app : journalisé seulement en mode debug (un bouton peut porter un titre de conversation).
+    private func label(_ title: String) -> String { config.debug ? " « \(title) »" : "" }
+
+    private func runUniversal(_ kind: Universal.Kind, _ query: [String], in app: NSRunningApplication) {
+        let name = app.localizedName ?? "app"
+        DispatchQueue.global().async { [weak self] in
+            let action = Universal.find(kind, query, in: app)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard let action else {
+                    Feedback.play(.failed)
+                    return log("Commande universelle → \(name) : rien ne correspond\(self.config.debug ? " à « \(query.joined(separator: " ")) »" : "").")
+                }
+                if self.config.dryRun == true { return log("[essai] → \(kind == .menu ? "menu" : "bouton")\(self.label(action.title)) dans \(name)") }
+                if action.dangerous {
+                    Feedback.play(.failed)
+                    return log("Commande universelle → \(name) : action sensible refusée\(self.label(action.title)).")
+                }
+                self.performUniversal(action, in: name)
+            }
+        }
+    }
+
+    private func performUniversal(_ action: Universal.Action, in name: String) {
+        DispatchQueue.global().async { [weak self] in
+            let ok = action.perform()
+            DispatchQueue.main.async {
+                Feedback.play(ok ? .understood : .failed)
+                log("Commande universelle → \(name) : \(action.kind == .menu ? "menu" : "bouton")\(self?.label(action.title) ?? "") \(ok ? "exécuté" : "non exécuté").")
+            }
+        }
     }
 
     // MARK: Indices de reconnaissance
@@ -284,6 +320,7 @@ final class Coordinator {
         if router.containsAny(text, config.readResumePhrases) { return "#resume" }
         if router.containsReadAloudPhrase(text) { return "#readaloud" }
         if reader.isActive, let nav = ReaderNav.match(text, config: config) { return "#" + nav.rawValue }
+        if Universal.match(text, config: config) != nil { return "#universal" }
         if NavCommands.match(text, target: nil, config: config) != nil { return "#nav" }
         if let command = AppCommand.match(text, router: router, config: config) { return "#" + command.rawValue }
         return router.route(text)?.id
@@ -337,6 +374,19 @@ final class Coordinator {
                 }
                 Feedback.play(ok ? .understood : .failed)
             }
+            return
+        }
+        // Commandes universelles : « menu <libellé> », « clique sur <libellé> », dans l'app au premier plan.
+        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let u = Universal.match(text, config: config) {
+            detector.reset()
+            if let r = currentReader() {
+                Feedback.play(.ignored)
+                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
+            }
+            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
+            lastWake = Date()
+            guard let app = Universal.frontApp() else { Feedback.play(.failed); return log("Commande universelle : aucune app au premier plan.") }
+            runUniversal(u.kind, u.query, in: app)
             return
         }
         // Navigation dans l'app au premier plan : menus, barre latérale, « ouvre <projet> ».

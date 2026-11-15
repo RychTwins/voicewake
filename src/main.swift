@@ -14,6 +14,7 @@ Usage : voicewake [commande] [--config chemin]
   action <cible> <clearDraft|newChat|copyResponse>   exécute une commande de gestion dans 3 s (app au premier plan)
   dis <cible> "phrase"   exécute une phrase de navigation dans 3 s (ex. "ouvre voxtv", "session précédente")
   barre <cible>  liste les projets et sessions de la barre latérale
+  trouve <bundle-id> "menu …"   montre l'option ou le bouton visé, sans cliquer
 """
 
 var args = Array(CommandLine.arguments.dropFirst())
@@ -251,6 +252,19 @@ case "lecteur":
     if args.contains("--vite") { RunLoop.main.run(until: Date().addingTimeInterval(0.1)); reader.changeRate(faster: true); reader.changeRate(faster: true); reader.changeRate(faster: true) }
     while !over { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
     print(String(format: "Lecture terminée en %.1f s.", Date().timeIntervalSince(began)))
+
+case "trouve":
+    // voicewake trouve <bundle-id> "menu afficher le terminal" : montre l'option ou le bouton visé, sans cliquer.
+    guard args.count >= 3, let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == args[1] }) else {
+        print("Usage : voicewake trouve <bundle-id> \"menu …\" | \"clique sur …\""); exit(1)
+    }
+    AXButtonPresser.enableAccessibility(app)
+    usleep(300_000)
+    let phrase = args.dropFirst(2).joined(separator: " ")
+    guard let u = Universal.match(phrase, config: config) else { print("→ pas une commande universelle"); exit(1) }
+    if let a = Universal.find(u.kind, u.query, in: app) {
+        print("→ \(u.kind == .menu ? "menu" : "bouton") « \(a.title) »\(a.dangerous ? " (confirmation requise)" : "")")
+    } else { print("→ rien ne correspond") }
 
 case "sons", "sounds":
     // Fait entendre les sons de confirmation, dans l'ordre, avec leur signification.
