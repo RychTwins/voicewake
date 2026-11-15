@@ -95,6 +95,12 @@ struct Config: Codable {
     var requireOnDevice: Bool
     /// Annulation d'écho : VoiceWake n'entend pas la voix de lecture des haut-parleurs (défaut true).
     var echoCancellation: Bool?
+    /// Sons de confirmation (commande comprise, micro ouvert/coupé, envoi, commande ignorée, échec). Défaut true.
+    var feedbackSounds: Bool?
+    /// Volume des sons de confirmation, de 0 à 1 (défaut 0,35).
+    var feedbackVolume: Double?
+    /// Sons système à utiliser par événement (understood, micOpen, micClosed, sent, ignored, failed), ex. {"sent": "Hero"}.
+    var feedbackSoundNames: [String: String]?
     var cooldownSeconds: Double
     /// Attente maximale du résultat définitif du moteur avant d'agir sur une phrase d'activation (défaut 1,8 s).
     var wakeMaxWaitSeconds: Double?

@@ -1,17 +1,18 @@
 import AppKit
 import AVFoundation
 
-/// Lecteur intégré : lit un texte avec une voix du Mac à partir d'un endroit précis,
-/// et affiche le passage en cours avec le mot prononcé surligné.
+/// Lecteur intégré : lit un texte (voix ElevenLabs ou voix du Mac) à partir d'un endroit précis.
+/// Pas de bandeau à l'écran : seule la voix.
 final class Reader: NSObject, AVSpeechSynthesizerDelegate {
     private let synth = AVSpeechSynthesizer()
-    private let overlay = ReaderOverlay()
     private var text = ""
     private(set) var isActive = false   // en lecture ou en pause
     private(set) var isPaused = false
     var voiceName: String?
     /// Extrait ElevenLabs en cours (sinon, voix du Mac).
     private var clip: AudioClip?
+    /// Instants de prononciation de chaque unité UTF-16 de `text` (ElevenLabs), ou nil (position estimée).
+    private var timings: [Double]?
     private var generation = 0
     var onFinish: (() -> Void)?
 
@@ -29,10 +30,17 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
         // Large fenêtre vers l'arrière : la transcription du micro a plusieurs secondes de retard.
         let ns = text as NSString
         guard ns.length > 0 else { return "" }
-        // Voix ElevenLabs : position estimée d'après l'avancement de l'audio.
-        if let clip { position = Int(clip.progress * Double(ns.length)) }
+        // Voix ElevenLabs : position seulement estimée d'après l'avancement de l'audio (débit irrégulier :
+        // nombres, heures, pauses). On regarde donc bien plus loin devant que pour la voix du Mac,
+        // dont la position est exacte, pour que la voix ne déclenche jamais ses propres commandes.
+        var ahead = 80
+        if clip != nil {
+            updateClipPosition()
+            // Position exacte (alignement ElevenLabs) : même marge que la voix du Mac, un peu élargie.
+            ahead = timings == nil ? 500 : 150
+        }
         let p = min(max(0, position), ns.length)
-        let lo = max(0, p - 700), hi = min(ns.length, p + 80)
+        let lo = max(0, p - 700), hi = min(ns.length, p + ahead)
         guard hi > lo else { return "" }
         return ns.substring(with: NSRange(location: lo, length: hi - lo))
     }
@@ -47,18 +55,43 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
         isPaused = false
         generation += 1
         let gen = generation
-        ElevenLabs.synthesize(text, config: config) { [weak self] data in
+        ElevenLabs.synthesize(text, config: config) { [weak self] speech in
             guard let self, gen == self.generation, self.isActive else { return }
-            guard let data, let clip = AudioClip(data) else { return self.speak(text, locale: config.locale) }
+            guard let speech, let clip = AudioClip(speech.audio) else { return self.speak(text, locale: config.locale) }
             self.clip = clip
+            self.timings = speech.timings
             clip.onFinish = { [weak self] in
                 guard let self, gen == self.generation, self.isActive else { return }
                 self.isActive = false
-                self.clip = nil
+                self.endClip()
                 self.onFinish?()
             }
             if !self.isPaused { clip.play() }
         }
+    }
+
+    /// Position dans `text` d'après l'audio ElevenLabs : exacte avec l'alignement, sinon proportionnelle.
+    private func updateClipPosition() {
+        guard let clip else { return }
+        let length = (text as NSString).length
+        guard let timings, timings.count == length, length > 0 else {
+            position = Int(clip.progress * Double(length))
+            return
+        }
+        // Dernier caractère dont la prononciation a commencé (recherche dichotomique).
+        let now = clip.currentTime
+        var lo = 0, hi = length - 1
+        while lo < hi {
+            let mid = (lo + hi + 1) / 2
+            if timings[mid] <= now { lo = mid } else { hi = mid - 1 }
+        }
+        position = lo
+    }
+
+    private func endClip() {
+        clip?.stop()
+        clip = nil
+        timings = nil
     }
 
     func speak(_ text: String, locale: String) {
@@ -69,7 +102,6 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
         utterance.voice = Self.bestVoice(locale: locale, preferred: voiceName)
         isActive = true
         isPaused = false
-        overlay.show(text: text, range: NSRange(location: 0, length: 0))
         synth.speak(utterance)
     }
 
@@ -92,10 +124,8 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
         isActive = false
         isPaused = false
         generation += 1
-        clip?.stop()
-        clip = nil
+        endClip()
         synth.stopSpeaking(at: .immediate)
-        overlay.hide()
     }
 
     /// Meilleure voix installée pour la langue : Premium, puis Améliorée, puis standard.
@@ -113,7 +143,6 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
         DispatchQueue.main.async { [self] in
             guard spoken == text else { return } // rappel d'une lecture précédente
             position = range.location
-            if isActive { overlay.show(text: text, range: range) }
         }
     }
 
@@ -121,7 +150,6 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
         DispatchQueue.main.async { [self] in
             guard isActive else { return }
             isActive = false
-            overlay.hide()
             onFinish?()
         }
     }
@@ -197,6 +225,28 @@ final class ReaderOverlay {
 
 /// Retrouve dans un texte l'endroit cité à la voix (« lis à partir de … »).
 enum PassageFinder {
+    /// Libellés des boutons qui suivent chaque réponse de l'assistant : fin du texte à lire.
+    static func messageEndLabels(_ t: Target) -> [String] {
+        [t.readAloudShortcut, t.pauseReadShortcut, t.resumeReadShortcut].flatMap { $0?.buttons ?? [] }
+    }
+
+    /// Mots du texte affiché, marques de fin de message comprises (voir `AXButtonPresser.messageEnd`).
+    static func tokens(in app: NSRunningApplication, target: Target) -> [String] {
+        AXButtonPresser.windowTexts(in: app, boundaries: messageEndLabels(target)).joined(separator: " ")
+            .split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
+    }
+
+    /// Texte à lire depuis `start` : jusqu'à la fin de la réponse (boutons de l'app exclus), `maxWords` au plus.
+    static func passage(_ tokens: [String], from start: Int, maxWords: Int = 500) -> [String] {
+        var out: [String] = []
+        for t in tokens[start...] {
+            if t == AXButtonPresser.messageEnd { break }
+            out.append(t)
+            if out.count >= maxWords { break }
+        }
+        return out
+    }
+
     /// Indice du mot où commence la dernière occurrence du plus long début de la citation
     /// (au moins 2 mots si elle en a plusieurs), ou nil.
     static func find(_ query: [String], in tokens: [String]) -> Int? {

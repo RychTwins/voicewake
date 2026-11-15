@@ -100,9 +100,24 @@ La voix de lecture ne déclenche pas ses propres commandes : une commande entend
 
 **Surlignage dans l'application (expérimental, peu fiable)** : le suivi à l'oreille décroche souvent en conditions réelles ; désactivé par défaut.  avec `"highlightReadingInApp": true`, VoiceWake pose un rectangle jaune transparent sur le bloc de texte en cours de lecture, directement dans la réponse de l'assistant, et fait défiler la conversation pour le garder visible. Il fonctionne aussi pour une lecture lancée à la main. Par bloc de texte, pas mot par mot. Vérifier sans lecture : `voicewake highlight claude "quelques mots visibles"`.
 
-**Lecteur intégré** : les applications ne savent pas démarrer leur lecture au milieu d'une réponse. « Lis à partir de … » fait donc lire le texte affiché par VoiceWake lui-même, avec une voix du Mac, depuis la dernière occurrence des mots cités (deux mots au moins, petites différences tolérées). Un bandeau en bas de l'écran affiche le passage en cours, mot prononcé surligné. « Arrête la lecture », « Reprends la lecture » et « Écoute » s'appliquent aussi à ce lecteur. Pour une meilleure voix : Réglages Système > Accessibilité > Contenu énoncé > Voix du système > Gérer les voix (voix « Premium » ou « Améliorée »), ou `"readerVoice": "Thomas"`. Vérifier sans parler : `voicewake passage claude "quelques mots"`.
+**Lecteur intégré** : les applications ne savent pas démarrer leur lecture au milieu d'une réponse. « Lis à partir de … » fait donc lire le texte affiché par VoiceWake lui-même, avec une voix du Mac, depuis la dernière occurrence des mots cités (deux mots au moins, petites différences tolérées). Aucun bandeau ne s'affiche : seule la voix lit. « Arrête la lecture », « Reprends la lecture » et « Écoute » s'appliquent aussi à ce lecteur. Pour une meilleure voix : Réglages Système > Accessibilité > Contenu énoncé > Voix du système > Gérer les voix (voix « Premium » ou « Améliorée »), ou `"readerVoice": "Thomas"`. Vérifier sans parler : `voicewake passage claude "quelques mots"`.
 
 ---
+
+### Sons de confirmation
+
+VoiceWake n'a pas d'interface : un son discret dit ce qu'il a compris.
+
+| Son | Signification |
+| --- | --- |
+| Tink | commande comprise (pause, reprise, « lis à partir de », « fais la lecture ») |
+| Pop | micro de l'assistant ouvert |
+| Bottle | micro coupé sans envoi |
+| Glass | message envoyé |
+| Purr | commande ignorée, attribuée à la voix de lecture : redites-la |
+| Basso | action impossible (passage introuvable, bouton absent, assistant fermé) |
+
+Écouter : `voicewake sons`. Réglages : `"feedbackSounds": false` pour les couper, `"feedbackVolume": 0.35` (0 à 1), `"feedbackSoundNames": {"sent": "Hero"}` pour changer un son (sons de `/System/Library/Sounds`).
 
 ### Conversation continue
 
@@ -122,6 +137,8 @@ Par défaut, VoiceWake n'appelle aucun service en ligne. Si vous avez un compte 
 ```json
 "elevenLabs": { "enabled": true, "voiceID": "JBFqnCBsd6RMkjVDRZzb", "model": "eleven_flash_v2_5" }
 ```
+
+VoiceWake demande à ElevenLabs l'instant où chaque caractère est prononcé : la voix ne déclenche donc pas ses propres commandes. La lecture s'arrête à la fin de la réponse citée, sans lire les boutons de l'application.
 
 Placez la clé dans `~/.config/voicewake/elevenlabs.env` (une ligne `ELEVENLABS_API_KEY=…`, droits `600`), jamais dans la configuration ni dans le dépôt. Le texte à dire est alors envoyé à ElevenLabs et compte dans votre quota. En cas d'erreur, la voix du Mac prend le relais. Claude, Gemini et Codex gardent leur propre voix.
 
@@ -187,6 +204,7 @@ launchctl kickstart -k gui/$(id -u)/io.github.voicewake
 | `debug` | écrit les transcriptions dans le log | `false` |
 | `dryRun` | essai à blanc : journalise la cible reconnue sans rien ouvrir, pour régler les phrases | `false` |
 | `wakeMaxWaitSeconds` | attente maximale du résultat définitif avant d'agir | `1.8` |
+| `feedbackSounds`, `feedbackVolume`, `feedbackSoundNames` | sons de confirmation (voir plus haut) | `true`, `0.35` |
 | `echoCancellation` | annulation d'écho de macOS (expérimental : peut empêcher la reconnaissance de votre voix) | `false` |
 | `defaultTarget` | cible de « Salut assistant » hors application connue | `claude` |
 | `frontmostPhrases` | phrases visant l'application au premier plan | « salut assistant »… |
@@ -259,6 +277,7 @@ voicewake test claude              # déclenche Claude dans 3 s, sans la voix
 voicewake route "dis claude"       # cible ou commande associée à une phrase
 voicewake set codex "cmd+shift+d"  # change le raccourci d'une cible
 voicewake record claude            # enregistre un raccourci tapé au clavier
+voicewake sons                     # fait entendre les sons de confirmation
 tail -f ~/Library/Logs/voicewake.log
 ```
 

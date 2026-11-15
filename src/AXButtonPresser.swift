@@ -136,16 +136,37 @@ enum AXButtonPresser {
         return AXUIElementSetAttributeValue(web, "AXSelectedTextMarkerRange" as CFString, range) == .success
     }
 
+    /// Marque de fin de message insérée par `windowTexts(in:boundaries:)` (jamais affichée, sans espace).
+    static let messageEnd = "\u{1}"
+    /// Titres cachés qui ouvrent chaque message (application Claude, en français et en anglais).
+    static let messageHeadingPrefixes = ["vous avez dit", "claude a répondu", "you said", "claude responded", "claude said"]
+
     /// Tout le texte affiché dans les fenêtres de l'app (messages, titres), dans l'ordre de l'écran.
-    static func windowTexts(in app: NSRunningApplication) -> [String] {
+    /// `boundaries` : libellés des boutons qui suivent chaque réponse (ex. « Lire à voix haute ») ;
+    /// à chacun, et entre deux fenêtres, une marque `messageEnd` est insérée.
+    static func windowTexts(in app: NSRunningApplication, boundaries: [String] = []) -> [String] {
         let root = AXUIElementCreateApplication(app.processIdentifier)
+        let ends = Set(boundaries.map { $0.lowercased().trimmingCharacters(in: .whitespaces) })
         var out: [String] = []
         func walk(_ e: AXUIElement, _ depth: Int) {
             if depth > 150 || out.count > 6000 { return }
             let role: String? = value(e, kAXRoleAttribute)
             if role == "AXMenuBar" { return }
             if role == "AXStaticText", let s: String = value(e, kAXValueAttribute), !s.isEmpty { out.append(s) }
-            else if role == "AXHeading", let s: String = value(e, kAXTitleAttribute) ?? value(e, kAXDescriptionAttribute) { out.append(s) }
+            else if role == "AXHeading", let s: String = value(e, kAXTitleAttribute) ?? value(e, kAXDescriptionAttribute) {
+                // « Vous avez dit : … » / « Claude a répondu : … » : titre caché qui annonce un message
+                // (et répète son texte) → début d'un nouveau message, pas du texte à lire.
+                let lower = s.lowercased()
+                if !ends.isEmpty, messageHeadingPrefixes.contains(where: { lower.hasPrefix($0) }) {
+                    if out.last != messageEnd { out.append(messageEnd) }
+                } else { out.append(s) }
+            }
+            else if !ends.isEmpty, let role, roles.contains(role),
+                    [value(e, kAXTitleAttribute), value(e, kAXDescriptionAttribute)].compactMap({ $0 as String? })
+                        .contains(where: { ends.contains($0.lowercased().trimmingCharacters(in: .whitespaces)) }),
+                    out.last != messageEnd {
+                out.append(messageEnd)
+            }
             for child in (value(e, kAXChildrenAttribute) as [AXUIElement]?) ?? [] { walk(child, depth + 1) }
         }
         // Fenêtre active d'abord (certaines apps ne listent pas toutes leurs fenêtres), puis les autres.
@@ -155,7 +176,10 @@ enum AXButtonPresser {
         for w in (value(root, kAXWindowsAttribute) as [AXUIElement]?) ?? [] where !windows.contains(where: { CFEqual($0, w) }) {
             windows.append(w)
         }
-        for w in windows { walk(w, 0) }
+        for w in windows {
+            walk(w, 0)
+            if !ends.isEmpty, !out.isEmpty, out.last != messageEnd { out.append(messageEnd) }
+        }
         return out
     }
 

@@ -317,5 +317,7 @@
     "enabled": false,
     "voiceID": "JBFqnCBsd6RMkjVDRZzb",
     "model": "eleven_flash_v2_5"
-  }
+  },
+  "feedbackSounds": true,
+  "feedbackVolume": 0.35
 }

@@ -10,6 +10,7 @@ Usage : voicewake [commande] [--config chemin]
   record <cible> enregistre le raccourci que tu tapes au clavier
   set <cible> "raccourci"   ex. "ctrl+shift+v", "double option", "capslock", "hold 1 fn"
   route "texte"  montre quelle cible une phrase déclencherait
+  sons           fait entendre chaque son de confirmation
 """
 
 var args = Array(CommandLine.arguments.dropFirst())
@@ -144,11 +145,12 @@ case "passage":
     guard let app = ShortcutTrigger.runningApp(for: t) else { print("\(t.id) n'est pas ouverte."); exit(1) }
     AXButtonPresser.enableAccessibility(app)
     usleep(800_000)
-    let tokens = AXButtonPresser.windowTexts(in: app).joined(separator: " ")
-        .split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
+    let tokens = PassageFinder.tokens(in: app, target: t)
     let query = normalize(args.dropFirst(2).joined(separator: " ")).split(separator: " ").map(String.init)
     if let i = PassageFinder.find(query, in: tokens) {
-        print("→ « \(tokens[i..<min(tokens.count, i + 14)].joined(separator: " ")) … »")
+        let words = PassageFinder.passage(tokens, from: i)
+        print("→ début : « \(words.prefix(14).joined(separator: " ")) … »")
+        print("→ fin   : « … \(words.suffix(14).joined(separator: " ")) » (\(words.count) mots)")
     } else {
         print("→ passage introuvable (\(tokens.count) mots affichés)")
     }
@@ -184,6 +186,20 @@ case "route":
         print("→ phrase d'envoi (pendant une dictée)")
     } else if (config.externalDictation == nil || config.externalDictation?.stopShortcut != nil) && router.endsWithStopPhrase(text) {
         print("→ phrase d'arrêt du micro (pendant une dictée)")
+    }
+
+case "sons", "sounds":
+    // Fait entendre les sons de confirmation, dans l'ordre, avec leur signification.
+    let meaning: [Feedback.Event: String] = [
+        .understood: "commande comprise", .micOpen: "micro ouvert", .micClosed: "micro coupé sans envoi",
+        .sent: "message envoyé", .ignored: "commande ignorée (voix de lecture) : la redire", .failed: "action impossible",
+    ]
+    guard config.feedbackSounds ?? true else { print("Sons désactivés (\"feedbackSounds\": false)."); exit(0) }
+    Feedback.configure(config)
+    for event in Feedback.Event.allCases {
+        print("→ \(config.feedbackSoundNames?[event.rawValue] ?? event.defaultSound) : \(meaning[event] ?? "")")
+        Feedback.play(event)
+        RunLoop.main.run(until: Date().addingTimeInterval(1.6))
     }
 
 default:

@@ -28,11 +28,19 @@ enum ElevenLabs {
         return nil
     }
 
+    /// Audio synthétisé, avec l'instant où chaque caractère du texte est prononcé.
+    struct Speech {
+        let audio: Data
+        /// Début de prononciation (s) pour chaque unité UTF-16 du texte (indices NSString), ou nil si
+        /// ElevenLabs n'a pas renvoyé d'alignement exploitable.
+        let timings: [Double]?
+    }
+
     /// Audio MP3 du texte, ou nil (désactivé, clé absente, erreur réseau). Rappel sur la file principale.
-    static func synthesize(_ text: String, config: Config, completion: @escaping (Data?) -> Void) {
+    static func synthesize(_ text: String, config: Config, completion: @escaping (Speech?) -> Void) {
         guard let s = config.elevenLabs, s.enabled == true, let key = apiKey(s),
               let id = s.voiceID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-              let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(id)?output_format=mp3_44100_128")
+              let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(id)/with-timestamps?output_format=mp3_44100_128")
         else { return DispatchQueue.main.async { completion(nil) } }
         var request = URLRequest(url: url, timeoutInterval: 30)
         request.httpMethod = "POST"
@@ -43,20 +51,46 @@ enum ElevenLabs {
         ])
         URLSession.shared.dataTask(with: request) { data, response, error in
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let speech = status == 200 ? data.flatMap { parse($0, text: text) } : nil
             DispatchQueue.main.async {
-                if status == 200, let data, !data.isEmpty { return completion(data) }
+                if let speech { return completion(speech) }
                 log("ElevenLabs indisponible (\(error?.localizedDescription ?? "code \(status)")) : voix du Mac.")
                 completion(nil)
             }
         }.resume()
     }
 
+    /// Réponse de /with-timestamps : { audio_base64, alignment: { characters, character_start_times_seconds } }.
+    static func parse(_ data: Data, text: String) -> Speech? {
+        guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let b64 = json["audio_base64"] as? String, let audio = Data(base64Encoded: b64), !audio.isEmpty
+        else { return nil }
+        return Speech(audio: audio, timings: timings(json["alignment"] as? [String: Any], text: text))
+    }
+
+    /// Instants par unité UTF-16 du texte ; nil si l'alignement ne correspond pas exactement au texte envoyé.
+    static func timings(_ alignment: [String: Any]?, text: String) -> [Double]? {
+        guard let chars = alignment?["characters"] as? [String],
+              let starts = alignment?["character_start_times_seconds"] as? [NSNumber],
+              chars.count == starts.count, !chars.isEmpty else { return nil }
+        var out: [Double] = []
+        out.reserveCapacity((text as NSString).length)
+        for (c, t) in zip(chars, starts) {
+            out.append(contentsOf: repeatElement(t.doubleValue, count: (c as NSString).length))
+        }
+        guard out.count == (text as NSString).length else {
+            log("ElevenLabs : alignement inattendu, position estimée.")
+            return nil
+        }
+        return out
+    }
+
     private static var announcer: AudioClip?
 
     /// Dit une courte annonce avec la voix ElevenLabs. `completion(false)` : à dire autrement.
     static func say(_ text: String, config: Config, completion: @escaping (Bool) -> Void) {
-        synthesize(text, config: config) { data in
-            guard let data, let clip = AudioClip(data) else { return completion(false) }
+        synthesize(text, config: config) { speech in
+            guard let speech, let clip = AudioClip(speech.audio) else { return completion(false) }
             announcer = clip
             clip.onFinish = { announcer = nil; completion(true) }
             clip.play()
@@ -78,6 +112,8 @@ final class AudioClip: NSObject, AVAudioPlayerDelegate {
 
     /// Part de l'extrait déjà lue (0 à 1).
     var progress: Double { player.duration > 0 ? player.currentTime / player.duration : 0 }
+    /// Position de lecture (s).
+    var currentTime: Double { player.currentTime }
     func play() { player.play() }
     func pause() { player.pause() }
     func stop() { player.stop() }
