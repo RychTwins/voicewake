@@ -167,6 +167,14 @@ struct ReaderTests {
         check(Universal.isDangerous("Sign out"), "sign out : sensible")
         check(!Universal.isDangerous("Afficher le terminal"), "afficher : pas sensible")
 
+        // Confirmation vocale.
+        check(Universal.answer("Oui", config: config) == .confirm, "oui : confirme")
+        check(Universal.answer("non", config: config) == .cancel, "non : annule")
+        check(Universal.answer("oui mais non", config: config) == nil, "énoncé plus long : ni oui ni non")
+        check(Universal.confirmationPrompt("Supprimer la conversation", config: config) == "Confirmer « Supprimer la conversation » ?", "question avec le libellé")
+        check(Universal.confirmationPrompt("Non lu", config: config) == "Confirmer cette action ?", "libellé contenant « non » : jamais répété")
+        check(Universal.answer(Universal.confirmationPrompt("Supprimer", config: config), config: config) == nil, "la question n'est jamais une réponse")
+
         // Indices de reconnaissance.
         let hints = Coordinator.hints(base: ["salut claude", "Salut Claude"], names: ["VoxTV", "Equality Holding"],
                                       config: config, target: claudeTarget)

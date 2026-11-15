@@ -133,6 +133,9 @@ struct Config: Codable {
     /// Commandes universelles : « menu <libellé> », « clique sur <libellé> » (défauts dans `Universal`).
     var menuPhrases: [String]?
     var clickPhrases: [String]?
+    /// Réponses à une demande de confirmation (« oui », « non »…), dites seules.
+    var confirmPhrases: [String]?
+    var cancelPhrases: [String]?
     var newSessionInPhrases: [String]?
     /// Navigation du lecteur intégré (« lis à partir de … ») : vitesse, phrase précédente ou suivante (défauts dans `ReaderNav`).
     var readFasterPhrases: [String]?

@@ -69,6 +69,7 @@ final class Coordinator {
     private func said(_ text: String) -> String { config.debug ? " (« \(text) »)" : "" }
 
     private func handle(_ text: String, isFinal: Bool = false) {
+        if pendingConfirmation != nil, handleConfirmation(text, isFinal: isFinal) { return }
         // Pas de garde « un assistant parle » ici : Claude garde une sortie audio ouverte pendant sa dictée.
         // Relecture après « ok arrête » / « garde le brouillon » (micro coupé) : une commande de veille
         // (« lis à partir de… », « fais la lecture », « dis Claude »…) abandonne l'attente de « ok envoie ».
@@ -143,13 +144,58 @@ final class Coordinator {
                     return log("Commande universelle → \(name) : rien ne correspond\(self.config.debug ? " à « \(query.joined(separator: " ")) »" : "").")
                 }
                 if self.config.dryRun == true { return log("[essai] → \(kind == .menu ? "menu" : "bouton")\(self.label(action.title)) dans \(name)") }
-                if action.dangerous {
-                    Feedback.play(.failed)
-                    return log("Commande universelle → \(name) : action sensible refusée\(self.label(action.title)).")
-                }
+                if action.dangerous { return self.askConfirmation(action, in: name) }
                 self.performUniversal(action, in: name)
             }
         }
+    }
+
+    // MARK: Confirmation vocale
+
+    private var pendingConfirmation: (action: Universal.Action, app: String, expires: Date)?
+    private var confirmWork: DispatchWorkItem?
+
+    /// Action sensible : « Confirmer … ? », puis « oui » ou « non » dit seul dans les 8 s.
+    private func askConfirmation(_ action: Universal.Action, in name: String) {
+        pendingConfirmation = (action, name, Date().addingTimeInterval(Universal.confirmSeconds + 3))
+        log("Confirmation demandée → \(name)\(label(action.title)).")
+        announcer.say(Universal.confirmationPrompt(action.title, config: config), locale: config.locale, voice: config.readerVoice) { [weak self] in
+            guard let self, self.pendingConfirmation != nil else { return }
+            self.detector.reset() // oublier l'annonce elle-même
+            self.pendingConfirmation?.expires = Date().addingTimeInterval(Universal.confirmSeconds)
+        }
+    }
+
+    /// true si la transcription a été prise comme réponse (ou ignorée pendant l'annonce).
+    private func handleConfirmation(_ text: String, isFinal: Bool) -> Bool {
+        guard let pending = pendingConfirmation else { return false }
+        if Date() > pending.expires {
+            pendingConfirmation = nil
+            confirmWork?.cancel()
+            Feedback.play(.micClosed)
+            log("Confirmation expirée : rien n'a été fait.")
+            return false
+        }
+        if announcer.isSpeaking { return true } // c'est la question qu'on entend
+        confirmWork?.cancel()
+        guard let answer = Universal.answer(text, config: config) else { return false }
+        // Réponse stable (résultat définitif ou rien de plus pendant 0,9 s) : « oui mais non » n'est pas un oui.
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let p = self.pendingConfirmation else { return }
+            self.pendingConfirmation = nil
+            self.detector.reset()
+            switch answer {
+            case .confirm:
+                log("Confirmé.")
+                self.performUniversal(p.action, in: p.app)
+            case .cancel:
+                Feedback.play(.micClosed)
+                log("Annulé : rien n'a été fait.")
+            }
+        }
+        confirmWork = work
+        if isFinal { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.9, execute: work) }
+        return true
     }
 
     private func performUniversal(_ action: Universal.Action, in name: String) {

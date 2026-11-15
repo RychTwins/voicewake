@@ -18,6 +18,28 @@ enum Universal {
         "delete", "remove", "erase", "clear", "empty", "quit", "logout", "signout", "reset", "uninstall", "send", "publish", "share",
     ]
 
+    static let defaultConfirmPhrases = ["oui", "je confirme", "confirme", "oui vas y", "oui confirme"]
+    static let defaultCancelPhrases = ["non", "annule", "laisse tomber", "non merci"]
+    /// Délai pour confirmer une action sensible.
+    static let confirmSeconds: TimeInterval = 8
+
+    enum Answer { case confirm, cancel }
+
+    /// Réponse à une demande de confirmation : l'énoncé entier doit être la phrase (« oui », « non »…).
+    static func answer(_ text: String, config: Config) -> Answer? {
+        let n = normalize(text)
+        if (config.confirmPhrases ?? defaultConfirmPhrases).map(normalize).contains(n) { return .confirm }
+        if (config.cancelPhrases ?? defaultCancelPhrases).map(normalize).contains(n) { return .cancel }
+        return nil
+    }
+
+    /// Question posée à voix haute : jamais de phrase de réponse dedans (VoiceWake entend sa propre annonce).
+    static func confirmationPrompt(_ title: String, config: Config) -> String {
+        let answers = Set(((config.confirmPhrases ?? defaultConfirmPhrases) + (config.cancelPhrases ?? defaultCancelPhrases)).map(normalize))
+        let safe = normalize(title).split(separator: " ").contains { answers.contains(String($0)) } ? "cette action" : "« \(title) »"
+        return "Confirmer \(safe) ?"
+    }
+
     /// Phrase universelle en début d'énoncé : (type, mots du libellé), ou nil.
     static func match(_ text: String, config: Config) -> (kind: Kind, query: [String])? {
         let words = normalize(text).split(separator: " ").map(String.init)
