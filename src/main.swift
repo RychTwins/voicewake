@@ -15,6 +15,7 @@ Usage : voicewake [commande] [--config chemin]
   dis <cible> "phrase"   exécute une phrase de navigation dans 3 s (ex. "ouvre voxtv", "session précédente")
   barre <cible>  liste les projets et sessions de la barre latérale
   trouve <bundle-id> "menu …"   montre l'option ou le bouton visé, sans cliquer
+  skill <cible> "nom arguments"  montre le skill ou la commande slash qui serait tapé
 """
 
 var args = Array(CommandLine.arguments.dropFirst())
@@ -265,6 +266,18 @@ case "trouve":
     if let a = Universal.find(u.kind, u.query, in: app) {
         print("→ \(u.kind == .menu ? "menu" : "bouton") « \(a.title) »\(a.path.isEmpty ? "" : " (\(a.path))")\(a.dangerous ? " — confirmation requise" : "")")
     } else { print("→ rien ne correspond") }
+
+case "skill":
+    // voicewake skill <cible> "code review sur ce fichier" : montre ce qui serait tapé (sans rien taper).
+    let t = requireTarget(args)
+    let entries = SkillCatalog.entries(for: t)
+    let phrase = args.dropFirst(2).joined(separator: " ")
+    guard !phrase.isEmpty else { print("\(entries.count) skills et commandes pour \(t.id)."); exit(0) }
+    let q = normalize(phrase).split(separator: " ").map(String.init)
+    if let hit = SkillCatalog.match(q, in: entries) {
+        let args2 = SkillCatalog.originalTail(phrase, skippingWords: hit.consumed)
+        print("→ « \(hit.entry.text)\(args2.isEmpty ? "" : " " + args2) » (\(entries.count) connus)")
+    } else { print("→ aucun skill ne correspond (\(entries.count) connus)") }
 
 case "sons", "sounds":
     // Fait entendre les sons de confirmation, dans l'ordre, avec leur signification.

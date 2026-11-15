@@ -187,6 +187,41 @@ struct ReaderTests {
         check(Universal.confirmationPrompt("Non lu", config: config) == "Confirmer cette action ?", "libellé contenant « non » : jamais répété")
         check(Universal.answer(Universal.confirmationPrompt("Supprimer", config: config), config: config) == nil, "la question n'est jamais une réponse")
 
+        // Skills : catalogue lu sur un faux dossier personnel.
+        let home = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("vw-home-\(getpid())")
+        let fm = FileManager.default
+        func skill(_ dir: URL, _ name: String, declared: String? = nil) {
+            try? fm.createDirectory(at: dir.appendingPathComponent(name), withIntermediateDirectories: true)
+            let head = declared.map { "---\nname: \($0)\ndescription: x\n---\n" } ?? "# \(name)\n"
+            fm.createFile(atPath: dir.appendingPathComponent(name).appendingPathComponent("SKILL.md").path, contents: Data(head.utf8))
+        }
+        skill(home.appendingPathComponent(".claude/skills"), "code-simplification")
+        skill(home.appendingPathComponent(".claude/skills"), "dossier-x", declared: "veille-freelance")
+        let pluginDir = home.appendingPathComponent("plugin-install")
+        skill(pluginDir.appendingPathComponent("skills"), "brainstorming")
+        try? fm.createDirectory(at: home.appendingPathComponent(".claude/plugins"), withIntermediateDirectories: true)
+        let registry = ["version": 2, "plugins": ["superpowers@officiel": [["installPath": pluginDir.path]]]] as [String: Any]
+        fm.createFile(atPath: home.appendingPathComponent(".claude/plugins/installed_plugins.json").path,
+                      contents: try! JSONSerialization.data(withJSONObject: registry))
+        skill(home.appendingPathComponent(".codex/skills"), "pdf")
+        let claudeSkills = SkillCatalog.claude(home: home)
+        func sk(_ said: String, _ list: [SkillEntry]) -> String? {
+            SkillCatalog.match(normalize(said).split(separator: " ").map(String.init), in: list)?.entry.text
+        }
+        check(sk("code simplification", claudeSkills) == "/code-simplification", "skill personnel (tirets dits en mots)")
+        check(sk("veille freelance", claudeSkills) == "/veille-freelance", "nom déclaré dans SKILL.md")
+        check(sk("brainstorming sur mon idée", claudeSkills) == "/superpowers:brainstorming", "skill de plugin, arguments après")
+        check(sk("superpowers brainstorming", claudeSkills) == "/superpowers:brainstorming", "skill de plugin avec son préfixe")
+        check(sk("compact", claudeSkills) == "/compact", "commande intégrée de Claude Code")
+        check(sk("pdf", SkillCatalog.codex(home: home)) == "$pdf", "skill Codex : préfixe $")
+        check(sk("goal", SkillCatalog.codex(home: home)) == "/goal", "commande intégrée de Codex")
+        check(sk("inexistant", claudeSkills) == nil, "aucun skill")
+        check(SkillCatalog.request("lance le skill code simplification", config: config) == ["code", "simplification"], "phrase « lance le skill »")
+        check(SkillCatalog.request("je lance le skill demain", config: config) == nil, "au milieu d'une phrase : rien")
+        check(SkillCatalog.originalTail("Lance le skill brainstorming sur l'idée d'Élise", skippingWords: 4) == "sur l'idée d'Élise",
+              "arguments gardés tels quels (accents, apostrophes)")
+        try? fm.removeItem(at: home)
+
         // Indices de reconnaissance.
         let hints = Coordinator.hints(base: ["salut claude", "Salut Claude"], names: ["VoxTV", "Equality Holding"],
                                       config: config, target: claudeTarget)

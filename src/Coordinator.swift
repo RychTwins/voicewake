@@ -122,7 +122,7 @@ final class Coordinator {
         // « Ouvre … » / « Nouvelle session dans … » : laisser le temps de dire le nom.
         var wait = config.wakeMaxWaitSeconds ?? 1.8
         if router.containsAny(text, config.readFromPhrases) { wait = 6 }
-        else if Universal.match(text, config: config) != nil { wait = 3 }
+        else if Universal.match(text, config: config) != nil || SkillCatalog.request(text, config: config) != nil { wait = 3 }
         else if case .open? = NavCommands.match(text, target: nil, config: config) { wait = 3 }
         else if case .newSessionIn? = NavCommands.match(text, target: nil, config: config) { wait = 3 }
         DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: work)
@@ -146,6 +146,81 @@ final class Coordinator {
                 if self.config.dryRun == true { return log("[essai] → \(kind == .menu ? "menu" : "bouton")\(self.label(action.title)) dans \(name)") }
                 if action.dangerous { return self.askConfirmation(action, in: name) }
                 self.performUniversal(action, in: name)
+            }
+        }
+    }
+
+    // MARK: Skills
+
+    /// Tape « /skill arguments » dans la zone de saisie de l'assistant au premier plan, puis attend « ok envoie »
+    /// (comme après « garde le brouillon »). « … et envoie » à la fin : envoi immédiat.
+    private func runSkill(_ query: [String], said text: String) {
+        guard let t = router.frontmostTarget(), let app = ShortcutTrigger.runningApp(for: t), AXButtonPresser.isFrontmost(app) else {
+            Feedback.play(.failed); return log("Skill : aucun assistant au premier plan.")
+        }
+        var q = query
+        let sendNow = q.count >= 2 && ["envoie", "envoyer"].contains(q.last!) && ["et", "puis"].contains(q[q.count - 2])
+        if sendNow { q.removeLast(2) }
+        DispatchQueue.global().async { [weak self] in
+            let entries = SkillCatalog.entries(for: t)
+            let hit = SkillCatalog.match(q, in: entries)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard let hit else {
+                    Feedback.play(.failed)
+                    return log("Skill → \(t.id) : aucun skill ne correspond (\(entries.count) connus)\(self.config.debug ? " à « \(q.joined(separator: " ")) »" : "").")
+                }
+                // Arguments : texte d'origine après la phrase et le nom du skill.
+                let phraseWords = normalize(text).split(separator: " ").count - query.count
+                var args = SkillCatalog.originalTail(text, skippingWords: phraseWords + hit.consumed)
+                if sendNow { args = args.split(separator: " ").dropLast(2).joined(separator: " ") }
+                let typed = args.isEmpty ? hit.entry.text + " " : hit.entry.text + " " + args
+                if self.config.dryRun == true { return log("[essai] → skill \(hit.entry.text) dans \(t.id)") }
+                self.typeSkill(typed, skill: hit.entry.text, target: t, app: app, sendNow: sendNow)
+            }
+        }
+    }
+
+    private func typeSkill(_ typed: String, skill: String, target t: Target, app: NSRunningApplication, sendNow: Bool) {
+        DispatchQueue.global().async { [weak self] in
+            var ok = false
+            if let field = AXButtonPresser.composerField(in: app) {
+                _ = AXButtonPresser.focus(field)
+                usleep(150_000)
+                ok = TextTyper.type(typed, to: app.processIdentifier, while: { AXButtonPresser.isFrontmost(app) })
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard ok else {
+                    Feedback.play(.failed)
+                    return log("Skill → \(t.id) : zone de saisie introuvable ou app passée en arrière-plan.")
+                }
+                Feedback.play(.understood)
+                log("Skill → \(t.id) : \(skill) tapé\(sendNow ? ", envoi" : ", en attente de « ok envoie »").")
+                if sendNow { self.submitNow(t) } else { self.holdForSend(t) }
+            }
+        }
+    }
+
+    /// Texte prêt dans la zone de saisie : « ok envoie » l'envoie (même attente qu'après « garde le brouillon »).
+    private func holdForSend(_ t: Target) {
+        guard config.dryRun != true, sendEnabled else { return }
+        pauseTimer?.invalidate()
+        active = t
+        dictationWindow = ShortcutTrigger.dictationWindow(for: t)
+        recording = false
+        stopping = false
+        dictatedContent = .held
+        let until = Date().addingTimeInterval(config.reviewSeconds ?? 180)
+        reviewUntil = until
+        detector.reset()
+        pauseTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            guard self.active?.id == t.id, self.reviewUntil != nil, !self.recording else { timer.invalidate(); return }
+            if Date() >= until {
+                self.endPause()
+                log("Reprise de la veille (pas de « ok envoie » après le skill).")
+                self.detector.reset()
             }
         }
     }
@@ -238,6 +313,9 @@ final class Coordinator {
             let entries = AXButtonPresser.sidebarEntries(in: app)
             names += entries.filter { $0.kind == .project }.map(\.title)
             names += AXButtonPresser.menuBarItems(under: NavCommands.conversationMenus, in: app).map(\.title)
+            // Skills personnels : « lance le skill <nom> » mieux compris.
+            names += SkillCatalog.entries(for: t).filter { $0.source == .personal }.prefix(15)
+                .compactMap { $0.aliases.first?.joined(separator: " ") }.map { "lance le skill \($0)" }
         }
         let hints = Self.hints(base: router.hints, names: names, config: config, target: router.frontmostTarget())
         if hints != detector.hints {
@@ -373,6 +451,7 @@ final class Coordinator {
         if router.containsAny(text, config.readResumePhrases) { return "#resume" }
         if router.containsReadAloudPhrase(text) { return "#readaloud" }
         if reader.isActive, let nav = ReaderNav.match(text, config: config) { return "#" + nav.rawValue }
+        if SkillCatalog.request(text, config: config) != nil { return "#skill" }
         if Universal.match(text, config: config) != nil { return "#universal" }
         if NavCommands.match(text, target: nil, config: config) != nil { return "#nav" }
         if let command = AppCommand.match(text, router: router, config: config) { return "#" + command.rawValue }
@@ -427,6 +506,18 @@ final class Coordinator {
                 }
                 Feedback.play(ok ? .understood : .failed)
             }
+            return
+        }
+        // Skills et commandes slash : « lance le skill code review sur ce fichier ».
+        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let q = SkillCatalog.request(text, config: config) {
+            detector.reset()
+            if let r = currentReader() {
+                Feedback.play(.ignored)
+                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
+            }
+            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
+            lastWake = Date()
+            runSkill(q, said: text)
             return
         }
         // Commandes universelles : « menu <libellé> », « clique sur <libellé> », dans l'app au premier plan.

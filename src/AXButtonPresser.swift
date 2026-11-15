@@ -73,6 +73,23 @@ enum AXButtonPresser {
         return field
     }
 
+    /// Zone de saisie de l'assistant : le champ qui a le focus s'il est modifiable, sinon le dernier champ
+    /// modifiable de la fenêtre (le composeur est en bas de la conversation).
+    static func composerField(in app: NSRunningApplication) -> AXUIElement? {
+        if let f = focusedTextField(in: app) { return f }
+        guard let window = currentWindow(in: app) else { return nil }
+        var last: AXUIElement?
+        var visited = 0
+        func walk(_ e: AXUIElement, _ depth: Int) {
+            guard depth < 80, visited < 4000 else { return }
+            visited += 1
+            if isEditable(e) { last = e }
+            for child in (value(e, kAXChildrenAttribute) as [AXUIElement]?) ?? [] { walk(child, depth + 1) }
+        }
+        walk(window, 0)
+        return last
+    }
+
     static func textField(in window: AXUIElement, labeled labels: [String]) -> AXUIElement? {
         guard !labels.isEmpty else { return nil }
         let wanted = Set(labels.map(normalize))
