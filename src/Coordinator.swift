@@ -67,9 +67,11 @@ final class Coordinator {
             return
         }
         // Lecture à voix haute d'une app en cours : on la suit à l'oreille pour afficher le mot en cours.
-        if config.showReadingProgress ?? false, let r = trigger.readingTarget(),
-           let app = ShortcutTrigger.runningApp(for: r) {
+        if (config.showReadingProgress ?? false) || (config.highlightReadingInApp ?? false),
+           let r = currentReader(), let app = ShortcutTrigger.runningApp(for: r) {
+            follower.selectInApp = config.highlightReadingInApp ?? false
             if config.debug, follower.onProgress == nil { follower.onProgress = { log("Suivi de lecture : mot \($0) sur \($1).") } }
+            if config.debug, follower.onHighlight == nil { follower.onHighlight = { log("Surlignage : bloc \($0), cadre \($1.map { NSStringFromRect($0) } ?? "introuvable").") } }
             follower.follow(text, target: r, app: app)
         }
         // Le moteur corrige souvent sa première hypothèse (« Salut Claude » → « Salut Codex ») :
@@ -97,6 +99,20 @@ final class Coordinator {
 
     private let reader = Reader()
     private let follower = ReadingFollower()
+    private var detectedReader: (target: Target?, at: Date) = (nil, .distantPast)
+
+    /// L'assistant qui lit à voix haute : lecture lancée par VoiceWake, sinon lecture lancée à la main
+    /// (bouton de pause visible dans l'app au premier plan ; vérifié au plus toutes les 2 s).
+    private func currentReader() -> Target? {
+        if let r = trigger.readingTarget() { return r }
+        if Date().timeIntervalSince(detectedReader.at) < 2 { return detectedReader.target }
+        var found: Target?
+        if let t = router.frontmostTarget(), let pause = t.pauseReadShortcut?.buttons, !pause.isEmpty,
+           let app = ShortcutTrigger.runningApp(for: t), AXButtonPresser.isFrontmost(app),
+           !AXButtonPresser.all(pause, in: app).isEmpty { found = t }
+        detectedReader = (found, Date())
+        return found
+    }
     private var readerTarget: Target?
 
     /// « Lis à partir de … » : cherche le passage dans le texte affiché par l'assistant et le lit depuis là.
@@ -225,7 +241,7 @@ final class Coordinator {
         // d'interruption compte, pour ne pas se déclencher sur la voix de l'assistant.
         // (Une app peut garder sa sortie audio ouverte sans rien lire : on ne bloque que nos lectures.)
         // La lecture reste « en cours » jusqu'à 3 s de silence continu (voir startReading).
-        if let reader = trigger.readingTarget() {
+        if let reader = currentReader() {
             if (pauseRead || interrupt), spokenByReader(text, reader),
                !insisted(text, phrases: readCommandPhrases, spokenNow: "") {
                 log("Commande ignorée : prononcée par la voix de lecture de \(reader.id).")

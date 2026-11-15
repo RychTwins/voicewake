@@ -153,6 +153,27 @@ case "passage":
         print("→ passage introuvable (\(tokens.count) mots affichés)")
     }
 
+case "highlight":
+    // voicewake highlight <cible> "quelques mots" : pose 6 s le surlignage sur le bloc de texte trouvé (essai).
+    let t = requireTarget(args)
+    guard let target = ShortcutTrigger.runningApp(for: t) else { print("\(t.id) n'est pas ouverte."); exit(1) }
+    app.setActivationPolicy(.accessory)
+    AXButtonPresser.enableAccessibility(target)
+    usleep(800_000)
+    let wanted = normalize(args.dropFirst(2).joined(separator: " "))
+    let blocks = AXButtonPresser.textBlocks(in: target)
+    guard let block = blocks.last(where: { (" " + normalize($0.text) + " ").contains(" " + wanted + " ") }), let web = block.web else {
+        print("→ texte introuvable (\(blocks.count) blocs)"); exit(1)
+    }
+    guard let frame = AXButtonPresser.textFrame(of: block.element, in: web, app: target) else {
+        print("→ bloc trouvé mais hors de l'écran"); exit(1)
+    }
+    print("→ surlignage posé : \(NSStringFromRect(frame))")
+    let overlay = HighlightOverlay()
+    overlay.show(frame)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 6) { exit(0) }
+    app.run()
+
 case "route":
     let text = args.dropFirst().joined(separator: " ")
     let router = Router(config: config)

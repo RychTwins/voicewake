@@ -196,6 +196,7 @@ enum PassageFinder {
 final class ReadingFollower {
     /// (mot en cours, nombre de mots) : pour le journal en mode debug.
     var onProgress: ((Int, Int) -> Void)?
+    var onHighlight: ((Int, NSRect?) -> Void)?
     private let overlay = ReaderOverlay()
     private var targetID: String?
     private var text = ""
@@ -205,10 +206,22 @@ final class ReadingFollower {
     private var hideWork: DispatchWorkItem?
     private var loadedAt = Date.distantPast
 
+    /// true : surligne le bloc en cours directement dans l'app (sélection) ; false : bandeau.
+    var selectInApp = false
+    private var blocks: [(element: AXUIElement, web: AXUIElement?, text: String)] = []
+    private var tokenBlock: [Int] = []       // mot affiché → bloc
+    private var selectedBlock = -1
+    private var scrolledBlock = -1
+    private let highlight = HighlightOverlay()
+
     /// Charge le texte affiché par l'app (une fois par lecture).
     private func load(_ app: NSRunningApplication) {
-        let tokens = AXButtonPresser.windowTexts(in: app).joined(separator: " ")
-            .split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)
+        blocks = AXButtonPresser.textBlocks(in: app)
+        var tokens: [String] = []
+        tokenBlock = []
+        for (bi, b) in blocks.enumerated() {
+            for t in b.text.split(whereSeparator: { $0 == " " || $0 == "\n" }) { tokens.append(String(t)); tokenBlock.append(bi) }
+        }
         text = tokens.joined(separator: " ")
         ranges = []; flat = []
         var offset = 0
@@ -219,6 +232,7 @@ final class ReadingFollower {
             for w in normalize(t).split(separator: " ") { flat.append((String(w), i)) }
         }
         position = nil
+        selectedBlock = -1
     }
 
     private func same(_ a: String, _ b: String) -> Bool {
@@ -253,7 +267,22 @@ final class ReadingFollower {
         if hit == nil, position == nil { hit = search((0..<flat.count).reversed()) }
         guard let hit else { return }
         position = hit
-        overlay.show(text: text, range: ranges[flat[hit].token])
+        if selectInApp {
+            // Surlignage posé sur le bloc en cours ; position relue à chaque fois (défilement de la page).
+            let b = tokenBlock[flat[hit].token]
+            selectedBlock = b
+            var frame = blocks[b].web.flatMap { AXButtonPresser.textFrame(of: blocks[b].element, in: $0, app: app) }
+            if frame == nil, b != scrolledBlock {
+                // Passage hors de l'écran : on demande à l'app de le faire défiler dans la vue (une fois par bloc).
+                scrolledBlock = b
+                AXUIElementPerformAction(blocks[b].element, "AXScrollToVisible" as CFString)
+                frame = blocks[b].web.flatMap { AXButtonPresser.textFrame(of: blocks[b].element, in: $0, app: app) }
+            }
+            onHighlight?(b, frame)
+            if let frame { highlight.show(frame) } else { highlight.hide() }
+        } else {
+            overlay.show(text: text, range: ranges[flat[hit].token])
+        }
         onProgress?(flat[hit].token, ranges.count)
         hideWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.stop() }
@@ -264,7 +293,35 @@ final class ReadingFollower {
     func stop() {
         hideWork?.cancel()
         overlay.hide()
+        highlight.hide()
         targetID = nil
         flat = []
     }
+}
+
+/// Rectangle jaune transparent posé par-dessus un passage de texte d'une autre application.
+final class HighlightOverlay {
+    private var window: NSWindow?
+
+    func show(_ frame: NSRect) {
+        if window == nil {
+            let w = NSWindow(contentRect: frame, styleMask: .borderless, backing: .buffered, defer: false)
+            w.level = .floating
+            w.isOpaque = false
+            w.backgroundColor = .clear
+            w.hasShadow = false
+            w.ignoresMouseEvents = true
+            let view = NSView(frame: NSRect(origin: .zero, size: frame.size))
+            view.wantsLayer = true
+            view.layer?.backgroundColor = NSColor.systemYellow.withAlphaComponent(0.28).cgColor
+            view.layer?.cornerRadius = 4
+            view.autoresizingMask = [.width, .height]
+            w.contentView = view
+            window = w
+        }
+        window?.setFrame(frame.insetBy(dx: -3, dy: -2), display: true)
+        window?.orderFrontRegardless()
+    }
+
+    func hide() { window?.orderOut(nil) }
 }

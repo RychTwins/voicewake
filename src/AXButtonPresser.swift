@@ -76,6 +76,62 @@ enum AXButtonPresser {
         return pid == app.processIdentifier
     }
 
+    /// Blocs de texte de la fenêtre active, avec leur élément et la zone web qui les contient.
+    static func textBlocks(in app: NSRunningApplication) -> [(element: AXUIElement, web: AXUIElement?, text: String)] {
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        var out: [(element: AXUIElement, web: AXUIElement?, text: String)] = []
+        func walk(_ e: AXUIElement, _ depth: Int, _ web: AXUIElement?) {
+            if depth > 150 || out.count > 6000 { return }
+            let role: String? = value(e, kAXRoleAttribute)
+            if role == "AXMenuBar" { return }
+            let area = role == "AXWebArea" ? e : web
+            if role == "AXStaticText", let s: String = value(e, kAXValueAttribute), !s.isEmpty { out.append((e, area, s)) }
+            for child in (value(e, kAXChildrenAttribute) as [AXUIElement]?) ?? [] { walk(child, depth + 1, area) }
+        }
+        if let w: AXUIElement = value(root, kAXFocusedWindowAttribute) ?? value(root, kAXMainWindowAttribute) { walk(w, 0, nil) }
+        return out
+    }
+
+    /// Rectangle à l'écran d'un élément (coordonnées Cocoa, origine en bas à gauche), ou nil.
+    static func frame(of element: AXUIElement) -> NSRect? {
+        var p: CFTypeRef?, sz: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &p) == .success,
+              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sz) == .success,
+              let p, let sz, CFGetTypeID(p) == AXValueGetTypeID(), CFGetTypeID(sz) == AXValueGetTypeID() else { return nil }
+        var origin = CGPoint.zero, size = CGSize.zero
+        guard AXValueGetValue(p as! AXValue, .cgPoint, &origin), AXValueGetValue(sz as! AXValue, .cgSize, &size),
+              size.width > 2, size.height > 2, let primary = NSScreen.screens.first else { return nil }
+        // L'Accessibilité compte depuis le haut de l'écran principal.
+        return NSRect(x: origin.x, y: primary.frame.height - origin.y - size.height, width: size.width, height: size.height)
+    }
+
+    /// Rectangle réel d'un bloc de texte web (coordonnées Cocoa), seulement s'il est visible dans la fenêtre active.
+    static func textFrame(of element: AXUIElement, in web: AXUIElement, app: NSRunningApplication) -> NSRect? {
+        var range: CFTypeRef?, bounds: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(web, "AXTextMarkerRangeForUIElement" as CFString, element, &range) == .success,
+              let range,
+              AXUIElementCopyParameterizedAttributeValue(web, "AXBoundsForTextMarkerRange" as CFString, range, &bounds) == .success,
+              let bounds, CFGetTypeID(bounds) == AXValueGetTypeID() else { return nil }
+        var rect = CGRect.zero
+        guard AXValueGetValue(bounds as! AXValue, .cgRect, &rect), rect.width > 2, rect.height > 2,
+              let primary = NSScreen.screens.first else { return nil }
+        let cocoa = NSRect(x: rect.minX, y: primary.frame.height - rect.minY - rect.height, width: rect.width, height: rect.height)
+        // Visible seulement : entièrement dans la fenêtre active de l'app.
+        // Partie visible seulement : découpée sur la fenêtre active de l'app.
+        guard let window = focusedWindow(in: app), let visible = frame(of: window) else { return nil }
+        let shown = cocoa.intersection(visible)
+        return shown.isNull || shown.height < 6 || shown.width < 6 ? nil : shown
+    }
+
+    /// Sélectionne un bloc de texte dans l'app (comme un surlignage à la souris).
+    @discardableResult
+    static func select(_ element: AXUIElement, in web: AXUIElement) -> Bool {
+        var range: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(web, "AXTextMarkerRangeForUIElement" as CFString, element, &range) == .success,
+              let range else { return false }
+        return AXUIElementSetAttributeValue(web, "AXSelectedTextMarkerRange" as CFString, range) == .success
+    }
+
     /// Tout le texte affiché dans les fenêtres de l'app (messages, titres), dans l'ordre de l'écran.
     static func windowTexts(in app: NSRunningApplication) -> [String] {
         let root = AXUIElementCreateApplication(app.processIdentifier)

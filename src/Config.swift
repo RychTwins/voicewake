@@ -131,6 +131,8 @@ struct Config: Codable {
     var readFromPhrases: [String]?
     /// Bandeau qui suit la lecture à voix haute des apps, mot en cours surligné (défaut false).
     var showReadingProgress: Bool?
+    /// Suivi de lecture dans l'app elle-même : le bloc de texte en cours est sélectionné (expérimental).
+    var highlightReadingInApp: Bool?
     /// Voix du lecteur intégré (nom, ex. "Thomas") ; défaut : la meilleure voix installée pour `locale`.
     var readerVoice: String?
     /// Après « ok arrête », durée d'attente de « ok envoie » (défaut 180 s).
