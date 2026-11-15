@@ -16,8 +16,9 @@ enum Palette {
         config.paletteShortcuts?[bundleID] ?? defaultShortcuts[bundleID]
     }
 
-    /// « Palette formater le document » → mots normalisés de la commande ; « … et valide » demande Entrée ensuite.
-    static func request(_ text: String, config: Config) -> (query: [String], validate: Bool)? {
+    /// « Palette formater le document » → mots normalisés de la commande, nombre de mots de la phrase d'appel,
+    /// et « … et valide » (Entrée ensuite).
+    static func request(_ text: String, config: Config) -> (query: [String], phraseWords: Int, validate: Bool)? {
         var words = normalize(text).split(separator: " ").map(String.init)
         for p in (config.palettePhrases ?? defaultPhrases).map(normalize).sorted(by: { $0.count > $1.count }) where !p.isEmpty {
             let pw = p.split(separator: " ").map(String.init)
@@ -25,22 +26,26 @@ enum Palette {
             words.removeFirst(pw.count)
             let validate = words.count >= 2 && ["valide", "execute", "lance"].contains(words.last!) && words[words.count - 2] == "et"
             if validate { words.removeLast(2) }
-            return words.isEmpty || words.count > 10 ? nil : (words, validate)
+            return words.isEmpty || words.count > 10 ? nil : (words, pw.count, validate)
         }
         return nil
     }
 
-    /// Touches dites seules (énoncé entier) : « valide », « touche entrée », « échap »…
+    /// Touches, dites seules (énoncé entier), sous une forme explicite : un mot courant isolé ne suffit pas.
     static let keys: [(phrases: [String], spec: String)] = [
-        (["valide", "touche entrée", "appuie sur entrée"], "return"),
-        (["échap", "touche échap", "appuie sur échap", "ferme la palette"], "escape"),
-        (["touche tab", "tabulation"], "tab"),
-        (["flèche bas", "descends"], "down"),
-        (["flèche haut", "monte"], "up"),
+        (["touche entrée", "appuie sur entrée"], "return"),
+        (["touche échap", "appuie sur échap", "ferme la palette"], "escape"),
+        (["touche tab"], "tab"),
+        (["flèche bas"], "down"),
+        (["flèche haut"], "up"),
     ]
+    /// « Valide » seul n'est accepté que juste après « palette … » (commande tapée, en attente).
+    static let validateWords = ["valide", "execute"]
+    static let paletteWindow: TimeInterval = 20
 
-    static func key(_ text: String) -> String? {
+    static func key(_ text: String, paletteOpen: Bool) -> String? {
         let n = normalize(text)
+        if paletteOpen, validateWords.contains(n) { return "return" }
         return keys.first { $0.phrases.map(normalize).contains(n) }?.spec
     }
 

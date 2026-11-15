@@ -19,6 +19,12 @@ enum SkillCatalog {
     /// Commandes slash intégrées de l'app Codex (documentation officielle).
     static let codexBuiltins = ["feedback", "goal", "init", "mcp", "plan", "review", "status"]
 
+    /// Nom de skill ou de plugin acceptable : lettres, chiffres, « - _ . : », 64 caractères au plus. Un nom venu
+    /// d'un fichier est tapé dans l'assistant : rien d'autre (espaces, retours à la ligne, texte) n'y entre.
+    static func isValidName(_ name: String) -> Bool {
+        name.range(of: "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$", options: .regularExpression) != nil
+    }
+
     static func words(_ name: String) -> [String] {
         normalize(name.replacingOccurrences(of: "-", with: " ").replacingOccurrences(of: "_", with: " ")
             .replacingOccurrences(of: ":", with: " ")).split(separator: " ").map(String.init)
@@ -53,7 +59,7 @@ enum SkillCatalog {
         var out: [SkillEntry] = []
         var seen = Set<String>()
         func add(_ text: String, _ aliases: [[String]], _ source: SkillEntry.Source) {
-            guard seen.insert(text).inserted, aliases.allSatisfy({ !$0.isEmpty }) else { return }
+            guard isValidName(String(text.dropFirst())), seen.insert(text).inserted, aliases.allSatisfy({ !$0.isEmpty }) else { return }
             out.append(SkillEntry(text: text, aliases: aliases, source: source))
         }
         let claudeDir = home.appendingPathComponent(".claude")
@@ -69,11 +75,15 @@ enum SkillCatalog {
         if let data = try? Data(contentsOf: registry),
            let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
            let plugins = json["plugins"] as? [String: [[String: Any]]] {
+            let pluginsRoot = claudeDir.appendingPathComponent("plugins").standardizedFileURL.resolvingSymlinksInPath().path + "/"
             for (key, installs) in plugins.sorted(by: { $0.key < $1.key }) {
                 let plugin = String(key.split(separator: "@").first ?? Substring(key))
+                guard isValidName(plugin) else { continue }
                 for install in installs {
                     guard let path = install["installPath"] as? String else { continue }
-                    let base = URL(fileURLWithPath: path)
+                    // Seulement des plugins installés sous ~/.claude/plugins.
+                    let base = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath()
+                    guard base.path.hasPrefix(pluginsRoot) else { continue }
                     for name in skills(in: base.appendingPathComponent("skills")) + skills(in: base) {
                         add("/\(plugin):\(name)", [words(name), words(plugin) + words(name)], .plugin)
                     }
@@ -86,7 +96,8 @@ enum SkillCatalog {
     /// Codex : commandes intégrées ("/…") et skills de ~/.codex/skills ("$…").
     static func codex(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> [SkillEntry] {
         codexBuiltins.map { SkillEntry(text: "/" + $0, aliases: [words($0)], source: .builtin) }
-            + skills(in: home.appendingPathComponent(".codex/skills")).map { SkillEntry(text: "$" + $0, aliases: [words($0)], source: .personal) }
+            + skills(in: home.appendingPathComponent(".codex/skills")).filter(isValidName)
+                .map { SkillEntry(text: "$" + $0, aliases: [words($0)], source: .personal) }
     }
 
     static func entries(for t: Target) -> [SkillEntry] {
@@ -104,21 +115,30 @@ enum SkillCatalog {
     }
 
     /// Skill dont un alias commence la citation : (skill, nombre de mots consommés). Le plus long alias l'emporte,
-    /// puis skills personnels, commandes intégrées, plugins.
+    /// une correspondance exacte passe avant une approchée ; à égalité exacte : skill personnel, commande intégrée,
+    /// puis plugin. Deux candidats différents à égalité restante (ex. deux plugins au même nom, ou deux noms
+    /// approchés) : ambigu, nil — rien n'est tapé.
     static func match(_ query: [String], in entries: [SkillEntry]) -> (entry: SkillEntry, consumed: Int)? {
-        var best: (entry: SkillEntry, consumed: Int)?
-        for e in entries {
-            for alias in e.aliases where alias.count <= query.count {
-                // « code review » ↔ code-review ; « codereview » ↔ code review.
-                let matches = zip(alias, query).allSatisfy { same($0, $1) }
-                guard matches else { continue }
-                let n = alias.count
-                if best == nil || n > best!.consumed || (n == best!.consumed && e.source.rawValue < best!.entry.source.rawValue) {
-                    best = (e, n)
-                }
-            }
+        typealias Score = (consumed: Int, exact: Int, source: Int)
+        func better(_ a: Score, _ b: Score) -> Bool {
+            if a.consumed != b.consumed { return a.consumed > b.consumed }
+            if a.exact != b.exact { return a.exact > b.exact }
+            return a.source < b.source
         }
-        return best
+        var best: (entry: SkillEntry, score: Score)?
+        var tie = false
+        for e in entries {
+            var top: Score?
+            for alias in e.aliases where alias.count <= query.count && zip(alias, query).allSatisfy({ same($0, $1) }) {
+                let sc: Score = (alias.count, alias == Array(query.prefix(alias.count)) ? 1 : 0, e.source.rawValue)
+                if top == nil || better(sc, top!) { top = sc }
+            }
+            guard let sc = top else { continue }
+            if best == nil || better(sc, best!.score) { best = (e, sc); tie = false }
+            else if !better(best!.score, sc), e.text != best!.entry.text { tie = true }
+        }
+        guard let best, !tie else { return nil }
+        return (best.entry, best.score.consumed)
     }
 
     static let defaultPhrases = ["lance le skill", "utilise le skill", "lance la compétence", "lance la commande",
@@ -133,6 +153,17 @@ enum SkillCatalog {
             if words.count > pw.count, Array(words.prefix(pw.count)) == pw { return Array(words.dropFirst(pw.count)) }
         }
         return nil
+    }
+
+    /// Texte d'origine entre les `skip` premiers et les `drop` derniers mots normalisés (mots comptés comme
+    /// `normalize` les découpe : « l'idée » compte pour deux).
+    static func originalSlice(_ text: String, skippingWords skip: Int, droppingLastWords drop: Int) -> String {
+        var tokens = text.split(whereSeparator: { $0 == " " || $0 == "\n" }).map(String.init)[...]
+        var count = 0
+        while let t = tokens.first, count < skip { count += normalize(t).split(separator: " ").count; tokens = tokens.dropFirst() }
+        count = 0
+        while let t = tokens.last, count < drop { count += normalize(t).split(separator: " ").count; tokens = tokens.dropLast() }
+        return tokens.joined(separator: " ")
     }
 
     /// Texte d'origine (accents, majuscules, ponctuation) après les `skip` premiers mots normalisés.

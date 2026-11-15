@@ -126,14 +126,14 @@ Sans liste à tenir à jour : VoiceWake lit l'app au premier plan au moment où 
 | « Menu afficher le terminal », « Menu nouveau chat » | n'importe quelle option de la barre de menus (sous-menus compris) |
 | « Clique sur artéfacts », « Appuie sur le bouton partager » | n'importe quel bouton visible de la fenêtre |
 | « Lance le skill brainstorming sur mon idée », « Commande compact » | tape `/superpowers:brainstorming sur mon idée` (Claude) ou `$pdf` (Codex) dans la zone de saisie, puis attend « OK envoie » ; « … et envoie » envoie tout de suite |
-| « Palette formater le document » | ouvre la palette (⌘⇧P VS Code, Zed, Cursor ; ⌘K Claude), tape la commande ; « valide » l'exécute (« … et valide » : tout de suite) |
-| « Valide », « Échap », « Touche tab », « Flèche bas / haut » | touche, dite seule |
+| « Palette formater le document » | ouvre la palette (⌘⇧P VS Code, Zed, Cursor ; ⌘K Claude), tape la commande ; « valide » dans les 20 s l'exécute (« … et valide » : tout de suite) |
+| « Touche entrée », « Touche échap », « Ferme la palette », « Touche tab », « Flèche bas / haut » | touche, dite seule (forme explicite : un mot courant isolé ne suffit pas) |
 | « Quelles commandes ? » | dit à voix haute ce qu'on peut faire dans l'app au premier plan |
 
 - **Libellé clairement désigné seulement** : exact, ou seul à contenir tous les mots cités. « Menu afficher » (vague) ne fait rien.
 - **Actions sensibles** (supprimer, quitter, se déconnecter, envoyer, autoriser, payer…, y compris par leur chemin de menu) : VoiceWake demande « Confirmer … ? » et n'agit que sur « je confirme » dit seul dans les 8 s. « Non », « annule » ou le silence n'exécutent rien ; jamais de confirmation pendant une lecture à voix haute.
 - Juste avant d'agir, VoiceWake revérifie que la même app est au premier plan et que l'élément n'a pas changé.
-- Skills reconnus : skills personnels, anciennes commandes, commandes intégrées de Claude Code, skills des plugins installés (`/plugin:skill`), skills et commandes de Codex.
+- Skills reconnus : skills personnels, anciennes commandes, commandes intégrées de Claude Code, skills des plugins installés (`/plugin:skill`), skills et commandes de Codex. Seuls des noms simples (lettres, chiffres, `- _ . :`) sont tapés, et seulement depuis des plugins installés sous `~/.claude/plugins`. Deux skills au même nom (deux plugins) : dites le nom du plugin. Le texte n'est tapé que si la zone de saisie a bien reçu le focus.
 - Essais sans rien cliquer ni taper : `voicewake trouve com.anthropic.claudefordesktop "menu palette de commandes"`, `voicewake skill claude "brainstorming sur mon idée"`.
 
 ### Naviguer dans Claude à la voix

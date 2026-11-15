@@ -197,7 +197,7 @@ struct ReaderTests {
         }
         skill(home.appendingPathComponent(".claude/skills"), "code-simplification")
         skill(home.appendingPathComponent(".claude/skills"), "dossier-x", declared: "veille-freelance")
-        let pluginDir = home.appendingPathComponent("plugin-install")
+        let pluginDir = home.appendingPathComponent(".claude/plugins/cache/officiel/superpowers/1.0")
         skill(pluginDir.appendingPathComponent("skills"), "brainstorming")
         try? fm.createDirectory(at: home.appendingPathComponent(".claude/plugins"), withIntermediateDirectories: true)
         let registry = ["version": 2, "plugins": ["superpowers@officiel": [["installPath": pluginDir.path]]]] as [String: Any]
@@ -220,14 +220,34 @@ struct ReaderTests {
         check(SkillCatalog.request("je lance le skill demain", config: config) == nil, "au milieu d'une phrase : rien")
         check(SkillCatalog.originalTail("Lance le skill brainstorming sur l'idée d'Élise", skippingWords: 4) == "sur l'idée d'Élise",
               "arguments gardés tels quels (accents, apostrophes)")
+        let outside = home.appendingPathComponent("ailleurs")
+        skill(outside.appendingPathComponent("skills"), "intrus")
+        let registry2 = ["version": 2, "plugins": ["superpowers@officiel": [["installPath": pluginDir.path]], "x@y": [["installPath": outside.path]]]] as [String: Any]
+        fm.createFile(atPath: home.appendingPathComponent(".claude/plugins/installed_plugins.json").path,
+                      contents: try! JSONSerialization.data(withJSONObject: registry2))
+        check(!SkillCatalog.claude(home: home).contains { $0.text == "/x:intrus" }, "plugin hors de ~/.claude/plugins : ignoré")
+        check(SkillCatalog.isValidName("superpowers:writing-plans") && !SkillCatalog.isValidName("x\nenvoie tout") && !SkillCatalog.isValidName("a b"),
+              "noms de skills validés (pas d'espace ni de retour à la ligne)")
+        skill(home.appendingPathComponent(".claude/skills"), "piege", declared: "ok\" ; rm -rf ~")
+        check(!SkillCatalog.claude(home: home).contains { $0.text.contains(" ") || $0.text.contains(";") }, "nom piégé dans SKILL.md écarté")
+        let twins = [SkillEntry(text: "/a:review-x", aliases: [["review", "x"]], source: .plugin),
+                   SkillEntry(text: "/b:review-x", aliases: [["review", "x"]], source: .plugin)]
+        check(SkillCatalog.match(["review", "x"], in: twins) == nil, "deux plugins au même nom : ambigu, rien")
+        let named: [SkillEntry] = [SkillEntry(text: "/a:review-x", aliases: [["review", "x"], ["a", "review", "x"]], source: .plugin),
+                                   SkillEntry(text: "/b:review-x", aliases: [["review", "x"], ["b", "review", "x"]], source: .plugin)]
+        check(SkillCatalog.match(["a", "review", "x"], in: named)?.entry.text == "/a:review-x", "avec le nom du plugin : désambiguïsé")
         try? fm.removeItem(at: home)
 
         // Palettes et touches.
         check(Palette.request("palette formater le document", config: config).map { $0.query.joined(separator: " ") } == "formater le document", "palette <commande>")
         check(Palette.request("palette ouvre le terminal et valide", config: config)?.validate == true, "« et valide » : Entrée ensuite")
         check(Palette.request("j'ouvre la palette", config: config) == nil, "au milieu d'une phrase : rien")
-        check(Palette.key("Valide") == "return" && Palette.key("échap") == "escape", "touches dites seules")
-        check(Palette.key("je valide demain") == nil, "touche seulement si dite seule")
+        check(Palette.key("touche entrée", paletteOpen: false) == "return" && Palette.key("touche échap", paletteOpen: false) == "escape", "touches explicites")
+        check(Palette.key("valide", paletteOpen: false) == nil, "« valide » seul : refusé hors palette")
+        check(Palette.key("Valide", paletteOpen: true) == "return", "« valide » juste après une palette")
+        check(Palette.key("je valide demain", paletteOpen: true) == nil, "touche seulement si dite seule")
+        check(SkillCatalog.originalSlice("Palette ouvre l'éditeur, et valide", skippingWords: 1, droppingLastWords: 2) == "ouvre l'éditeur,",
+              "commande d'origine sans « et valide »")
         check(Palette.shortcut(for: "dev.zed.Zed", config: config) == "cmd+shift+p", "palette de Zed")
         check(Palette.shortcut(for: "com.anthropic.claudefordesktop", config: config) == "cmd+k", "palette de Claude")
 

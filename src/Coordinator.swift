@@ -153,6 +153,10 @@ final class Coordinator {
         }
     }
 
+    /// Dernière commande tapée dans une palette sans être validée : « valide » seul est accepté pendant 20 s.
+    private var lastPaletteAt = Date.distantPast
+    private var paletteOpen: Bool { Date().timeIntervalSince(lastPaletteAt) < Palette.paletteWindow }
+
     // MARK: Skills
 
     /// Tape « /skill arguments » dans la zone de saisie de l'assistant au premier plan, puis attend « ok envoie »
@@ -175,8 +179,7 @@ final class Coordinator {
                 }
                 // Arguments : texte d'origine après la phrase et le nom du skill.
                 let phraseWords = normalize(text).split(separator: " ").count - query.count
-                var args = SkillCatalog.originalTail(text, skippingWords: phraseWords + hit.consumed)
-                if sendNow { args = args.split(separator: " ").dropLast(2).joined(separator: " ") }
+                let args = SkillCatalog.originalSlice(text, skippingWords: phraseWords + hit.consumed, droppingLastWords: sendNow ? 2 : 0)
                 let typed = args.isEmpty ? hit.entry.text + " " : hit.entry.text + " " + args
                 if self.config.dryRun == true { return log("[essai] → skill \(hit.entry.text) dans \(t.id)") }
                 self.typeSkill(typed, skill: hit.entry.text, target: t, app: app, sendNow: sendNow)
@@ -187,9 +190,8 @@ final class Coordinator {
     private func typeSkill(_ typed: String, skill: String, target t: Target, app: NSRunningApplication, sendNow: Bool) {
         DispatchQueue.global().async { [weak self] in
             var ok = false
-            if let field = AXButtonPresser.composerField(in: app) {
-                _ = AXButtonPresser.focus(field)
-                usleep(150_000)
+            // Seulement si le champ visé a bien reçu le focus : le texte ne part jamais ailleurs.
+            if let field = AXButtonPresser.composerField(in: app), AXButtonPresser.focusVerified(field, in: app) {
                 ok = TextTyper.type(typed, to: app.processIdentifier, while: { AXButtonPresser.isFrontmost(app) })
             }
             DispatchQueue.main.async {
@@ -200,7 +202,8 @@ final class Coordinator {
                 }
                 Feedback.play(.understood)
                 log("Skill → \(t.id) : \(skill) tapé\(sendNow ? ", envoi" : ", en attente de « ok envoie »").")
-                if sendNow { self.submitNow(t) } else { self.holdForSend(t) }
+                // Envoi immédiat seulement si l'envoi vocal est activé (sinon : texte laissé dans la zone de saisie).
+                if sendNow, self.sendEnabled, self.config.dryRun != true { self.submitNow(t) } else { self.holdForSend(t) }
             }
         }
     }
@@ -493,7 +496,7 @@ final class Coordinator {
         if router.containsAny(text, config.readResumePhrases) { return "#resume" }
         if router.containsReadAloudPhrase(text) { return "#readaloud" }
         if reader.isActive, let nav = ReaderNav.match(text, config: config) { return "#" + nav.rawValue }
-        if Palette.key(text) != nil { return "#key" }
+        if Palette.key(text, paletteOpen: paletteOpen) != nil { return "#key" }
         if Palette.request(text, config: config) != nil { return "#palette" }
         if SkillCatalog.request(text, config: config) != nil { return "#skill" }
         if Universal.match(text, config: config) != nil { return "#universal" }
@@ -553,7 +556,7 @@ final class Coordinator {
             return
         }
         // Touches et palettes de commandes, dans une app autorisée au premier plan.
-        let keySpec = Palette.key(text)
+        let keySpec = Palette.key(text, paletteOpen: paletteOpen)
         let palette = keySpec == nil ? Palette.request(text, config: config) : nil
         if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, keySpec != nil || palette != nil {
             detector.reset()
@@ -561,13 +564,17 @@ final class Coordinator {
                 Feedback.play(.ignored)
                 return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
             }
-            guard Date().timeIntervalSince(lastWake) >= 1.5 else { return } // « flèche bas » peut se répéter vite
+            // Flèches : répétables vite (1,5 s) ; tout le reste : délai normal entre deux commandes.
+            let repeatable = keySpec == "up" || keySpec == "down"
+            guard Date().timeIntervalSince(lastWake) >= (repeatable ? 1.5 : config.cooldownSeconds) else { return }
             lastWake = Date()
             guard let app = Universal.frontApp(), let bid = app.bundleIdentifier, Universal.allowedApps(config).contains(bid) else {
                 Feedback.play(.failed); return log("Touche ou palette : app au premier plan non autorisée.")
             }
             let name = app.localizedName ?? bid
+            if config.dryRun == true { return log("[essai] → \(keySpec.map { "touche \($0)" } ?? "palette") dans \(name)") }
             if let keySpec {
+                if keySpec == "return" { lastPaletteAt = .distantPast }
                 DispatchQueue.global().async {
                     let ok = Palette.pressKey(keySpec, in: app)
                     DispatchQueue.main.async { Feedback.play(ok ? .understood : .failed); log("Touche \(keySpec) → \(name) : \(ok ? "envoyée" : "non envoyée").") }
@@ -577,10 +584,10 @@ final class Coordinator {
             guard let palette, let spec = Palette.shortcut(for: bid, config: config) else {
                 Feedback.play(.failed); return log("Palette : pas de palette connue pour \(name) (paletteShortcuts).")
             }
-            // Texte d'origine de la commande (sans la phrase ni « et valide »).
-            let skip = normalize(text).split(separator: " ").count - palette.query.count - (palette.validate ? 2 : 0)
-            var command = SkillCatalog.originalTail(text, skippingWords: skip)
-            if palette.validate { command = command.split(separator: " ").dropLast(2).joined(separator: " ") }
+            // Texte d'origine de la commande, découpé sur les mêmes mots que la phrase reconnue.
+            let command = SkillCatalog.originalSlice(text, skippingWords: palette.phraseWords, droppingLastWords: palette.validate ? 2 : 0)
+            guard !command.isEmpty else { Feedback.play(.failed); return log("Palette : commande vide.") }
+            lastPaletteAt = palette.validate ? .distantPast : Date()
             DispatchQueue.global().async { [weak self] in
                 let ok = Palette.run(command, validate: palette.validate, shortcut: spec, in: app)
                 DispatchQueue.main.async {

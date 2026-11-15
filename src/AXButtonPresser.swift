@@ -73,6 +73,14 @@ enum AXButtonPresser {
         return field
     }
 
+    /// Donne le focus au champ et vérifie qu'il l'a bien reçu (sinon on ne tape rien).
+    static func focusVerified(_ field: AXUIElement, in app: NSRunningApplication) -> Bool {
+        _ = focus(field)
+        usleep(150_000)
+        guard let now = focusedTextField(in: app) else { return false }
+        return CFEqual(now, field)
+    }
+
     /// Zone de saisie de l'assistant : le champ qui a le focus s'il est modifiable, sinon le dernier champ
     /// modifiable de la fenêtre (le composeur est en bas de la conversation).
     static func composerField(in app: NSRunningApplication) -> AXUIElement? {
