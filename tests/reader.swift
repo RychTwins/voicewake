@@ -231,6 +231,8 @@ struct ReaderTests {
         check(Palette.shortcut(for: "dev.zed.Zed", config: config) == "cmd+shift+p", "palette de Zed")
         check(Palette.shortcut(for: "com.anthropic.claudefordesktop", config: config) == "cmd+k", "palette de Claude")
 
+        check(AppCommand.match("quelles commandes", router: router, config: config) == .help, "quelles commandes : aide vocale")
+
         // Indices de reconnaissance.
         let hints = Coordinator.hints(base: ["salut claude", "Salut Claude"], names: ["VoxTV", "Equality Holding"],
                                       config: config, target: claudeTarget)

@@ -128,6 +128,7 @@ struct Config: Codable {
     var newChatPhrases: [String]?
     var copyResponsePhrases: [String]?
     var statusPhrases: [String]?
+    var helpPhrases: [String]?
     /// « Ouvre <projet ou session> » et « Nouvelle session dans <projet> » (défauts dans `NavCommands`).
     var openPhrases: [String]?
     /// Commandes universelles : « menu <libellé> », « clique sur <libellé> » (défauts dans `Universal`).

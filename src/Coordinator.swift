@@ -70,6 +70,8 @@ final class Coordinator {
 
     private func handle(_ text: String, isFinal: Bool = false) {
         if pendingConfirmation != nil, handleConfirmation(text, isFinal: isFinal) { return }
+        // VoiceWake parle (état, aide, confirmation) : ce que le micro entend est sa propre voix.
+        if announcer.isSpeaking { return }
         // Pas de garde « un assistant parle » ici : Claude garde une sortie audio ouverte pendant sa dictée.
         // Relecture après « ok arrête » / « garde le brouillon » (micro coupé) : une commande de veille
         // (« lis à partir de… », « fais la lecture », « dis Claude »…) abandonne l'attente de « ok envoie ».
@@ -343,6 +345,45 @@ final class Coordinator {
         return out
     }
 
+    /// « Quelles commandes ? » : ce qu'on peut dire dans l'app au premier plan, à voix haute (sans jamais
+    /// commencer une phrase par une commande ; tout ce que le micro entend pendant l'annonce est ignoré).
+    private func announceHelp() {
+        guard !announcer.isSpeaking else { return }
+        let app = Universal.frontApp()
+        let allowed = app?.bundleIdentifier.map { Universal.allowedApps(config).contains($0) } ?? false
+        let target = router.frontmostTarget().flatMap { t in
+            ShortcutTrigger.runningApp(for: t).map { AXButtonPresser.isFrontmost($0) ? t : nil } ?? nil
+        }
+        DispatchQueue.global().async { [weak self] in
+            guard let self else { return }
+            var parts: [String] = []
+            let name = app?.localizedName ?? "cette application"
+            if let app, allowed {
+                let menus = AXButtonPresser.allMenuBarItems(in: app).count
+                let buttons = AXButtonPresser.visibleButtons(in: app).count
+                parts.append("Dans \(name), on peut choisir l'une des \(menus) options de menu en disant le mot menu puis son nom, ou l'un des \(buttons) boutons visibles avec clique sur.")
+                if let bid = app.bundleIdentifier, Palette.shortcut(for: bid, config: self.config) != nil {
+                    parts.append("La palette de commandes s'utilise en disant palette puis la commande.")
+                }
+            } else {
+                parts.append("\(name) n'est pas une application pilotée.")
+            }
+            if let t = target {
+                let skills = SkillCatalog.entries(for: t).count
+                if skills > 0 { parts.append("\(skills) skills et commandes slash se lancent avec lance le skill puis leur nom.") }
+                if !(AXButtonPresser.sidebarEntries(in: ShortcutTrigger.runningApp(for: t)!).isEmpty) {
+                    parts.append("Un projet de la barre latérale s'ouvre avec ouvre puis son nom.")
+                }
+            }
+            parts.append("La liste complète est dans le fichier lisez-moi.")
+            let message = parts.joined(separator: " ")
+            DispatchQueue.main.async {
+                log("Aide vocale : \(name).")
+                self.announcer.say(message, locale: self.config.locale, voice: self.config.readerVoice) { [weak self] in self?.detector.reset() }
+            }
+        }
+    }
+
     private let announcer = Announcer()
     private var lastStatus = Date.distantPast
 
@@ -600,6 +641,7 @@ final class Coordinator {
            let command = AppCommand.match(text, router: router, config: config) {
             detector.reset()
             if command == .status { return announceStatus() }
+            if command == .help { return announceHelp() }
             // Pendant une lecture à voix haute, la voix pourrait dire la phrase : on n'agit pas.
             if let r = currentReader() {
                 Feedback.play(.ignored)

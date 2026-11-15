@@ -117,6 +117,25 @@ En veille, l'assistant au premier plan :
 
 Pendant une lecture à voix haute, ces commandes sont ignorées (la voix pourrait les dire) : mettez d'abord en pause. « Où on en est ? » pendant l'attente de « OK envoie » garde le brouillon. Essai sans la voix : `voicewake action claude copyResponse`. Réglages : `newChatMenuItems` et `copyResponseShortcut` par cible ; `clearDraftPhrases`, `newChatPhrases`, `copyResponsePhrases`, `statusPhrases`.
 
+### Commandes universelles (toutes les apps pilotées)
+
+Sans liste à tenir à jour : VoiceWake lit l'app au premier plan au moment où vous parlez. Apps acceptées : les cibles (Claude, Codex, Gemini, ChatGPT), les éditeurs configurés, VS Code, Zed, Cursor, Windsurf, et celles de `universalApps`.
+
+| Phrase | Effet |
+| --- | --- |
+| « Menu afficher le terminal », « Menu nouveau chat » | n'importe quelle option de la barre de menus (sous-menus compris) |
+| « Clique sur artéfacts », « Appuie sur le bouton partager » | n'importe quel bouton visible de la fenêtre |
+| « Lance le skill brainstorming sur mon idée », « Commande compact » | tape `/superpowers:brainstorming sur mon idée` (Claude) ou `$pdf` (Codex) dans la zone de saisie, puis attend « OK envoie » ; « … et envoie » envoie tout de suite |
+| « Palette formater le document » | ouvre la palette (⌘⇧P VS Code, Zed, Cursor ; ⌘K Claude), tape la commande ; « valide » l'exécute (« … et valide » : tout de suite) |
+| « Valide », « Échap », « Touche tab », « Flèche bas / haut » | touche, dite seule |
+| « Quelles commandes ? » | dit à voix haute ce qu'on peut faire dans l'app au premier plan |
+
+- **Libellé clairement désigné seulement** : exact, ou seul à contenir tous les mots cités. « Menu afficher » (vague) ne fait rien.
+- **Actions sensibles** (supprimer, quitter, se déconnecter, envoyer, autoriser, payer…, y compris par leur chemin de menu) : VoiceWake demande « Confirmer … ? » et n'agit que sur « je confirme » dit seul dans les 8 s. « Non », « annule » ou le silence n'exécutent rien ; jamais de confirmation pendant une lecture à voix haute.
+- Juste avant d'agir, VoiceWake revérifie que la même app est au premier plan et que l'élément n'a pas changé.
+- Skills reconnus : skills personnels, anciennes commandes, commandes intégrées de Claude Code, skills des plugins installés (`/plugin:skill`), skills et commandes de Codex.
+- Essais sans rien cliquer ni taper : `voicewake trouve com.anthropic.claudefordesktop "menu palette de commandes"`, `voicewake skill claude "brainstorming sur mon idée"`.
+
 ### Naviguer dans Claude à la voix
 
 Claude au premier plan, en veille. Chaque phrase se dit seule (une phrase qui les contient au milieu ne déclenche rien).
@@ -330,6 +349,8 @@ voicewake sons                     # fait entendre les sons de confirmation
 voicewake action claude newChat    # commande de gestion dans 3 s (clearDraft, newChat, copyResponse)
 voicewake dis claude "ouvre voxtv" # phrase de navigation dans 3 s, sans la voix
 voicewake barre claude             # projets et sessions visibles dans la barre latérale
+voicewake trouve <bundle-id> "menu …"   # option ou bouton visé, sans cliquer
+voicewake skill claude "nom arguments"  # skill ou commande slash qui serait tapé
 tail -f ~/Library/Logs/voicewake.log   # archivé en voicewake.log.1 au-delà de 5 Mo
 ```
 

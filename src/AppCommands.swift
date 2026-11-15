@@ -3,13 +3,14 @@ import AVFoundation
 
 /// Commandes vocales de gestion de l'assistant au premier plan, dites en veille.
 enum AppCommand: String, CaseIterable {
-    case clearDraft, newChat, copyResponse, status
+    case clearDraft, newChat, copyResponse, status, help
 
     static let defaultPhrases: [AppCommand: [String]] = [
         .clearDraft: ["efface le brouillon", "efface tout", "vide le brouillon", "supprime le brouillon"],
         .newChat: ["nouvelle conversation", "nouvelle discussion", "nouvelle session", "nouveau chat"],
         .copyResponse: ["copie la réponse", "copier la réponse", "copie la dernière réponse"],
         .status: ["où on en est", "on en est où", "où en est on", "quel est l'état"],
+        .help: ["quelles commandes", "quelles sont les commandes", "qu'est ce que je peux dire", "aide vocale", "liste des commandes"],
     ]
 
     func phrases(_ c: Config) -> [String] {
@@ -19,6 +20,7 @@ enum AppCommand: String, CaseIterable {
         case .newChat: custom = c.newChatPhrases
         case .copyResponse: custom = c.copyResponsePhrases
         case .status: custom = c.statusPhrases
+        case .help: custom = c.helpPhrases
         }
         return custom ?? Self.defaultPhrases[self] ?? []
     }
@@ -89,7 +91,7 @@ enum AppActions {
             return done(false, "\(t.id) n'est pas au premier plan")
         }
         switch command {
-        case .status:
+        case .status, .help:
             done(true, "")
 
         case .newChat:
