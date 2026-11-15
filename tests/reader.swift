@@ -171,6 +171,10 @@ struct ReaderTests {
         check(Universal.isDangerous("Autoriser"), "autoriser : sensible")
         let tied: [(title: String, value: Int)] = [("Afficher le terminal", 1), ("Afficher le navigateur", 2)]
         check(Universal.best(["afficher"], in: tied) == nil, "deux libellés aussi proches : ambigu, rien")
+        let vague: [(title: String, value: Int)] = [("Tout afficher", 1), ("Afficher le terminal", 2)]
+        check(Universal.best(["afficher"], in: vague) == nil, "phrase vague : rien")
+        check(Universal.best(["tout", "afficher"], in: vague)?.value == 1, "libellé exact : choisi")
+        check(Universal.best(["terminal"], in: vague)?.value == 2, "seul candidat : choisi")
         check(Universal.allowedApps(config).contains("dev.zed.Zed") && !Universal.allowedApps(config).contains("com.apple.finder"),
               "liste blanche : éditeurs oui, app quelconque non")
 

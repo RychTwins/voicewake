@@ -73,21 +73,24 @@ enum Universal {
         return short.count >= 4 && long.hasPrefix(short) && long.count - short.count <= 3
     }
 
-    /// Meilleur libellé : tous les mots cités y sont (petites différences tolérées), le moins de mots en trop.
-    /// `nil` si rien ne convient, ou si plusieurs libellés différents conviennent aussi bien (ambigu : on n'agit pas).
+    /// Libellé visé, seulement s'il est clairement désigné : correspondance exacte (aux mots vides près) et unique,
+    /// ou bien seul libellé qui contient tous les mots cités (petites différences tolérées). Sinon nil : on n'agit
+    /// pas sur une phrase vague (« menu afficher ») ou ambiguë.
     static func best<T>(_ query: [String], in candidates: [(title: String, value: T)]) -> (title: String, value: T)? {
         let q = query.filter { !fillers.contains($0) }
         guard !q.isEmpty else { return nil }
-        var found: (title: String, value: T, extra: Int)?
-        var tie = false
+        var exact: [(title: String, value: T)] = [], partial: [(title: String, value: T)] = []
         for c in candidates {
-            let words = normalize(c.title).split(separator: " ").map(String.init)
+            let words = normalize(c.title).split(separator: " ").map(String.init).filter { !fillers.contains($0) }
             guard q.allSatisfy({ w in words.contains(where: { same($0, w) }) }) || words.joined() == q.joined() else { continue }
-            let extra = words.count - q.count
-            if found == nil || extra < found!.extra { found = (c.title, c.value, extra); tie = false }
-            else if extra == found!.extra, normalize(c.title) != normalize(found!.title) { tie = true }
+            if words.count == q.count || words.joined() == q.joined() { exact.append(c) } else { partial.append(c) }
         }
-        return tie ? nil : found.map { ($0.title, $0.value) }
+        func unique(_ list: [(title: String, value: T)]) -> (title: String, value: T)? {
+            guard let first = list.first else { return nil }
+            return list.allSatisfy({ normalize($0.title) == normalize(first.title) }) ? first : nil
+        }
+        if !exact.isEmpty { return unique(exact) }
+        return unique(partial)
     }
 
     /// Action sensible si le libellé, ou le chemin de menu qui y mène (« Dépannage > … »), contient un mot à risque.
