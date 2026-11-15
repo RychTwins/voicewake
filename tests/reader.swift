@@ -222,6 +222,15 @@ struct ReaderTests {
               "arguments gardés tels quels (accents, apostrophes)")
         try? fm.removeItem(at: home)
 
+        // Palettes et touches.
+        check(Palette.request("palette formater le document", config: config).map { $0.query.joined(separator: " ") } == "formater le document", "palette <commande>")
+        check(Palette.request("palette ouvre le terminal et valide", config: config)?.validate == true, "« et valide » : Entrée ensuite")
+        check(Palette.request("j'ouvre la palette", config: config) == nil, "au milieu d'une phrase : rien")
+        check(Palette.key("Valide") == "return" && Palette.key("échap") == "escape", "touches dites seules")
+        check(Palette.key("je valide demain") == nil, "touche seulement si dite seule")
+        check(Palette.shortcut(for: "dev.zed.Zed", config: config) == "cmd+shift+p", "palette de Zed")
+        check(Palette.shortcut(for: "com.anthropic.claudefordesktop", config: config) == "cmd+k", "palette de Claude")
+
         // Indices de reconnaissance.
         let hints = Coordinator.hints(base: ["salut claude", "Salut Claude"], names: ["VoxTV", "Equality Holding"],
                                       config: config, target: claudeTarget)

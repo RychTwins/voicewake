@@ -122,7 +122,8 @@ final class Coordinator {
         // « Ouvre … » / « Nouvelle session dans … » : laisser le temps de dire le nom.
         var wait = config.wakeMaxWaitSeconds ?? 1.8
         if router.containsAny(text, config.readFromPhrases) { wait = 6 }
-        else if Universal.match(text, config: config) != nil || SkillCatalog.request(text, config: config) != nil { wait = 3 }
+        else if Universal.match(text, config: config) != nil || SkillCatalog.request(text, config: config) != nil
+                    || Palette.request(text, config: config) != nil { wait = 3 }
         else if case .open? = NavCommands.match(text, target: nil, config: config) { wait = 3 }
         else if case .newSessionIn? = NavCommands.match(text, target: nil, config: config) { wait = 3 }
         DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: work)
@@ -451,6 +452,8 @@ final class Coordinator {
         if router.containsAny(text, config.readResumePhrases) { return "#resume" }
         if router.containsReadAloudPhrase(text) { return "#readaloud" }
         if reader.isActive, let nav = ReaderNav.match(text, config: config) { return "#" + nav.rawValue }
+        if Palette.key(text) != nil { return "#key" }
+        if Palette.request(text, config: config) != nil { return "#palette" }
         if SkillCatalog.request(text, config: config) != nil { return "#skill" }
         if Universal.match(text, config: config) != nil { return "#universal" }
         if NavCommands.match(text, target: nil, config: config) != nil { return "#nav" }
@@ -505,6 +508,44 @@ final class Coordinator {
                     log(ok ? "Lecteur intégré : \(nav == .nextSentence ? "phrase suivante" : "phrase reprise")." : "Lecteur intégré : pas d'autre phrase.")
                 }
                 Feedback.play(ok ? .understood : .failed)
+            }
+            return
+        }
+        // Touches et palettes de commandes, dans une app autorisée au premier plan.
+        let keySpec = Palette.key(text)
+        let palette = keySpec == nil ? Palette.request(text, config: config) : nil
+        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, keySpec != nil || palette != nil {
+            detector.reset()
+            if let r = currentReader() {
+                Feedback.play(.ignored)
+                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
+            }
+            guard Date().timeIntervalSince(lastWake) >= 1.5 else { return } // « flèche bas » peut se répéter vite
+            lastWake = Date()
+            guard let app = Universal.frontApp(), let bid = app.bundleIdentifier, Universal.allowedApps(config).contains(bid) else {
+                Feedback.play(.failed); return log("Touche ou palette : app au premier plan non autorisée.")
+            }
+            let name = app.localizedName ?? bid
+            if let keySpec {
+                DispatchQueue.global().async {
+                    let ok = Palette.pressKey(keySpec, in: app)
+                    DispatchQueue.main.async { Feedback.play(ok ? .understood : .failed); log("Touche \(keySpec) → \(name) : \(ok ? "envoyée" : "non envoyée").") }
+                }
+                return
+            }
+            guard let palette, let spec = Palette.shortcut(for: bid, config: config) else {
+                Feedback.play(.failed); return log("Palette : pas de palette connue pour \(name) (paletteShortcuts).")
+            }
+            // Texte d'origine de la commande (sans la phrase ni « et valide »).
+            let skip = normalize(text).split(separator: " ").count - palette.query.count - (palette.validate ? 2 : 0)
+            var command = SkillCatalog.originalTail(text, skippingWords: skip)
+            if palette.validate { command = command.split(separator: " ").dropLast(2).joined(separator: " ") }
+            DispatchQueue.global().async { [weak self] in
+                let ok = Palette.run(command, validate: palette.validate, shortcut: spec, in: app)
+                DispatchQueue.main.async {
+                    Feedback.play(ok ? .understood : .failed)
+                    log("Palette → \(name) : \(ok ? (palette.validate ? "commande lancée" : "commande tapée, « valide » pour l'exécuter") : "échec")\(self?.config.debug == true ? " (« \(command) »)" : "").")
+                }
             }
             return
         }

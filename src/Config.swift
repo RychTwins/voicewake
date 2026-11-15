@@ -140,6 +140,9 @@ struct Config: Codable {
     var confirmPhrases: [String]?
     /// « Lance le skill … », « commande … » (défauts dans `SkillCatalog`).
     var skillPhrases: [String]?
+    /// « Palette <commande> » : phrases et raccourci d'ouverture par identifiant d'app (défauts dans `Palette`).
+    var palettePhrases: [String]?
+    var paletteShortcuts: [String: String]?
     var cancelPhrases: [String]?
     var newSessionInPhrases: [String]?
     /// Navigation du lecteur intégré (« lis à partir de … ») : vitesse, phrase précédente ou suivante (défauts dans `ReaderNav`).
