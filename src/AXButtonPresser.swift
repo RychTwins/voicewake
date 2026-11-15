@@ -211,7 +211,7 @@ enum AXButtonPresser {
         return activate(last, in: app)
     }
 
-    /// Appuie sur un élément : action AXPress s'il la propose, sinon vrai clic de souris.
+    /// Appuie sur un élément : action AXPress s'il la propose, sinon focus clavier + Espace, sinon vrai clic de souris.
     /// (Codex : « Lire à voix haute » n'expose pas AXPress ; l'action « réussit » sans rien lancer.)
     static func activate(_ el: AXUIElement, in app: NSRunningApplication) -> Bool {
         var names: CFArray?
@@ -222,6 +222,24 @@ enum AXButtonPresser {
         guard isFrontmost(app) else { return false }
         AXUIElementPerformAction(el, "AXScrollToVisible" as CFString)
         usleep(300_000)
+        // Sans pointeur : on donne le focus clavier à l'élément, puis Espace, envoyé à l'app seulement.
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        let before: AXUIElement? = value(root, kAXFocusedUIElementAttribute)
+        if AXUIElementSetAttributeValue(el, kAXFocusedAttribute as CFString, kCFBooleanTrue) == .success {
+            usleep(250_000)
+            // Espace seulement si le focus est bien sur l'élément : sinon il s'écrirait dans le champ de saisie.
+            if isFrontmost(app), let focused: AXUIElement = value(root, kAXFocusedUIElementAttribute), CFEqual(focused, el) {
+                let source = CGEventSource(stateID: .hidSystemState)
+                for down in [true, false] {
+                    CGEvent(keyboardEventSource: source, virtualKey: 49, keyDown: down)?.postToPid(app.processIdentifier)
+                    usleep(50_000)
+                }
+                usleep(250_000)
+                if let before { AXUIElementSetAttributeValue(before, kAXFocusedAttribute as CFString, kCFBooleanTrue) }
+                return true
+            }
+        }
+        // Focus refusé : vrai clic de souris (le pointeur bouge un court instant).
         func rect(_ e: AXUIElement) -> CGRect? {
             var p: CFTypeRef?, sz: CFTypeRef?
             guard AXUIElementCopyAttributeValue(e, kAXPositionAttribute as CFString, &p) == .success,

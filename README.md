@@ -290,7 +290,7 @@ Le journal `~/Library/Logs/voicewake.log` indique chaque étape. Pour y voir aus
 - La commande d'envoi est aussi transcrite par le micro de l'application et apparaît en fin de message.
 - Le lecteur intégré lit le texte affiché à l'écran : une réponse ancienne, que l'application n'affiche plus, n'est pas retrouvée.
 - Une application qui garde le micro ouvert (visio, enregistrement) prolonge la pause jusqu'à `maxPauseMinutes`.
-- Codex : « Arrête la lecture » arrête la lecture (pas de pause dans l'application) ; « Reprends la lecture » la relance depuis le début. Son bouton de lecture demande un vrai clic : VoiceWake déplace brièvement le pointeur, puis le remet en place.
+- Codex : « Arrête la lecture » arrête la lecture (pas de pause dans l'application) ; « Reprends la lecture » la relance depuis le début. Son bouton de lecture n'accepte pas le clic d'accessibilité : VoiceWake lui donne le focus clavier et envoie Espace à Codex, sans toucher au pointeur (vrai clic de souris seulement en dernier recours).
 - Les libellés des boutons dépendent de la langue et des versions des applications.
 - `record` demande l'autorisation « Surveillance de l'entrée » pour le Terminal ; `test` demande l'Accessibilité pour le Terminal.
 - La reconnaissance locale en français dépend de la version de macOS ; à défaut, `"requireOnDevice": false`.
