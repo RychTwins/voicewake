@@ -237,6 +237,15 @@ final class ShortcutTrigger {
         }
     }
 
+    /// Clique le dernier bouton de lecture. Si ce bouton ouvre un menu (Gemini : « Autres actions » puis « Écouter »),
+    /// l'appui ne rend la main qu'après ~1,5 s, menu ouvert : l'option est donc choisie en parallèle, dès qu'elle
+    /// apparaît, pour que le menu ne reste visible qu'un instant.
+    private static func pressReadAloud(_ t: Target, _ labels: [String], in app: NSRunningApplication, window: AXUIElement) -> Bool {
+        guard let item = t.readAloudMenuItem else { return AXButtonPresser.pressLast(labels, in: app, window: window) }
+        DispatchQueue.global().async { _ = AXButtonPresser.pressLast(labels, in: app, window: window) }
+        return AXButtonPresser.pressMenuItemSoon(item, in: app, within: 3)
+    }
+
     /// « Fais la lecture » : clique tout de suite le dernier bouton de lecture à voix haute de l'assistant.
     func readAloudNow(_ t: Target, completion: @escaping (Bool) -> Void) {
         guard let labels = t.readAloudShortcut?.buttons, !labels.isEmpty, let app = Self.runningApp(for: t),
@@ -245,11 +254,7 @@ final class ShortcutTrigger {
         let gen = readGeneration
         pausedReading = nil
         DispatchQueue.global().async {
-            var ok = AXButtonPresser.pressLast(labels, in: app, window: window)
-            if let item = t.readAloudMenuItem {
-                usleep(500_000)
-                ok = AXButtonPresser.pressMenuItem(item, in: app)
-            }
+            let ok = Self.pressReadAloud(t, labels, in: app, window: window)
             DispatchQueue.main.async {
                 guard gen == self.readGeneration else { return }
                 if ok { self.startReading(t, app: app) }
@@ -395,13 +400,7 @@ final class ShortcutTrigger {
                 stable = (newButton || (sawBusy && newest != nil)) ? stable + 1 : 0
                 if stable >= 4 {
                     guard DispatchQueue.main.sync(execute: { gen == self.readGeneration }) else { return }
-                    var ok = AXButtonPresser.pressLast(labels, in: app, window: window.element)
-                    if let item = t.readAloudMenuItem {
-                        // Le bouton ouvre un menu (certaines apps signalent un échec alors que le menu s'ouvre).
-                        usleep(500_000)
-                        guard window.isFocused, DispatchQueue.main.sync(execute: { gen == self.readGeneration }) else { return }
-                        ok = AXButtonPresser.pressMenuItem(item, in: app)
-                    }
+                    let ok = Self.pressReadAloud(t, labels, in: app, window: window.element)
                     DispatchQueue.main.async {
                         guard gen == self.readGeneration, window.isFocused else { return }
                         if ok { self.startReading(t, app: app, in: window) }

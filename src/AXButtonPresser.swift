@@ -277,6 +277,16 @@ enum AXButtonPresser {
         return true
     }
 
+    /// Choisit l'option dès que le menu est ouvert (essai toutes les 20 ms) : le menu ne reste visible qu'un instant.
+    static func pressMenuItemSoon(_ label: String, in app: NSRunningApplication, within seconds: Double = 1.2) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        repeat {
+            if pressMenuItem(label, in: app) { return true }
+            usleep(20_000)
+        } while Date() < deadline
+        return false
+    }
+
     /// Choisit une option dans un menu ouvert de l'app (menu contextuel ou déroulant), libellé exact.
     static func pressMenuItem(_ label: String, in app: NSRunningApplication) -> Bool {
         let wanted = label.lowercased()
@@ -292,7 +302,13 @@ enum AXButtonPresser {
             }
             return nil
         }
-        guard AXIsProcessTrusted(), let item = search(AXUIElementCreateApplication(app.processIdentifier), 0) else { return false }
+        guard AXIsProcessTrusted() else { return false }
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        // Chemin rapide : un menu ouvert est souvent un enfant direct de l'app ou de sa fenêtre active.
+        var near = (value(root, kAXChildrenAttribute) as [AXUIElement]?) ?? []
+        if let window: AXUIElement = value(root, kAXFocusedWindowAttribute) { near += (value(window, kAXChildrenAttribute) as [AXUIElement]?) ?? [] }
+        let menus = near.filter { (value($0, kAXRoleAttribute) as String?) == "AXMenu" }
+        guard let item = menus.lazy.compactMap({ search($0, 0) }).first ?? search(root, 0) else { return false }
         return AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
     }
 
