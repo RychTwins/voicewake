@@ -55,27 +55,6 @@ cd voicewake
 
 ## Commandes vocales
 
-### Jarvis
-
-Dites « Salut Claude », « Salut Codex » ou « Salut Gemini » pour appeler directement cet assistant. Pour viser l’assistant au premier plan, dites « Salut Jarvis ». Dans un éditeur, VoiceWake privilégie l’extension configurée dont le panneau est ouvert. En dehors d’une application reconnue, il utilise `defaultTarget`. Les noms seuls ne sont pas des commandes.
-
-| Dites | VoiceWake |
-| --- | --- |
-| « Jarvis, ouvre mon projet VoiceWake » | Ouvre le dossier dans VS Code et le Terminal. |
-| « Jarvis, état du dépôt » | Lit la branche Git, le nombre de fichiers modifiés ou non suivis et le dernier commit. |
-| « Salut Jarvis, démarre Claude » ou « Salut Jarvis, démarre Gemini » | Ouvre sa dictée (« ouvre », « lance », « active » marchent aussi). Si son panneau est ouvert dans un éditeur configuré, VoiceWake l’utilise en priorité. |
-
-Les formes « Jarvis, demande à Codex » et « Jarvis Codex » restent disponibles ; sans « Jarvis », « demande à Codex » ne fait rien. Si Jarvis ne reconnaît pas l’ordre, il se tait. Avec `"jarvisAnnounce": true`, il annonce la cible avant d’ouvrir le micro. Vous pouvez conserver « Salut assistant » dans `frontmostPhrases`. « OK arrête » coupe la dictée intégrée même si `sendPhrases` est vide, à condition que la phrase figure dans `stopPhrases`.
-
-```bash
-voicewake route "Jarvis, demande à Gemini"
-voicewake run-routine ouvrir-voicewake
-voicewake run-routine etat-du-depot
-voicewake run-routine demander claude
-```
-
-Sur macOS, `./install.sh` embarque les scripts et mémorise le dossier du dépôt. Réglez `jarvisProjectPath` dans votre configuration pour choisir un autre dossier. Les confirmations utilisent la voix système du Mac, ou une voix ElevenLabs si vous l'activez (voir ci-dessous).
-
 Chaque commande se dit **seule**, avec une courte pause avant et environ une seconde de silence après.
 
 ### Activer un assistant
@@ -86,8 +65,7 @@ Chaque commande se dit **seule**, avec une courte pause avant et environ une sec
 | « Dis Codex », « Salut Codex » | micro de Codex |
 | « Dis Gemini », « Salut Gemini » | micro de Gemini |
 | « Salut ChatGPT » | dictée dans ChatGPT |
-| « Salut Jarvis », « Dis Jarvis » | assistant de l'application au premier plan, sinon `defaultTarget` |
-| « Salut Jarvis, démarre Claude » | cet assistant, où que vous soyez |
+| « Salut assistant », « Dis assistant » | assistant de l'application au premier plan, sinon `defaultTarget` |
 
 L'application est lancée si elle est fermée, puis mise au premier plan. VoiceWake attend le résultat définitif de la reconnaissance (environ une seconde après la fin de la phrase) avant d'agir : le moteur corrige souvent sa première hypothèse, par exemple « Salut Claude » en « Salut Codex ». « Salut … » est la forme la mieux reconnue.
 
@@ -128,26 +106,18 @@ La voix de lecture ne déclenche pas ses propres commandes : une commande entend
 
 ### Conversation continue
 
-Avec `"continuousConversation": true`, le micro de l'assistant se rouvre tout seul quand la lecture de la réponse est terminée : plus besoin de redire « Dis Claude » à chaque tour. Sans parole pendant `continueSilenceSeconds` (10 s par défaut), le micro se referme et VoiceWake repasse en veille. « OK arrête » coupe aussi le micro. Avec `autoSendSilenceSeconds`, la conversation se passe de mots-clés : vous parlez, le silence envoie, la réponse est lue, le micro se rouvre. Le micro ne se rouvre que si l'assistant est resté au premier plan.
+Avec `"continuousConversation": true`, VoiceWake envoie la dictée après 5 s de silence dès qu'il détecte de la parole et que le bouton d'envoi est disponible. Réglez le délai avec `autoSendSilenceSeconds` (`0` désactive l'envoi automatique).
+
+- **« Attends, je réfléchis »** suspend l'envoi jusqu'à ce que vous repreniez la parole.
+- **« Garde le brouillon »** ou **« OK arrête »** coupe le micro et laisse le texte dans le composeur.
+
+Le micro se rouvre dans la même fenêtre après la lecture de la réponse. Si aucune lecture n'est configurée, VoiceWake attend que le texte de la fenêtre se stabilise pendant 6 s. Après une réouverture sans parole pendant `continueSilenceSeconds` (10 s par défaut), le micro se referme et VoiceWake repasse en veille.
 
 Sans casque, la voix de lecture peut laisser un écho : la reprise attend 3 s de silence après la fin de la lecture.
 
-### Commandes vocales vers vos scripts
-
-Associez une phrase à une commande shell dans `commands` :
-
-```json
-"commands": [
-  { "phrases": ["jarvis ouvre safari"], "run": "open -a Safari" },
-  { "phrases": ["jarvis mode travail"], "run": "~/scripts/mode-travail.sh" }
-]
-```
-
-La commande part quand la phrase est dite en veille et suivie d'un silence. Rien n'est lancé pendant une dictée ni pendant une lecture à voix haute, et seules les phrases que vous avez écrites agissent. Gardez un mot d'amorce (« jarvis ») : une phrase courante comme « ouvre le terminal » pourrait se déclencher en pleine conversation. Toute personne ou tout son audible par le micro peut prononcer ces phrases : n'y associez pas de commande destructrice.
-
 ### Voix ElevenLabs (optionnel)
 
-Par défaut, VoiceWake n'appelle aucun service en ligne. Si vous avez un compte ElevenLabs, vous pouvez remplacer la voix du Mac pour « lis à partir de… » et les annonces de Jarvis :
+Par défaut, VoiceWake n'appelle aucun service en ligne. Si vous avez un compte ElevenLabs, vous pouvez remplacer la voix du Mac pour « lis à partir de… » :
 
 ```json
 "elevenLabs": { "enabled": true, "voiceID": "JBFqnCBsd6RMkjVDRZzb", "model": "eleven_flash_v2_5" }
@@ -181,7 +151,7 @@ Règle : **la fenêtre au premier plan décide**.
 
 - Un éditeur de la liste `editors` est au premier plan et intègre l'assistant appelé : le micro s'ouvre **dans l'éditeur**.
 - Autre fenêtre au premier plan, ou panneau de l'assistant fermé dans l'éditeur : l'application de bureau prend le relais.
-- « Salut Jarvis » dans un éditeur vise `preferredAssistant`, sinon `defaultTarget`.
+- « Salut assistant » dans un éditeur vise `preferredAssistant`, sinon `defaultTarget`.
 
 ```json
 "editors": [{
@@ -218,8 +188,8 @@ launchctl kickstart -k gui/$(id -u)/io.github.voicewake
 | `dryRun` | essai à blanc : journalise la cible reconnue sans rien ouvrir, pour régler les phrases | `false` |
 | `wakeMaxWaitSeconds` | attente maximale du résultat définitif avant d'agir | `1.8` |
 | `echoCancellation` | annulation d'écho de macOS (expérimental : peut empêcher la reconnaissance de votre voix) | `false` |
-| `defaultTarget` | cible de « Salut Jarvis » hors application connue | `claude` |
-| `frontmostPhrases` | phrases visant l'application au premier plan | « salut jarvis »… |
+| `defaultTarget` | cible de « Salut assistant » hors application connue | `claude` |
+| `frontmostPhrases` | phrases visant l'application au premier plan | « salut assistant »… |
 | `sendPhrases`, `stopPhrases` | commandes d'envoi et d'arrêt pendant la dictée | voir l'exemple |
 | `sendSilenceSeconds` | silence requis après une commande | `1.2` |
 | `sendPauseBeforeSeconds` | pause requise avant une commande (`0` pour désactiver) | `0.6` |
@@ -273,7 +243,7 @@ Pour utiliser Whisper, SuperWhisper, MacWhisper, Wispr Flow, VoiceInk ou un outi
 ```
 
 - Ce raccourci remplace le micro de toutes les applications. `null` rétablit les micros intégrés.
-- Les phrases nominatives (« Dis Claude ») ouvrent l'application de bureau. Dans un éditeur, « Salut Jarvis » dicte dans le champ déjà actif.
+- Les phrases nominatives (« Dis Claude ») ouvrent l'application de bureau. Dans un éditeur, « Salut assistant » dicte dans le champ déjà actif.
 - « OK arrête » termine la dictée ; l'envoi se fait ensuite manuellement.
 - Outil à maintien : `"shortcut": "hold 3 fn"`, sans `stopShortcut`.
 - Dictée macOS par le menu Édition : `"useMacOSDictationMenu": true`, sans `stopShortcut`.

@@ -4,6 +4,11 @@ import Speech
 
 /// Transcrit le micro en local et transmet le texte partiel à `onText`.
 final class WakeWordDetector {
+    struct AudioActivity {
+        let lastBuffer: TimeInterval
+        let lastSpeech: TimeInterval
+    }
+
     /// (texte, définitif) : `true` quand le moteur a fini de corriger l'énoncé.
     var onText: ((String, Bool) -> Void)?
 
@@ -13,12 +18,19 @@ final class WakeWordDetector {
     private let audio = AudioListener()
     private let lock = NSLock()
     private var request: SFSpeechAudioBufferRecognitionRequest?
+    private var activity: AudioActivity?
     private var task: SFSpeechRecognitionTask?
     private var generation = 0
     private var rotateTimer: Timer?
     private var wanted = false
     private var observersInstalled = false
     private var waitedForModel = 0
+
+    var audioActivity: AudioActivity? {
+        lock.lock()
+        defer { lock.unlock() }
+        return activity
+    }
 
     init(config: Config, hints: [String]) throws {
         guard let r = SFSpeechRecognizer(locale: Locale(identifier: config.locale)) else {
@@ -70,7 +82,7 @@ final class WakeWordDetector {
         wanted = false
         rotateTimer?.invalidate()
         generation += 1
-        lock.lock(); let r = request; request = nil; lock.unlock()
+        lock.lock(); let r = request; request = nil; activity = nil; lock.unlock()
         r?.endAudio()
         task?.cancel()
         task = nil
@@ -88,7 +100,14 @@ final class WakeWordDetector {
         observersInstalled = true
         audio.onBuffer = { [weak self] buffer in
             guard let self else { return }
-            self.lock.lock(); let r = self.request; self.lock.unlock()
+            let level = self.config.continuousConversation == true ? Self.hasSpeechEnergy(buffer) : nil
+            self.lock.lock()
+            let r = self.request
+            if r != nil, let level {
+                let now = ProcessInfo.processInfo.systemUptime
+                self.activity = AudioActivity(lastBuffer: now, lastSpeech: level ? now : self.activity?.lastSpeech ?? 0)
+            }
+            self.lock.unlock()
             r?.append(buffer)
         }
         NotificationCenter.default.addObserver(
@@ -109,6 +128,7 @@ final class WakeWordDetector {
 
     private func restartAudio() {
         guard wanted else { return }
+        lock.lock(); activity = nil; lock.unlock()
         do {
             try audio.start()
         } catch {
@@ -118,6 +138,18 @@ final class WakeWordDetector {
         }
         startTask()
         log("En écoute (\(config.locale)).")
+    }
+
+    /// Énergie RMS d'un tampon micro. Un bruit persistant retarde l'envoi.
+    private static func hasSpeechEnergy(_ buffer: AVAudioPCMBuffer) -> Bool? {
+        guard let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return nil }
+        let frames = Int(buffer.frameLength)
+        var energy: Float = 0
+        for index in 0..<frames {
+            let sample = samples[index * buffer.stride]
+            energy += sample * sample
+        }
+        return energy / Float(frames) >= 0.000063 // environ -42 dBFS
     }
 
     // Une tâche de reconnaissance est limitée dans le temps : rotation toutes les 50 s.

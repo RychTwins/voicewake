@@ -90,12 +90,6 @@ struct ExternalDictation: Codable {
     var stopShortcut: Shortcut?
 }
 
-/// Commande vocale : une de ces phrases, dite en veille puis suivie d'un silence, lance `run` (shell).
-struct VoiceCommand: Codable {
-    var phrases: [String]
-    var run: String
-}
-
 struct Config: Codable {
     var locale: String
     var requireOnDevice: Bool
@@ -128,10 +122,8 @@ struct Config: Codable {
     var readResumePhrases: [String]?
     /// En veille : « fais la lecture » lance la lecture à voix haute de la dernière réponse de l'assistant au premier plan.
     var readAloudPhrases: [String]?
-    /// Conversation naturelle : après ce silence (s) en fin de dictée, le message est envoyé sans « ok envoie ». Absent = désactivé.
+    /// En conversation continue, durée du silence avant l'envoi (défaut 5 s, 0 pour désactiver).
     var autoSendSilenceSeconds: Double?
-    /// Jarvis annonce « J'ouvre la dictée avec … » avant d'ouvrir le micro (défaut false).
-    var jarvisAnnounce: Bool?
     /// « Lis à partir de <quelques mots du passage> » : le lecteur intégré lit depuis cet endroit.
     var readFromPhrases: [String]?
     /// Bandeau qui suit la lecture à voix haute des apps, mot en cours surligné (défaut false).
@@ -146,11 +138,7 @@ struct Config: Codable {
     var continuousConversation: Bool?
     /// Conversation continue : sans parole pendant ce délai, le micro est refermé (défaut 10 s).
     var continueSilenceSeconds: Double?
-    /// Commandes vocales → scripts. Seules les phrases listées ici peuvent lancer quelque chose.
-    var commands: [VoiceCommand]?
-    /// Dépôt utilisé par les routines Jarvis. Par défaut, le dossier d'installation de VoiceWake.
-    var jarvisProjectPath: String?
-    /// Voix ElevenLabs pour le lecteur intégré et les annonces de Jarvis (optionnel, désactivé par défaut).
+    /// Voix ElevenLabs pour le lecteur intégré (optionnel, désactivé par défaut).
     var elevenLabs: ElevenLabsSettings?
     var targets: [Target]
     /// Éditeurs de code avec assistants intégrés (prioritaires quand ils sont au premier plan).
@@ -188,11 +176,6 @@ struct Config: Codable {
                 throw ConfigError("\(t.id) : appName ou bundleID requis.")
             }
             guard !t.phrases.isEmpty else { throw ConfigError("\(t.id) : aucune phrase.") }
-        }
-        for c in commands ?? [] {
-            guard !c.phrases.isEmpty, !c.run.trimmingCharacters(in: .whitespaces).isEmpty else {
-                throw ConfigError("commands : chaque commande a besoin de phrases et de run.")
-            }
         }
         if let d = defaultTarget, !ids.contains(d) {
             throw ConfigError("defaultTarget inconnue : \(d)")

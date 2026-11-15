@@ -10,9 +10,9 @@
     "maxPauseMinutes": 30
   },
   "frontmostPhrases": [
-    "salut jarvis",
-    "dis jarvis",
-    "hey jarvis"
+    "salut assistant",
+    "dis assistant",
+    "hey assistant"
   ],
   "defaultTarget": "claude",
   "_noteEnvoi": "Pendant la dictée : finis par une phrase d'arrêt (couper le micro pour relire) ou d'envoi, puis ~1 s de silence. Liste vide = désactivé.",
@@ -305,29 +305,9 @@
   "showReadingProgress": false,
   "continuousConversation": false,
   "continueSilenceSeconds": 10,
-  "_noteConversationNaturelle": "Ajoutez \"autoSendSilenceSeconds\": 5 pour envoyer la dictée après 5 s de silence, sans « ok envoie ». \"jarvisAnnounce\": true fait annoncer Jarvis avant d'ouvrir le micro.",
-  "_noteCommandes": "Commandes vocales : en veille, une de ces phrases suivie d'un silence lance « run » (shell). Seules les phrases listées ici agissent. Gardez un mot d'amorce (« jarvis ») pour éviter les déclenchements en pleine conversation.",
-  "commands": [
-    {
-      "phrases": [
-        "jarvis ouvre safari"
-      ],
-      "run": "open -a Safari"
-    },
-    {
-      "phrases": [
-        "jarvis ouvre le terminal"
-      ],
-      "run": "open -a Terminal"
-    },
-    {
-      "phrases": [
-        "jarvis mets la musique"
-      ],
-      "run": "open -a Music"
-    }
-  ],
-  "_noteElevenLabs": "Optionnel : voix ElevenLabs pour « lis à partir de » et les annonces de Jarvis (le texte est alors envoyé à ElevenLabs). Clé dans ~/.config/voicewake/elevenlabs.env (ELEVENLABS_API_KEY=…), jamais ici.",
+  "autoSendSilenceSeconds": 5,
+  "_noteConversationNaturelle": "En conversation continue, l'envoi automatique attend le silence au micro. Réglez autoSendSilenceSeconds à 0 pour le désactiver.",
+  "_noteElevenLabs": "Optionnel : voix ElevenLabs pour « lis à partir de » (le texte est alors envoyé à ElevenLabs). Clé dans ~/.config/voicewake/elevenlabs.env (ELEVENLABS_API_KEY=…), jamais ici.",
   "elevenLabs": {
     "enabled": false,
     "voiceID": "JBFqnCBsd6RMkjVDRZzb",

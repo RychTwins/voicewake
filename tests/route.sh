@@ -42,50 +42,23 @@ expect_route 'Vas-y, envoie !' $'→ aucune cible\n→ phrase d\'envoi (pendant 
 expect_route 'Je vais envoyer le fichier demain' '→ aucune cible'
 expect_route 'Il faudrait que tu me dises comment on peut envoyer' '→ aucune cible'
 
-expect_route 'Jarvis, demande à Claude' '→ claude'
-expect_route 'Jarvis dis à Codex' '→ codex'
-expect_route 'Jarvis, demande à Gemini' '→ gemini'
-expect_route 'Jarvis ChatGPT' '→ chatgpt'
-expect_route 'Salut Jarvis, démarre Claude !' '→ claude'
-expect_route 'Salut Jarvis, démarre Codex' '→ codex'
-expect_route 'Salut Jarvis, démarre Gemini' '→ gemini'
-expect_route 'Salut Jarvis, démarre Claudette' '→ aucune cible'
-expect_route 'Salut Jarvis, état du dépôt' '→ routine : etat-du-depot'
 expect_route 'Claude' '→ aucune cible'
 expect_route 'Codex' '→ aucune cible'
 expect_route 'Gemini' '→ aucune cible'
 expect_route 'Demande à Claudette' '→ aucune cible'
-expect_route 'Ouvre Safari' '→ aucune cible'
-expect_route 'Jarvis, ouvre Safari !' '→ commande : open -a Safari'
-expect_route 'Jarvis ouvre Safari demain' '→ aucune cible'
-expect_route 'Il ouvre le terminal' '→ aucune cible'
-expect_route 'Jarvis, ouvre mon projet VoiceWake' '→ routine : ouvrir-voicewake'
-expect_route 'Jarvis, état du dépôt' '→ routine : etat-du-depot'
 expect_route 'Quel est l’état du dépôt ?' '→ aucune cible'
-expect_route 'Jarvis, demande à Claude' '→ claude'
-expect_route 'Jarvis, dis Codex' '→ codex'
-expect_route 'Jarvis, dis à Gemini' '→ gemini'
-expect_route 'Jarvis, demande à Chat GPT' '→ chatgpt'
-expect_route 'Jarvis, demande à ChatGPT' '→ chatgpt'
-expect_route 'Jarvis, dis Claudeville' '→ aucune cible'
-expect_route 'Jarvis dit que c’est bon' '→ aucune cible'
 expect_route 'Demande à Claude s’il vient' '→ aucune cible'
-expect_route 'Jarvis, ouvre Claude' '→ claude'
-expect_route 'Jarvis, état du dépôt s’il te plaît' '→ routine : etat-du-depot'
-expect_route 'Salut Jarvis, démarre Claude' '→ claude'
-expect_route 'Salut Jaris, lance Codex' '→ codex'
-expect_route 'Dis Jarvis, démarre Gemini maintenant' '→ gemini'
-expect_route 'Jarvis, lance la musique' '→ aucune cible'
-case "$("$binary" route 'Salut Jarvis' --config "$config")" in
+expect_route 'Jarvis, démarre Claude' '→ aucune cible'
+expect_route 'Jarvis, ouvre Safari' '→ aucune cible'
+case "$("$binary" route 'Salut assistant' --config "$config")" in
     '→ claude'|'→ codex'|'→ gemini'|'→ chatgpt'|'→ claude@vscode'|'→ codex@vscode')
         count=$((count + 1))
         ;;
     *)
-        printf 'Échec pour « Salut Jarvis » : aucune cible reconnue.\n' >&2
+        printf 'Échec pour « Salut assistant » : aucune cible reconnue.\n' >&2
         exit 1
         ;;
 esac
-expect_route 'Je dis Jarvis, état du dépôt' '→ aucune cible'
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -122,5 +95,23 @@ PY
 expect_route 'OK envoie' '→ aucune cible'
 expect_route 'OK arrête' $'→ aucune cible\n→ phrase d\'arrêt du micro (pendant une dictée)'
 expect_route 'OK stop' $'→ aucune cible\n→ phrase d\'arrêt du micro (pendant une dictée)'
+expect_route 'Attends, je réfléchis' '→ aucune cible'
+expect_route 'Garde le brouillon' '→ aucune cible'
+
+python3 - "$config" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+config = json.loads(path.read_text())
+config["continuousConversation"] = True
+path.write_text(json.dumps(config))
+PY
+
+expect_route 'Attends, je réfléchis !' $'→ aucune cible\n→ suspension de l\'envoi automatique'
+expect_route 'Garde le brouillon.' $'→ aucune cible\n→ phrase d\'arrêt du micro (pendant une dictée)'
+expect_route 'Explique pourquoi je dis attends je réfléchis' '→ aucune cible'
+expect_route 'Je garde le brouillon pour demain' '→ aucune cible'
 
 printf '%s scénarios de routage réussis.\n' "$count"

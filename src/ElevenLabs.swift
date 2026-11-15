@@ -2,7 +2,7 @@ import AVFoundation
 import Foundation
 
 /// Voix ElevenLabs (optionnelle, désactivée par défaut) : remplace la voix du Mac pour le lecteur intégré
-/// et les annonces de Jarvis. Le texte à dire est alors envoyé à api.elevenlabs.io.
+///. Le texte à dire est alors envoyé à api.elevenlabs.io.
 struct ElevenLabsSettings: Codable {
     var enabled: Bool?
     /// Identifiant de la voix (page « Voices » d'ElevenLabs).

@@ -18,83 +18,28 @@ struct Router {
 
     /// Mots soufflés au moteur pour mieux reconnaître les noms propres.
     var hints: [String] {
-        let routines = JarvisRoutine.allCases.flatMap { $0.phrases.map { "jarvis " + $0 } }
-        let assistants = config.targets.map { "salut jarvis démarre " + $0.id }
-        return Array(Set(config.targets.flatMap(\.phrases) + config.frontmostPhrases
-                         + (config.commands ?? []).flatMap(\.phrases) + routines + assistants + ["salut jarvis"]))
-    }
-
-    func jarvisAssistant(_ name: String) -> Target? {
-        let name = normalize(name)
-        if let target = config.targets.first(where: { normalize($0.id) == name }) { return target }
-        let matches = config.targets.filter { Jarvis.names(for: $0).contains(name) }
-        return matches.count == 1 ? matches.first : nil
+        let conversation = config.continuousConversation == true ? ["attends je réfléchis", "garde le brouillon"] : []
+        return Array(Set(config.targets.flatMap(\.phrases) + config.frontmostPhrases + conversation))
     }
 
     /// Vrai si le texte demande la lecture de la dernière réponse (« fais la lecture »).
     func containsReadAloudPhrase(_ text: String) -> Bool { containsAny(text, config.readAloudPhrases) }
 
-    /// « [Salut] Jarvis, <ordre> » en début de phrase. « Salut Jarvis » seul n'est pas un ordre :
-    /// c'est une phrase générale (assistant au premier plan).
-    func jarvis(_ text: String) -> JarvisAction? {
-        let words = normalize(text).split(separator: " ").map(String.init)
-        guard let i = words.firstIndex(where: Jarvis.wakeNames.contains), i + 1 < words.count,
-              i == 0 || (i == 1 && Jarvis.greetings.contains(words[0])) else { return nil }
-        let instruction = words[(i + 1)...].joined(separator: " ")
-        // Routine : la phrase exacte, ou suivie d'autres mots (« … s'il te plaît »).
-        if let routine = JarvisRoutine.allCases.first(where: { r in
-            r.phrases.contains { instruction == $0 || instruction.hasPrefix($0 + " ") }
-        }) {
-            return .routine(routine)
-        }
-        // « Jarvis Claude » : le nom seul suffit.
-        if let target = jarvisAssistant(instruction) { return .assistant(target) }
-        let start = Jarvis.startPrefixes.first(where: instruction.hasPrefix)
-        guard let prefix = start ?? Jarvis.assistantPrefixes.first(where: instruction.hasPrefix) else { return nil }
-        // « démarre Claude s'il te plaît » : le nom est au début de ce qui suit le verbe.
-        let name = instruction.dropFirst(prefix.count).split(separator: " ")
-        for n in stride(from: name.count, to: 0, by: -1) {
-            if let target = jarvisAssistant(name.prefix(n).joined(separator: " ")) { return .assistant(target) }
-        }
-        // Nom inconnu (« Jarvis dit que… ») : Jarvis se tait, ce n'était pas un ordre.
-        return nil
-    }
-
     /// Vrai si le texte est exactement une phrase d'activation (rien avant, rien après).
     func isWakePhrase(_ text: String) -> Bool {
         let n = normalize(text)
-        return targetPhrases.contains { $0.phrase == n } || frontmostPhrases.contains(n) || isJarvisGreeting(n)
+        return targetPhrases.contains { $0.phrase == n } || frontmostPhrases.contains(n)
     }
 
     func route(_ text: String) -> Target? {
-        let phrase = normalize(text)
-        if isJarvisGreeting(phrase) { return frontmostTarget() }
-        let n = " " + phrase + " "
+        let n = " " + normalize(text) + " "
         if let hit = targetPhrases.first(where: { n.contains(" " + $0.phrase + " ") }) {
             return config.target(id: hit.id)
         }
-        if frontmostPhrases.contains(where: { !isJarvisGreeting($0) && n.contains(" " + $0 + " ") }) {
+        if frontmostPhrases.contains(where: { n.contains(" " + $0 + " ") }) {
             return frontmostTarget()
         }
         return nil
-    }
-
-    private func isJarvisGreeting(_ phrase: String) -> Bool {
-        let words = phrase.split(separator: " ")
-        return words.count == 2 && Jarvis.greetings.contains(String(words[0])) &&
-            Jarvis.wakeNames.contains(String(words[1]))
-    }
-
-    /// Commande vocale dont une phrase termine la transcription (la plus longue), ou nil.
-    func command(_ text: String) -> VoiceCommand? {
-        let n = " " + normalize(text)
-        var best: (command: VoiceCommand, length: Int)?
-        for c in config.commands ?? [] {
-            for p in c.phrases.map(normalize) where !p.isEmpty && n.hasSuffix(" " + p) && p.count > (best?.length ?? 0) {
-                best = (c, p.count)
-            }
-        }
-        return best?.command
     }
 
     private var sendCommands: Set<String> {
@@ -109,11 +54,19 @@ struct Router {
     }
 
     /// Vrai si la transcription se termine par une phrase d'arrêt du micro.
-    func endsWithStopPhrase(_ text: String) -> Bool { endsWith(text, config.stopPhrases) }
+    func endsWithStopPhrase(_ text: String) -> Bool { endsWith(text, stopCommands) }
+
+    private var stopCommands: [String] {
+        (config.stopPhrases ?? []) + (config.continuousConversation == true ? ["garde le brouillon"] : [])
+    }
 
     func isStandaloneStop(_ text: String) -> Bool {
         let phrase = normalize(text)
-        return !phrase.isEmpty && (config.stopPhrases ?? []).map(normalize).contains(phrase)
+        return !phrase.isEmpty && stopCommands.map(normalize).contains(phrase)
+    }
+
+    func isThoughtPause(_ text: String) -> Bool {
+        config.continuousConversation == true && normalize(text) == "attends je reflechis"
     }
 
     /// Dernière phrase de `phrases` présente dans le texte, avec le mot qui la précède (texte normalisé).

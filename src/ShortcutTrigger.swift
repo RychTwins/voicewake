@@ -194,7 +194,11 @@ final class ShortcutTrigger {
     }
 
     /// Appelé quand une lecture lancée par VoiceWake se termine d'elle-même (ni pause ni interruption).
-    var onReadingFinished: ((Target) -> Void)?
+    var onReadingFinished: ((Target, DictationWindow) -> Void)?
+
+    func reopenDictation(_ target: Target, in window: DictationWindow, completion: @escaping (Bool) -> Void) {
+        send(target, in: window, systemShortcut: true, completion)
+    }
     private var readGeneration = 0
     /// Lecture à voix haute lancée par VoiceWake (cible et date), effacée à la demande suivante.
     private(set) var reading: (target: Target, since: Date)?
@@ -258,30 +262,43 @@ final class ShortcutTrigger {
 
     /// Lecture lancée : surveille le son de l'app et ne considère la lecture finie qu'après
     /// 3 s de silence continu (les pauses entre phrases ne lèvent pas la protection).
-    private func startReading(_ t: Target, app: NSRunningApplication) {
+    private func startReading(_ t: Target, app: NSRunningApplication, in window: DictationWindow? = nil) {
         reading = (t, Date())
+        let origin = window ?? Self.dictationWindow(for: t)
         let gen = readGeneration
         let bundle = t.bundleID ?? app.bundleIdentifier ?? ""
         DispatchQueue.global().async {
             var silentSince: Date?
+            var heardPlayback = false
+            let startedAt = ProcessInfo.processInfo.systemUptime
             while true {
                 usleep(500_000)
                 // Signal le plus fiable : le bouton de pause, visible seulement pendant la lecture (Claude).
                 // Sinon, le son de l'app.
                 let pauseLabels = t.pauseReadShortcut?.buttons ?? []
                 let playing = !pauseLabels.isEmpty
-                    ? !AXButtonPresser.all(pauseLabels, in: app).isEmpty
+                    ? !AXButtonPresser.all(pauseLabels, in: app, window: origin?.element).isEmpty
                     : (!bundle.isEmpty && MicMonitor.isOutputRunning(bundlePrefixes: [bundle]))
                 var done = false
-                if playing { silentSince = nil }
-                else if let s = silentSince { done = Date().timeIntervalSince(s) >= 3 }
-                else { silentSince = Date() }
+                if playing {
+                    heardPlayback = true
+                    silentSince = nil
+                } else if !heardPlayback {
+                    done = ProcessInfo.processInfo.systemUptime - startedAt >= 15
+                } else if let s = silentSince {
+                    done = Date().timeIntervalSince(s) >= 3
+                } else { silentSince = Date() }
                 let stop: Bool = DispatchQueue.main.sync {
                     guard gen == self.readGeneration, self.reading != nil else { return true }
                     if done {
                         self.reading = nil
-                        log("\(t.id) : lecture terminée.")
-                        DispatchQueue.main.async { self.onReadingFinished?(t) }
+                        log(heardPlayback ? "\(t.id) : lecture terminée." : "\(t.id) : lecture non confirmée.")
+                        if heardPlayback, let origin {
+                            DispatchQueue.main.async {
+                                guard gen == self.readGeneration else { return }
+                                self.onReadingFinished?(t, origin)
+                            }
+                        }
                     }
                     return done
                 }
@@ -303,6 +320,47 @@ final class ShortcutTrigger {
 
     private func readBusyLabels(_ target: Target) -> [String] {
         target.busyLabels ?? (target.bundleID == "com.openai.codex" ? ["Arrêter", "Stop"] : [])
+    }
+
+    /// Assistant sans lecture à voix haute (extension d'éditeur, ChatGPT) : la réponse est considérée finie
+    /// quand le texte de la fenêtre a changé puis n'a plus bougé pendant 6 s, sans indicateur « en cours ».
+    func whenAnswerDone(_ t: Target, in window: DictationWindow?, completion: @escaping () -> Void) {
+        guard let window, window.isFocused else { return }
+        let app = window.app
+        readGeneration += 1
+        let gen = readGeneration
+        let busy = readBusyLabels(t)
+        let timeout = t.readAloudTimeoutSeconds ?? 600
+        log("\(t.id) : attente de la fin de la réponse.")
+        DispatchQueue.global().async {
+            let start = Date()
+            var last: String?
+            var changed = false
+            var stableSince = Date()
+            while Date().timeIntervalSince(start) < timeout {
+                usleep(1_500_000)
+                guard DispatchQueue.main.sync(execute: { gen == self.readGeneration }) else { return }
+                guard window.isFocused else { return log("\(t.id) : attente annulée, fenêtre changée.") }
+                let text = AXButtonPresser.windowTexts(in: app).joined(separator: "\n")
+                if text != last {
+                    if last != nil { changed = true }
+                    last = text
+                    stableSince = Date()
+                    continue
+                }
+                if !busy.isEmpty, !AXButtonPresser.all(busy, in: app, window: window.element, anyRole: true).isEmpty {
+                    stableSince = Date()
+                    continue
+                }
+                guard changed, Date().timeIntervalSince(stableSince) >= 6 else { continue }
+                DispatchQueue.main.async {
+                    guard gen == self.readGeneration else { return }
+                    log("\(t.id) : réponse terminée.")
+                    completion()
+                }
+                return
+            }
+        }
     }
 
     func readAloudWhenDone(_ t: Target, in window: DictationWindow?, baseline: ReadBaseline?) {
@@ -342,7 +400,7 @@ final class ShortcutTrigger {
                     }
                     DispatchQueue.main.async {
                         guard gen == self.readGeneration, window.isFocused else { return }
-                        if ok { self.startReading(t, app: app) }
+                        if ok { self.startReading(t, app: app, in: window) }
                         log(ok ? "\(t.id) : lecture à voix haute lancée." : "\(t.id) : bouton de lecture introuvable.")
                     }
                     return
