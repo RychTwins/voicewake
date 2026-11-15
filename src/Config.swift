@@ -90,6 +90,12 @@ struct ExternalDictation: Codable {
     var stopShortcut: Shortcut?
 }
 
+/// Commande vocale : une de ces phrases, dite en veille puis suivie d'un silence, lance `run` (shell).
+struct VoiceCommand: Codable {
+    var phrases: [String]
+    var run: String
+}
+
 struct Config: Codable {
     var locale: String
     var requireOnDevice: Bool
@@ -110,13 +116,6 @@ struct Config: Codable {
     var sendPhrases: [String]?
     /// Pause minimale (s) avant « ok envoie » / « ok arrête » : évite l'envoi quand la phrase est citée en pleine phrase. 0 = désactivé.
     var sendPauseBeforeSeconds: Double?
-    /// Formes du verbe d'envoi : une courte phrase (≤ sendMaxWords mots, après une pause) qui se termine
-    /// par l'une d'elles envoie (« ok tu peux envoyer », « vas-y envoie »). Vide = désactivé.
-    var sendVerbs: [String]?
-    /// Longueur maximale de cette courte phrase (défaut 5 mots).
-    var sendMaxWords: Int?
-    /// Premier mot accepté pour cette courte phrase (« ok », « vas-y », « tu »…). Vide = tout premier mot.
-    var sendLeadWords: [String]?
     /// Phrases qui coupent seulement le micro (« ok arrête ») pour relire avant « ok envoie ».
     var stopPhrases: [String]?
     /// Silence après la phrase d'envoi ou d'arrêt avant d'agir (défaut 1,2 s).
@@ -127,6 +126,12 @@ struct Config: Codable {
     var readPausePhrases: [String]?
     /// Lecture en pause : reprise (« reprends la lecture »).
     var readResumePhrases: [String]?
+    /// En veille : « fais la lecture » lance la lecture à voix haute de la dernière réponse de l'assistant au premier plan.
+    var readAloudPhrases: [String]?
+    /// Conversation naturelle : après ce silence (s) en fin de dictée, le message est envoyé sans « ok envoie ». Absent = désactivé.
+    var autoSendSilenceSeconds: Double?
+    /// Jarvis annonce « J'ouvre la dictée avec … » avant d'ouvrir le micro (défaut false).
+    var jarvisAnnounce: Bool?
     /// « Lis à partir de <quelques mots du passage> » : le lecteur intégré lit depuis cet endroit.
     var readFromPhrases: [String]?
     /// Bandeau qui suit la lecture à voix haute des apps, mot en cours surligné (défaut false).
@@ -137,6 +142,16 @@ struct Config: Codable {
     var readerVoice: String?
     /// Après « ok arrête », durée d'attente de « ok envoie » (défaut 180 s).
     var reviewSeconds: Double?
+    /// Conversation continue : à la fin de la lecture de la réponse, le micro de l'assistant se rouvre (défaut false).
+    var continuousConversation: Bool?
+    /// Conversation continue : sans parole pendant ce délai, le micro est refermé (défaut 10 s).
+    var continueSilenceSeconds: Double?
+    /// Commandes vocales → scripts. Seules les phrases listées ici peuvent lancer quelque chose.
+    var commands: [VoiceCommand]?
+    /// Dépôt utilisé par les routines Jarvis. Par défaut, le dossier d'installation de VoiceWake.
+    var jarvisProjectPath: String?
+    /// Voix ElevenLabs pour le lecteur intégré et les annonces de Jarvis (optionnel, désactivé par défaut).
+    var elevenLabs: ElevenLabsSettings?
     var targets: [Target]
     /// Éditeurs de code avec assistants intégrés (prioritaires quand ils sont au premier plan).
     var editors: [Editor]?
@@ -173,6 +188,11 @@ struct Config: Codable {
                 throw ConfigError("\(t.id) : appName ou bundleID requis.")
             }
             guard !t.phrases.isEmpty else { throw ConfigError("\(t.id) : aucune phrase.") }
+        }
+        for c in commands ?? [] {
+            guard !c.phrases.isEmpty, !c.run.trimmingCharacters(in: .whitespaces).isEmpty else {
+                throw ConfigError("commands : chaque commande a besoin de phrases et de run.")
+            }
         }
         if let d = defaultTarget, !ids.contains(d) {
             throw ConfigError("defaultTarget inconnue : \(d)")

@@ -10,6 +10,9 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
     private(set) var isActive = false   // en lecture ou en pause
     private(set) var isPaused = false
     var voiceName: String?
+    /// Extrait ElevenLabs en cours (sinon, voix du Mac).
+    private var clip: AudioClip?
+    private var generation = 0
     var onFinish: (() -> Void)?
 
     override init() {
@@ -26,10 +29,36 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
         // Large fenêtre vers l'arrière : la transcription du micro a plusieurs secondes de retard.
         let ns = text as NSString
         guard ns.length > 0 else { return "" }
+        // Voix ElevenLabs : position estimée d'après l'avancement de l'audio.
+        if let clip { position = Int(clip.progress * Double(ns.length)) }
         let p = min(max(0, position), ns.length)
         let lo = max(0, p - 700), hi = min(ns.length, p + 80)
         guard hi > lo else { return "" }
         return ns.substring(with: NSRange(location: lo, length: hi - lo))
+    }
+
+    /// Lit avec la voix ElevenLabs si elle est activée, sinon (ou en cas d'échec) avec la voix du Mac.
+    func speak(_ text: String, config: Config) {
+        guard config.elevenLabs?.enabled == true else { return speak(text, locale: config.locale) }
+        stop()
+        self.text = text
+        position = 0
+        isActive = true
+        isPaused = false
+        generation += 1
+        let gen = generation
+        ElevenLabs.synthesize(text, config: config) { [weak self] data in
+            guard let self, gen == self.generation, self.isActive else { return }
+            guard let data, let clip = AudioClip(data) else { return self.speak(text, locale: config.locale) }
+            self.clip = clip
+            clip.onFinish = { [weak self] in
+                guard let self, gen == self.generation, self.isActive else { return }
+                self.isActive = false
+                self.clip = nil
+                self.onFinish?()
+            }
+            if !self.isPaused { clip.play() }
+        }
     }
 
     func speak(_ text: String, locale: String) {
@@ -46,12 +75,14 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
 
     func pause() {
         guard isActive, !isPaused else { return }
+        clip?.pause()
         synth.pauseSpeaking(at: .word)
         isPaused = true
     }
 
     func resume() {
         guard isActive, isPaused else { return }
+        clip?.play()
         synth.continueSpeaking()
         isPaused = false
     }
@@ -60,6 +91,9 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
         guard isActive else { return }
         isActive = false
         isPaused = false
+        generation += 1
+        clip?.stop()
+        clip = nil
         synth.stopSpeaking(at: .immediate)
         overlay.hide()
     }

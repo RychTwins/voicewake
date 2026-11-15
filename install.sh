@@ -56,6 +56,9 @@ EOF
 echo "→ Compilation"
 mkdir -p "$APP/Contents/MacOS" "$(dirname "$LINK")" "$CONFIG_DIR" "$(dirname "$PLIST")" "$(dirname "$LOG")"
 cp "$ROOT/packaging/Info.plist" "$APP/Contents/Info.plist"
+mkdir -p "$APP/Contents/Resources/scripts"
+cp "$ROOT"/scripts/{ouvrir-voicewake,etat-du-depot}.sh "$APP/Contents/Resources/scripts/"
+printf '%s' "$ROOT" > "$APP/Contents/Resources/project-path"
 swiftc -target "$(uname -m)-apple-macosx13.0" -O -swift-version 5 "$ROOT"/src/*.swift -o "$BIN" \
   -framework AppKit -framework AVFoundation -framework Speech -framework CoreAudio
 

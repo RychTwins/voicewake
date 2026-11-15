@@ -9,6 +9,10 @@ enum AXButtonPresser {
         value(AXUIElementCreateApplication(app.processIdentifier), kAXFocusedWindowAttribute)
     }
 
+    static func currentWindow(in app: NSRunningApplication) -> AXUIElement? {
+        focusedWindow(in: app) ?? value(AXUIElementCreateApplication(app.processIdentifier), kAXMainWindowAttribute)
+    }
+
     static func focusedTextField(in app: NSRunningApplication) -> AXUIElement? {
         let root = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetAttributeValue(root, "AXManualAccessibility" as CFString, kCFBooleanTrue)
@@ -180,7 +184,7 @@ enum AXButtonPresser {
         // Libellé exact uniquement : évite de cliquer un message qui contient le mot.
         for w in windows {
             if let (el, name) = find(w, wanted, depth: 0),
-               window == nil || (isFrontmost(app) && focusedWindow(in: app).map { CFEqual($0, w) } == true),
+               window == nil || (isFrontmost(app) && currentWindow(in: app).map { CFEqual($0, w) } == true),
                AXUIElementPerformAction(el, kAXPressAction as CFString) == .success {
                 return name
             }
@@ -189,20 +193,21 @@ enum AXButtonPresser {
     }
 
     /// Tous les éléments (boutons ou autres rôles si `anyRole`) dont le libellé exact est dans `labels`, dans l'ordre de l'arbre.
-    static func all(_ labels: [String], in app: NSRunningApplication, anyRole: Bool = false) -> [AXUIElement] {
+    static func all(_ labels: [String], in app: NSRunningApplication, window: AXUIElement? = nil, anyRole: Bool = false) -> [AXUIElement] {
         let root = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetAttributeValue(root, "AXManualAccessibility" as CFString, kCFBooleanTrue)
         let wanted = labels.map { $0.lowercased() }
         var out: [AXUIElement] = []
-        for w in (value(root, kAXWindowsAttribute) as [AXUIElement]?) ?? [] {
+        for w in window.map({ [$0] }) ?? ((value(root, kAXWindowsAttribute) as [AXUIElement]?) ?? []) {
             collect(w, wanted, anyRole: anyRole, depth: 0, into: &out)
         }
         return out
     }
 
     /// Presse le dernier élément trouvé (ex. « Lire à voix haute » du message le plus récent).
-    static func pressLast(_ labels: [String], in app: NSRunningApplication) -> Bool {
-        guard let last = all(labels, in: app).last else { return false }
+    static func pressLast(_ labels: [String], in app: NSRunningApplication, window: AXUIElement) -> Bool {
+        guard let last = all(labels, in: app, window: window).last,
+              isFrontmost(app), currentWindow(in: app).map({ CFEqual($0, window) }) == true else { return false }
         return AXUIElementPerformAction(last, kAXPressAction as CFString) == .success
     }
 
@@ -239,7 +244,8 @@ enum AXButtonPresser {
 
     private static func find(_ e: AXUIElement, _ wanted: [String], depth: Int) -> (AXUIElement, String)? {
         if depth > 120 { return nil }
-        if let role: String = value(e, kAXRoleAttribute), roles.contains(role) {
+        if let role: String = value(e, kAXRoleAttribute), roles.contains(role),
+           (value(e, kAXEnabledAttribute) as Bool?) != false {
             for name in [value(e, kAXTitleAttribute), value(e, kAXDescriptionAttribute)].compactMap({ $0 as String? }) {
                 if wanted.contains(name.lowercased().trimmingCharacters(in: .whitespaces)) { return (e, name) }
             }

@@ -4,17 +4,24 @@ import ApplicationServices
 final class ShortcutTrigger {
     private(set) var externalDictationWindow: DictationWindow?
 
+    struct ReadBaseline {
+        let buttons: [AXUIElement]
+        let busy: Bool
+    }
+
     struct DictationWindow {
         let app: NSRunningApplication
         let element: AXUIElement
 
-        /// L'app de la dictée est toujours au premier plan (sa fenêtre active peut changer en cours de route).
-        var isFocused: Bool { AXButtonPresser.isFrontmost(app) }
+        var isFocused: Bool {
+            AXButtonPresser.isFrontmost(app) &&
+                AXButtonPresser.currentWindow(in: app).map { CFEqual($0, element) } == true
+        }
     }
 
     static func dictationWindow(for target: Target) -> DictationWindow? {
-        guard let app = NSWorkspace.shared.frontmostApplication, matches(app, target),
-              let window = AXButtonPresser.focusedWindow(in: app) else { return nil }
+        guard let app = runningApp(for: target), AXButtonPresser.isFrontmost(app),
+              let window = AXButtonPresser.currentWindow(in: app) else { return nil }
         return DictationWindow(app: app, element: window)
     }
 
@@ -162,32 +169,32 @@ final class ShortcutTrigger {
 
     /// Envoi vocal : coupe le micro de l'app (en rejouant son raccourci), attend le texte, puis envoie.
     func submit(_ t: Target, in window: DictationWindow?, stopFirst: Bool, completion: @escaping (Bool) -> Void) {
-        guard let window else { completion(false); return }
+        guard let window, window.isFocused else {
+            log("\(t.id) : envoi annulé, fenêtre de dictée indisponible.")
+            completion(false)
+            return
+        }
         var submitTarget = t
         submitTarget.shortcut = t.submitShortcut ?? (try! Shortcut(spec: "return"))
         let finish = {
-            DispatchQueue.main.asyncAfter(deadline: .now() + (stopFirst ? (t.submitDelaySeconds ?? 1.5) : 0)) {
-                self.send(submitTarget, in: window, completion)
+            // Pour un bouton, l'état actif du composeur remplace l'attente fixe.
+            let usesKeys = submitTarget.shortcut.buttons.isEmpty
+            let delay = stopFirst && usesKeys ? (t.submitDelaySeconds ?? 1.5) : 0
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                self.send(submitTarget, patience: 6, in: window, retryInterval: 0.15, completion)
             }
         }
         if stopFirst && (t.stopBeforeSubmit ?? true) {
             stopDictation(t, in: window) { stopped in
-                if stopped { return finish() }
-                // Bouton d'arrêt introuvable : si le bouton d'ouverture du micro est là, l'app a déjà
-                // coupé sa dictée d'elle-même (silence) ; on peut envoyer.
-                let open = t.shortcut.buttons
-                if !open.isEmpty, !AXButtonPresser.all(open, in: window.app).isEmpty {
-                    log("\(t.id) : micro déjà fermé par l'application, envoi.")
-                    finish()
-                } else {
-                    completion(false)
-                }
+                if stopped { finish() } else { completion(false) }
             }
         } else {
             finish()
         }
     }
 
+    /// Appelé quand une lecture lancée par VoiceWake se termine d'elle-même (ni pause ni interruption).
+    var onReadingFinished: ((Target) -> Void)?
     private var readGeneration = 0
     /// Lecture à voix haute lancée par VoiceWake (cible et date), effacée à la demande suivante.
     private(set) var reading: (target: Target, since: Date)?
@@ -222,6 +229,27 @@ final class ShortcutTrigger {
         }
     }
 
+    /// « Fais la lecture » : clique tout de suite le dernier bouton de lecture à voix haute de l'assistant.
+    func readAloudNow(_ t: Target, completion: @escaping (Bool) -> Void) {
+        guard let labels = t.readAloudShortcut?.buttons, !labels.isEmpty, let app = Self.runningApp(for: t),
+              let window = AXButtonPresser.currentWindow(in: app) else { return completion(false) }
+        readGeneration += 1
+        let gen = readGeneration
+        pausedReading = nil
+        DispatchQueue.global().async {
+            var ok = AXButtonPresser.pressLast(labels, in: app, window: window)
+            if let item = t.readAloudMenuItem {
+                usleep(500_000)
+                ok = AXButtonPresser.pressMenuItem(item, in: app)
+            }
+            DispatchQueue.main.async {
+                guard gen == self.readGeneration else { return }
+                if ok { self.startReading(t, app: app) }
+                completion(ok)
+            }
+        }
+    }
+
     /// Cible dont VoiceWake a lancé la lecture il y a moins de `within` secondes.
     func readingTarget(within seconds: TimeInterval = 900) -> Target? {
         guard let r = reading, Date().timeIntervalSince(r.since) < seconds else { return nil }
@@ -250,7 +278,11 @@ final class ShortcutTrigger {
                 else { silentSince = Date() }
                 let stop: Bool = DispatchQueue.main.sync {
                     guard gen == self.readGeneration, self.reading != nil else { return true }
-                    if done { self.reading = nil; log("\(t.id) : lecture terminée.") }
+                    if done {
+                        self.reading = nil
+                        log("\(t.id) : lecture terminée.")
+                        DispatchQueue.main.async { self.onReadingFinished?(t) }
+                    }
                     return done
                 }
                 if stop { return }
@@ -260,34 +292,56 @@ final class ShortcutTrigger {
 
     /// Attend la fin de la réponse, puis clique le dernier bouton de lecture à voix haute.
     /// Fin = indicateur « en cours » (busyLabels) disparu, ou nouveau bouton de lecture, stable 2 s.
-    func readAloudWhenDone(_ t: Target) {
+    func readAloudBaseline(_ t: Target, in window: DictationWindow?) -> ReadBaseline? {
+        guard let labels = t.readAloudShortcut?.buttons, !labels.isEmpty, let window, window.isFocused else { return nil }
+        let busy = readBusyLabels(t)
+        return ReadBaseline(
+            buttons: AXButtonPresser.all(labels, in: window.app, window: window.element),
+            busy: !busy.isEmpty && !AXButtonPresser.all(busy, in: window.app, window: window.element, anyRole: true).isEmpty
+        )
+    }
+
+    private func readBusyLabels(_ target: Target) -> [String] {
+        target.busyLabels ?? (target.bundleID == "com.openai.codex" ? ["Arrêter", "Stop"] : [])
+    }
+
+    func readAloudWhenDone(_ t: Target, in window: DictationWindow?, baseline: ReadBaseline?) {
         guard let labels = t.readAloudShortcut?.buttons, !labels.isEmpty,
-              let app = Self.runningApp(for: t) else { return }
+              let window, window.isFocused, let baseline else { return }
+        let app = window.app
         readGeneration += 1
         let gen = readGeneration
-        let busy = t.busyLabels ?? []
+        let busy = readBusyLabels(t)
         let timeout = t.readAloudTimeoutSeconds ?? 600
-        let initial = AXButtonPresser.all(labels, in: app).count
         log("\(t.id) : lecture à voix haute à la fin de la réponse.")
         DispatchQueue.global().async {
             let start = Date()
-            var sawBusy = false
+            var sawBusy = baseline.busy
             var stable = 0
             while Date().timeIntervalSince(start) < timeout {
-                usleep(1_000_000)
-                guard gen == self.readGeneration, !app.isTerminated else { return }
-                let isBusy = !busy.isEmpty && !AXButtonPresser.all(busy, in: app, anyRole: true).isEmpty
+                usleep(500_000)
+                guard DispatchQueue.main.sync(execute: { gen == self.readGeneration }) else { return }
+                guard window.isFocused else {
+                    log("\(t.id) : lecture automatique annulée, fenêtre changée.")
+                    return
+                }
+                let isBusy = !busy.isEmpty && !AXButtonPresser.all(busy, in: app, window: window.element, anyRole: true).isEmpty
                 if isBusy { sawBusy = true; stable = 0; continue }
-                let grew = AXButtonPresser.all(labels, in: app).count > initial
-                stable = (sawBusy || grew) ? stable + 1 : 0
-                if stable >= 2 {
-                    var ok = AXButtonPresser.pressLast(labels, in: app)
+                let buttons = AXButtonPresser.all(labels, in: app, window: window.element)
+                let newest = buttons.last
+                let newButton = newest.map { latest in !baseline.buttons.contains(where: { CFEqual($0, latest) }) } ?? false
+                stable = (newButton || (sawBusy && newest != nil)) ? stable + 1 : 0
+                if stable >= 4 {
+                    guard DispatchQueue.main.sync(execute: { gen == self.readGeneration }) else { return }
+                    var ok = AXButtonPresser.pressLast(labels, in: app, window: window.element)
                     if let item = t.readAloudMenuItem {
                         // Le bouton ouvre un menu (certaines apps signalent un échec alors que le menu s'ouvre).
                         usleep(500_000)
+                        guard window.isFocused, DispatchQueue.main.sync(execute: { gen == self.readGeneration }) else { return }
                         ok = AXButtonPresser.pressMenuItem(item, in: app)
                     }
                     DispatchQueue.main.async {
+                        guard gen == self.readGeneration, window.isFocused else { return }
                         if ok { self.startReading(t, app: app) }
                         log(ok ? "\(t.id) : lecture à voix haute lancée." : "\(t.id) : bouton de lecture introuvable.")
                     }
@@ -313,7 +367,11 @@ final class ShortcutTrigger {
         _ t: Target, in window: DictationWindow?, external: ExternalDictation? = nil,
         completion: @escaping (Bool) -> Void
     ) {
-        guard let window else { completion(false); return }
+        guard let window, window.isFocused else {
+            log("\(t.id) : arrêt annulé, fenêtre de dictée indisponible.")
+            completion(false)
+            return
+        }
         var stopTarget = t
         if let external {
             guard let stop = external.stopShortcut else { completion(false); return }
@@ -323,7 +381,35 @@ final class ShortcutTrigger {
         }
         // Le raccourci de la Dictée macOS doit passer par le système.
         let usesOpeningShortcut = stopTarget.shortcut.spec == t.shortcut.spec
-        send(stopTarget, in: window, systemShortcut: external != nil || usesOpeningShortcut, completion)
+        let verifyMicrophone = external == nil && t.bundleID == "com.openai.codex" &&
+            MicMonitor.isInputRunning(pid: window.app.processIdentifier, bundle: t.bundleID) == true
+        send(stopTarget, in: window, systemShortcut: external != nil || usesOpeningShortcut) { stopped in
+            if stopped && verifyMicrophone {
+                DispatchQueue.global().async {
+                    let deadline = ProcessInfo.processInfo.systemUptime + 4
+                    var closed = false
+                    repeat {
+                        guard window.isFocused else { break }
+                        closed = MicMonitor.isInputRunning(pid: window.app.processIdentifier, bundle: t.bundleID) == false
+                        if !closed { usleep(100_000) }
+                    } while !closed && ProcessInfo.processInfo.systemUptime < deadline
+                    let confirmed = closed
+                    DispatchQueue.main.async {
+                        if !confirmed { log("\(t.id) : fermeture du micro non confirmée.") }
+                        completion(confirmed && window.isFocused)
+                    }
+                }
+                return
+            }
+            let open = t.shortcut.buttons
+            if !stopped, external == nil, !open.isEmpty, window.isFocused,
+               !AXButtonPresser.all(open, in: window.app, window: window.element).isEmpty {
+                log("\(t.id) : micro déjà fermé par l'application.")
+                completion(true)
+            } else {
+                completion(stopped)
+            }
+        }
     }
 
     /// Met l'app au premier plan et attend qu'elle le soit (3 s max).
@@ -371,7 +457,8 @@ final class ShortcutTrigger {
     /// `patience` : durée max (s) de recherche du bouton.
     private func send(
         _ t: Target, patience: Double = 3, in window: DictationWindow? = nil,
-        systemShortcut: Bool = false, foregroundApp: NSRunningApplication? = nil, _ completion: ((Bool) -> Void)?
+        systemShortcut: Bool = false, foregroundApp: NSRunningApplication? = nil,
+        retryInterval: Double = 0.5, _ completion: ((Bool) -> Void)?
     ) {
         let s = t.shortcut
         let allowed = { AXIsProcessTrusted() && (window?.isFocused ?? foregroundApp.map(AXButtonPresser.isFrontmost) ?? true) }
@@ -390,11 +477,11 @@ final class ShortcutTrigger {
         DispatchQueue.global().async {
             var pressed: String?
             // L'application vient peut-être de s'ouvrir : essais toutes les 0,5 s.
-            for attempt in 0..<max(1, Int(patience * 2)) where pressed == nil {
-                if attempt > 0 { usleep(500_000) }
+            for attempt in 0..<max(1, Int(ceil(patience / retryInterval))) where pressed == nil {
+                if attempt > 0 { usleep(UInt32(retryInterval * 1_000_000)) }
                 guard allowed() else { break }
                 if let app = window?.app ?? Self.runningApp(for: t) {
-                    pressed = AXButtonPresser.press(s.buttons, in: app)
+                    pressed = AXButtonPresser.press(s.buttons, in: app, window: window?.element)
                 }
             }
             DispatchQueue.main.async {

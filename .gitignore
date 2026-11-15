@@ -3,3 +3,5 @@
 .DS_Store
 windows/bin/
 windows/obj/
+.env.local
+.env

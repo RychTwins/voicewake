@@ -10,9 +10,9 @@
     "maxPauseMinutes": 30
   },
   "frontmostPhrases": [
-    "salut assistant",
-    "dis assistant",
-    "hey assistant"
+    "salut jarvis",
+    "dis jarvis",
+    "hey jarvis"
   ],
   "defaultTarget": "claude",
   "_noteEnvoi": "Pendant la dictée : finis par une phrase d'arrêt (couper le micro pour relire) ou d'envoi, puis ~1 s de silence. Liste vide = désactivé.",
@@ -23,7 +23,9 @@
     "ok stop",
     "okay stop",
     "okay arrête",
-    "c'est bon arrête"
+    "c'est bon arrête",
+    "annule",
+    "laisse tomber"
   ],
   "sendPhrases": [
     "ok envoie",
@@ -33,9 +35,8 @@
     "c'est bon envoie",
     "vas-y envoie",
     "envoie le message",
-    "ok on voit",
-    "okay on voit",
-    "ok on voie"
+    "ok tu peux envoyer",
+    "c'est bon tu peux envoyer"
   ],
   "sendSilenceSeconds": 1.2,
   "reviewSeconds": 180,
@@ -275,33 +276,10 @@
     "reprend la lecture",
     "continue la lecture",
     "relance la lecture",
-    "reprends"
+    "continue ta lecture",
+    "reprends ta lecture"
   ],
   "echoCancellation": false,
-  "sendVerbs": [
-    "envoie",
-    "envoies",
-    "envoyer",
-    "envoyez",
-    "envoyé",
-    "envoi",
-    "envoyons"
-  ],
-  "sendMaxWords": 5,
-  "sendLeadWords": [
-    "ok",
-    "okay",
-    "vas-y",
-    "allez",
-    "bon",
-    "c'est bon",
-    "alors",
-    "maintenant",
-    "tu",
-    "et",
-    "oui",
-    "voilà"
-  ],
   "readFromPhrases": [
     "lis à partir de",
     "lit à partir de",
@@ -313,5 +291,46 @@
     "reprends à partir de",
     "reprends la lecture à partir de"
   ],
-  "showReadingProgress": false
+  "_noteLecture": "En veille : une phrase de readAloudPhrases (« fais la lecture ») lit la dernière réponse de l'assistant au premier plan.",
+  "readAloudPhrases": [
+    "fais la lecture",
+    "fais moi la lecture",
+    "lis la réponse",
+    "lis moi la réponse",
+    "lis à haute voix",
+    "lecture à haute voix",
+    "relis la réponse",
+    "recommence la lecture"
+  ],
+  "showReadingProgress": false,
+  "continuousConversation": false,
+  "continueSilenceSeconds": 10,
+  "_noteConversationNaturelle": "Ajoutez \"autoSendSilenceSeconds\": 5 pour envoyer la dictée après 5 s de silence, sans « ok envoie ». \"jarvisAnnounce\": true fait annoncer Jarvis avant d'ouvrir le micro.",
+  "_noteCommandes": "Commandes vocales : en veille, une de ces phrases suivie d'un silence lance « run » (shell). Seules les phrases listées ici agissent. Gardez un mot d'amorce (« jarvis ») pour éviter les déclenchements en pleine conversation.",
+  "commands": [
+    {
+      "phrases": [
+        "jarvis ouvre safari"
+      ],
+      "run": "open -a Safari"
+    },
+    {
+      "phrases": [
+        "jarvis ouvre le terminal"
+      ],
+      "run": "open -a Terminal"
+    },
+    {
+      "phrases": [
+        "jarvis mets la musique"
+      ],
+      "run": "open -a Music"
+    }
+  ],
+  "_noteElevenLabs": "Optionnel : voix ElevenLabs pour « lis à partir de » et les annonces de Jarvis (le texte est alors envoyé à ElevenLabs). Clé dans ~/.config/voicewake/elevenlabs.env (ELEVENLABS_API_KEY=…), jamais ici.",
+  "elevenLabs": {
+    "enabled": false,
+    "voiceID": "JBFqnCBsd6RMkjVDRZzb",
+    "model": "eleven_flash_v2_5"
+  }
 }

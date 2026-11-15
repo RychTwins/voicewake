@@ -10,6 +10,7 @@ Usage : voicewake [commande] [--config chemin]
   record <cible> enregistre le raccourci que tu tapes au clavier
   set <cible> "raccourci"   ex. "ctrl+shift+v", "double option", "capslock", "hold 1 fn"
   route "texte"  montre quelle cible une phrase déclencherait
+  run-routine <ouvrir-voicewake|etat-du-depot|demander> [assistant]
 """
 
 var args = Array(CommandLine.arguments.dropFirst())
@@ -177,12 +178,34 @@ case "highlight":
 case "route":
     let text = args.dropFirst().joined(separator: " ")
     let router = Router(config: config)
+    if let action = router.jarvis(text) { print("→ \(action.description)"); break }
+    if let c = router.command(text) { print("→ commande : \(c.run)"); break }
     print(router.route(text).map { "→ \($0.id)" } ?? "→ aucune cible")
-    if config.externalDictation == nil && (router.endsWithSendPhrase(text) || router.isShortSendCommand(text)) {
+    if config.externalDictation == nil && router.isSendCommand(text) {
         print("→ phrase d'envoi (pendant une dictée)")
     } else if (config.externalDictation == nil || config.externalDictation?.stopShortcut != nil) && router.endsWithStopPhrase(text) {
         print("→ phrase d'arrêt du micro (pendant une dictée)")
     }
+
+case "run-routine":
+    let router = Router(config: config)
+    let action: JarvisAction
+    if args.count == 2, let routine = JarvisRoutine(rawValue: args[1]) {
+        action = .routine(routine)
+    } else if args.count >= 3, args[1] == "demander" {
+        action = router.jarvisAssistant(args.dropFirst(2).joined(separator: " ")).map(JarvisAction.assistant) ?? .unknownAssistant
+    } else {
+        print(usage)
+        exit(1)
+    }
+    if config.dryRun == true {
+        print("[essai] → \(action.description)")
+        break
+    }
+    Jarvis.perform(action, config: config, router: router, trigger: ShortcutTrigger()) { _, success in
+        exit(success ? 0 : 1)
+    }
+    app.run()
 
 default:
     print(usage)

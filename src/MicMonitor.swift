@@ -8,20 +8,35 @@ enum MicMonitor {
 
     /// Un autre processus que VoiceWake capte-t-il le micro ? (macOS 14+, sinon repli sur isAnyInputInUse.)
     static func isInputInUseByOtherProcess() -> Bool {
+        guard let ids = audioProcesses() else { return isAnyInputInUse() }
+        let me = getpid()
+        return ids.contains { id in
+            processValue(id, kAudioProcessPropertyPID, as: pid_t.self) != me &&
+            processValue(id, kAudioProcessPropertyIsRunningInput, as: UInt32.self) ?? 0 != 0
+        }
+    }
+
+    /// Capture par l'app cible, y compris ses processus auxiliaires Electron.
+    static func isInputRunning(pid: pid_t, bundle: String?) -> Bool? {
+        audioProcesses()?.contains { id in
+            guard (processValue(id, kAudioProcessPropertyIsRunningInput, as: UInt32.self) ?? 0) != 0 else { return false }
+            if processValue(id, kAudioProcessPropertyPID, as: pid_t.self) == pid { return true }
+            guard let bundle, !bundle.isEmpty, let actual = bundleID(of: id) else { return false }
+            return actual == bundle || actual.hasPrefix(bundle + ".")
+        }
+    }
+
+    private static func audioProcesses() -> [AudioObjectID]? {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyProcessObjectList,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain)
         let system = AudioObjectID(kAudioObjectSystemObject)
         var size: UInt32 = 0
-        guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr else { return isAnyInputInUse() }
+        guard AudioObjectGetPropertyDataSize(system, &address, 0, nil, &size) == noErr else { return nil }
         var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
-        guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &ids) == noErr else { return isAnyInputInUse() }
-        let me = getpid()
-        return ids.contains { id in
-            processValue(id, kAudioProcessPropertyPID, as: pid_t.self) != me &&
-            processValue(id, kAudioProcessPropertyIsRunningInput, as: UInt32.self) ?? 0 != 0
-        }
+        guard AudioObjectGetPropertyData(system, &address, 0, nil, &size, &ids) == noErr else { return nil }
+        return ids
     }
 
     /// Une app dont le bundle ID commence par l'un des préfixes joue-t-elle du son ? (lecture à voix haute, mode vocal)
