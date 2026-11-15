@@ -107,9 +107,11 @@ final class Coordinator {
         if let r = trigger.readingTarget() { return r }
         if Date().timeIntervalSince(detectedReader.at) < 2 { return detectedReader.target }
         var found: Target?
-        if let t = router.frontmostTarget(), let pause = t.pauseReadShortcut?.buttons, !pause.isEmpty,
-           let app = ShortcutTrigger.runningApp(for: t), AXButtonPresser.isFrontmost(app),
-           !AXButtonPresser.all(pause, in: app).isEmpty { found = t }
+        // L'app au premier plan seulement si c'est une cible (pas de recherche dans les éditeurs ici).
+        if let front = NSWorkspace.shared.frontmostApplication,
+           let t = config.targets.first(where: { ShortcutTrigger.matches(front, $0) }),
+           let pause = t.pauseReadShortcut?.buttons, !pause.isEmpty,
+           !AXButtonPresser.all(pause, in: front).isEmpty { found = t }
         detectedReader = (found, Date())
         return found
     }
