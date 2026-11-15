@@ -183,7 +183,7 @@ Par défaut, VoiceWake n'appelle aucun service en ligne. Si vous avez un compte 
 "elevenLabs": { "enabled": true, "voiceID": "JBFqnCBsd6RMkjVDRZzb", "model": "eleven_flash_v2_5" }
 ```
 
-VoiceWake demande à ElevenLabs l'instant où chaque caractère est prononcé : la voix ne déclenche donc pas ses propres commandes. La lecture s'arrête à la fin de la réponse citée, sans lire les boutons de l'application.
+La lecture démarre en une seconde environ : une première phrase courte est synthétisée seule, le reste pendant qu'elle est lue. Les derniers extraits restent en mémoire (relire un passage ne consomme pas de quota). Essai : `voicewake lecteur "un texte"`. VoiceWake demande à ElevenLabs l'instant où chaque caractère est prononcé : la voix ne déclenche donc pas ses propres commandes. La lecture s'arrête à la fin de la réponse citée, sans lire les boutons de l'application.
 
 Placez la clé dans `~/.config/voicewake/elevenlabs.env` (une ligne `ELEVENLABS_API_KEY=…`, droits `600`), jamais dans la configuration ni dans le dépôt. Le texte à dire est alors envoyé à ElevenLabs et compte dans votre quota. En cas d'erreur, la voix du Mac prend le relais. Claude, Gemini et Codex gardent leur propre voix.
 

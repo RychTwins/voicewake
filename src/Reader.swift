@@ -9,10 +9,26 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
     private(set) var isActive = false   // en lecture ou en pause
     private(set) var isPaused = false
     var voiceName: String?
-    /// Extrait ElevenLabs en cours (sinon, voix du Mac).
-    private var clip: AudioClip?
-    /// Instants de prononciation de chaque unité UTF-16 de `text` (ElevenLabs), ou nil (position estimée).
-    private var timings: [Double]?
+    /// Voix ElevenLabs : le texte est découpé en segments (le premier, court, démarre vite ; les suivants
+    /// sont synthétisés pendant qu'il est lu). Vide avec la voix du Mac.
+    private final class Segment {
+        let start: Int, length: Int, text: String
+        var clip: AudioClip?
+        /// Instants de prononciation de chaque unité UTF-16 du segment, ou nil (position estimée).
+        var timings: [Double]?
+        var failed = false
+        init(start: Int, length: Int, text: String) { self.start = start; self.length = length; self.text = text }
+    }
+    private var segments: [Segment] = []
+    private var current = 0
+    /// Le segment en cours attend son audio.
+    private var waiting = false
+    /// Déplacement demandé dans un segment pas encore prêt (indice local).
+    private var pendingLocalSeek: Int?
+    private var usesElevenLabs: Bool { !segments.isEmpty }
+    /// Extrait ElevenLabs en cours.
+    private var clip: AudioClip? { segments.indices.contains(current) ? segments[current].clip : nil }
+    private var timings: [Double]? { segments.indices.contains(current) ? segments[current].timings : nil }
     private var generation = 0
     var onFinish: (() -> Void)?
 
@@ -44,7 +60,7 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
         // heures, pauses) ; on regarde donc bien plus loin devant, pour que la voix ne déclenche jamais
         // ses propres commandes. Voix du Mac ou alignement ElevenLabs : position exacte.
         var ahead = 80
-        if clip != nil {
+        if usesElevenLabs {
             updateClipPosition()
             ahead = timings == nil ? 500 : 150
         }
@@ -65,44 +81,109 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
         isPaused = false
         generation += 1
         let gen = generation
-        ElevenLabs.synthesize(text, config: config) { [weak self] speech in
-            guard let self, gen == self.generation, self.isActive else { return }
-            guard let speech, let clip = AudioClip(speech.audio) else { return self.speak(text, locale: config.locale) }
-            self.clip = clip
-            self.timings = speech.timings
-            clip.rate = Float(self.rate)
-            clip.onFinish = { [weak self] in
-                guard let self, gen == self.generation, self.isActive else { return }
-                self.isActive = false
-                self.endClip()
-                self.onFinish?()
+        let ns = text as NSString
+        segments = Self.segmentRanges(in: ns).map { Segment(start: $0.location, length: $0.length, text: ns.substring(with: $0)) }
+        current = 0
+        waiting = true
+        // Tous les segments sont demandés en même temps : la lecture commence dès que le premier est prêt.
+        for (i, seg) in segments.enumerated() {
+            ElevenLabs.synthesize(seg.text, config: config) { [weak self] speech in
+                guard let self, gen == self.generation, self.isActive, self.usesElevenLabs else { return }
+                if let speech, let clip = AudioClip(speech.audio) {
+                    seg.clip = clip
+                    seg.timings = speech.timings
+                    clip.rate = Float(self.rate)
+                    clip.onFinish = { [weak self] in self?.segmentFinished(i, gen) }
+                } else {
+                    seg.failed = true
+                }
+                if i == self.current, self.waiting { self.startCurrent() }
             }
-            if !self.isPaused { clip.play() }
         }
+    }
+
+    /// Lance le segment en cours s'il est prêt ; voix du Mac à partir de là s'il a échoué.
+    private func startCurrent() {
+        let seg = segments[current]
+        if seg.failed {
+            let from = seg.start + (pendingLocalSeek ?? 0)
+            endClip()
+            if isPaused { resumeFrom = from; position = from } else { speakMac(from: from) }
+            return
+        }
+        guard let clip = seg.clip else { waiting = true; return }
+        waiting = false
+        log("Lecteur intégré : segment \(current + 1) sur \(segments.count).")
+        if let local = pendingLocalSeek { seekClip(seg, local); pendingLocalSeek = nil }
+        if !isPaused { clip.play() }
+    }
+
+    private func segmentFinished(_ i: Int, _ gen: Int) {
+        guard gen == generation, isActive, usesElevenLabs, i == current else { return }
+        if current + 1 < segments.count {
+            current += 1
+            segments[current].clip?.seek(to: 0) // déjà joué avant un retour en arrière : repartir du début
+            startCurrent()
+        } else {
+            isActive = false
+            endClip()
+            onFinish?()
+        }
+    }
+
+    private func seekClip(_ seg: Segment, _ local: Int) {
+        guard let clip = seg.clip else { return }
+        if let t = seg.timings, t.count == seg.length, local < seg.length { clip.seek(to: t[max(0, local)]) }
+        else if seg.length > 0 { clip.seek(to: clip.duration * Double(local) / Double(seg.length)) }
     }
 
     /// Position dans `text` d'après l'audio ElevenLabs : exacte avec l'alignement, sinon proportionnelle.
     private func updateClipPosition() {
-        guard let clip else { return }
-        let length = (text as NSString).length
-        guard let timings, timings.count == length, length > 0 else {
-            position = Int(clip.progress * Double(length))
+        guard segments.indices.contains(current) else { return }
+        let seg = segments[current]
+        guard let clip = seg.clip else { position = seg.start + (pendingLocalSeek ?? 0); return }
+        guard let timings = seg.timings, timings.count == seg.length, seg.length > 0 else {
+            position = seg.start + Int(clip.progress * Double(seg.length))
             return
         }
         // Dernier caractère dont la prononciation a commencé (recherche dichotomique).
         let now = clip.currentTime
-        var lo = 0, hi = length - 1
+        var lo = 0, hi = seg.length - 1
         while lo < hi {
             let mid = (lo + hi + 1) / 2
             if timings[mid] <= now { lo = mid } else { hi = mid - 1 }
         }
-        position = lo
+        position = seg.start + lo
     }
 
     private func endClip() {
-        clip?.stop()
-        clip = nil
-        timings = nil
+        for seg in segments { seg.clip?.stop() }
+        segments = []
+        current = 0
+        waiting = false
+        pendingLocalSeek = nil
+    }
+
+    /// Segments à synthétiser : un premier court (une ou deux phrases, ~300 caractères au plus) pour démarrer
+    /// vite, puis des blocs d'au plus ~1 500 caractères, coupés en fin de phrase (sinon entre deux mots).
+    static func segmentRanges(in ns: NSString, firstMax: Int = 300, restMax: Int = 1500) -> [NSRange] {
+        guard ns.length > 0 else { return [] }
+        let starts = sentenceStarts(in: ns)
+        var out: [NSRange] = []
+        var from = 0
+        while from < ns.length {
+            let limit = out.isEmpty ? firstMax : restMax
+            if ns.length - from <= limit { out.append(NSRange(location: from, length: ns.length - from)); break }
+            // Dernier début de phrase dans la limite (en laissant au moins 60 caractères au segment).
+            var cut = starts.last(where: { $0 > from + 60 && $0 <= from + limit })
+            if cut == nil {
+                cut = wordStart(in: ns, at: from + limit)
+                if cut! <= from { cut = from + limit }
+            }
+            out.append(NSRange(location: from, length: cut! - from))
+            from = cut!
+        }
+        return out
     }
 
     func speak(_ text: String, locale: String) {
@@ -132,7 +213,7 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
 
     func pause() {
         guard isActive, !isPaused else { return }
-        clip?.pause()
+        clip?.pause() // segment pas encore prêt : il ne démarrera pas tant que la lecture est en pause
         synth.pauseSpeaking(at: .word)
         isPaused = true
     }
@@ -140,7 +221,7 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
     func resume() {
         guard isActive, isPaused else { return }
         isPaused = false
-        if let clip { return clip.play() }
+        if usesElevenLabs { clip?.play(); return } // pas encore prêt : démarrera à son arrivée
         if let from = resumeFrom { speakMac(from: from) } else { synth.continueSpeaking() }
     }
 
@@ -164,7 +245,10 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
         let next = min(max(faster ? rate * Self.rateStep : rate / Self.rateStep, Self.minRate), Self.maxRate)
         guard abs(next - rate) > 0.001 else { return nil }
         rate = next
-        if let clip { clip.rate = Float(rate); return rate }
+        if usesElevenLabs {
+            for seg in segments { seg.clip?.rate = Float(rate) }
+            return rate
+        }
         // Voix du Mac : la vitesse d'un énoncé est fixe ; on relit depuis le début du mot en cours.
         let start = Self.wordStart(in: text as NSString, at: position)
         if isPaused { stopMac(resumeAt: start) } else { speakMac(from: start) }
@@ -176,7 +260,7 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
     @discardableResult
     func skipSentence(forward: Bool) -> Bool {
         guard isActive else { return false }
-        if clip != nil { updateClipPosition() }
+        if usesElevenLabs { updateClipPosition() }
         guard let target = Self.sentenceTarget(in: text as NSString, from: position, forward: forward) else { return false }
         seek(to: target)
         return true
@@ -184,10 +268,19 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
 
     private func seek(to index: Int) {
         position = index
-        if let clip {
-            let length = (text as NSString).length
-            if let timings, timings.count == length, index < length { clip.seek(to: timings[index]) }
-            else if length > 0 { clip.seek(to: clip.duration * Double(index) / Double(length)) }
+        if usesElevenLabs {
+            let i = segments.lastIndex(where: { $0.start <= index }) ?? 0
+            let local = index - segments[i].start
+            if i != current { clip?.pause(); current = i }
+            let seg = segments[i]
+            if let c = seg.clip {
+                waiting = false
+                seekClip(seg, local)
+                if !isPaused { c.play() }
+            } else {
+                pendingLocalSeek = local
+                if seg.failed { startCurrent() } else { waiting = true }
+            }
             return
         }
         if isPaused { stopMac(resumeAt: index) } else { speakMac(from: index) }

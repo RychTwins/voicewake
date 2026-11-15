@@ -40,6 +40,31 @@ struct ReaderTests {
         check(PassageFinder.passage(tokens, from: 2) == ["Cause", ":", "voilà", "fin."], "lecture arrêtée à la fin de la réponse")
         check(PassageFinder.passage(tokens, from: 7) == ["Tu", "refais", "le", "test", "?"], "dernier bloc sans marque")
         check(PassageFinder.passage(tokens, from: 2, maxWords: 2) == ["Cause", ":"], "limite de mots")
+        // Segments ElevenLabs : un premier court, puis des blocs coupés en fin de phrase, sans trou ni recouvrement.
+        let short = "Une seule phrase courte." as NSString
+        check(Reader.segmentRanges(in: short) == [NSRange(location: 0, length: short.length)], "texte court : un seul segment")
+        let sentence = "Voici une phrase de test assez ordinaire qui fait environ quatre-vingts caractères. "
+        let long = String(repeating: sentence, count: 60) as NSString
+        let parts = Reader.segmentRanges(in: long)
+        check(parts.count >= 3, "texte long : plusieurs segments")
+        check(parts[0].length <= 300 && parts[0].length >= 60, "premier segment court (démarrage rapide)")
+        check(parts.dropFirst().allSatisfy { $0.length <= 1500 }, "segments suivants de 1 500 caractères au plus")
+        check(zip(parts, parts.dropFirst()).allSatisfy { $0.location + $0.length == $1.location } && parts.last.map { $0.location + $0.length } == long.length,
+              "segments contigus, tout le texte couvert")
+        check(parts.dropLast().allSatisfy { long.substring(with: $0).hasSuffix(". ") }, "coupés en fin de phrase")
+        let words = String(repeating: "mot ", count: 200) as NSString
+        check(Reader.segmentRanges(in: words).first.map { words.substring(with: $0).hasSuffix(" ") } == true, "sans ponctuation : coupé entre deux mots")
+
+        // Cache audio ElevenLabs.
+        let settings = ElevenLabsSettings(enabled: true, voiceID: "v", model: nil, keyFile: nil)
+        let k1 = ElevenLabs.cacheKey("bonjour", settings, locale: "fr-FR")
+        check(k1 != ElevenLabs.cacheKey("bonjour", ElevenLabsSettings(enabled: true, voiceID: "w", model: nil, keyFile: nil), locale: "fr-FR"),
+              "clé du cache : dépend de la voix")
+        ElevenLabs.store(ElevenLabs.Speech(audio: Data([1]), timings: nil), key: k1)
+        check(ElevenLabs.cached(k1)?.audio == Data([1]), "extrait relu depuis le cache")
+        for i in 0..<ElevenLabs.cacheLimit { ElevenLabs.store(ElevenLabs.Speech(audio: Data([2]), timings: nil), key: "k\(i)") }
+        check(ElevenLabs.cached(k1) == nil, "cache limité : les plus anciens sont oubliés")
+
         // Navigation par phrases.
         let story = "Première phrase ici. Deuxième phrase un peu plus longue ! Troisième ?\nQuatrième ligne." as NSString
         let sentenceStarts = Reader.sentenceStarts(in: story)

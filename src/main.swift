@@ -238,6 +238,20 @@ case "barre":
         print(e.kind == .project ? "▸ \(e.title)" : "    \(e.title)")
     }
 
+case "lecteur":
+    // voicewake lecteur "texte" : lit le texte avec le lecteur intégré (ElevenLabs si activé), comme « lis à partir de ».
+    let text = args.dropFirst().joined(separator: " ")
+    guard !text.isEmpty else { print("Usage : voicewake lecteur \"texte\""); exit(1) }
+    let reader = Reader()
+    reader.voiceName = config.readerVoice
+    var over = false
+    reader.onFinish = { over = true }
+    let began = Date()
+    reader.speak(text, config: config)
+    if args.contains("--vite") { RunLoop.main.run(until: Date().addingTimeInterval(0.1)); reader.changeRate(faster: true); reader.changeRate(faster: true); reader.changeRate(faster: true) }
+    while !over { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
+    print(String(format: "Lecture terminée en %.1f s.", Date().timeIntervalSince(began)))
+
 case "sons", "sounds":
     // Fait entendre les sons de confirmation, dans l'ordre, avec leur signification.
     let meaning: [Feedback.Event: String] = [

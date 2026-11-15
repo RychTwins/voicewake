@@ -36,8 +36,28 @@ enum ElevenLabs {
         let timings: [Double]?
     }
 
+    /// Cache en mémoire des derniers extraits (relire un passage ne consomme pas de quota).
+    private static var cache: [String: Speech] = [:]
+    private static var cacheOrder: [String] = []
+    static let cacheLimit = 24
+
+    static func cacheKey(_ text: String, _ s: ElevenLabsSettings, locale: String) -> String {
+        [s.voiceID, s.model ?? "eleven_flash_v2_5", String(locale.prefix(2)), text].joined(separator: "\u{1F}")
+    }
+
+    static func cached(_ key: String) -> Speech? { cache[key] }
+
+    static func store(_ speech: Speech, key: String) {
+        if cache[key] == nil { cacheOrder.append(key) }
+        cache[key] = speech
+        while cacheOrder.count > cacheLimit { cache[cacheOrder.removeFirst()] = nil }
+    }
+
     /// Audio MP3 du texte, ou nil (désactivé, clé absente, erreur réseau). Rappel sur la file principale.
     static func synthesize(_ text: String, config: Config, completion: @escaping (Speech?) -> Void) {
+        if let s = config.elevenLabs, s.enabled == true, let hit = cached(cacheKey(text, s, locale: config.locale)) {
+            return DispatchQueue.main.async { completion(hit) }
+        }
         guard let s = config.elevenLabs, s.enabled == true, let key = apiKey(s),
               let id = s.voiceID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
               let url = URL(string: "https://api.elevenlabs.io/v1/text-to-speech/\(id)/with-timestamps?output_format=mp3_44100_128")
@@ -53,7 +73,10 @@ enum ElevenLabs {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             let speech = status == 200 ? data.flatMap { parse($0, text: text) } : nil
             DispatchQueue.main.async {
-                if let speech { return completion(speech) }
+                if let speech {
+                    store(speech, key: cacheKey(text, s, locale: config.locale))
+                    return completion(speech)
+                }
                 log("ElevenLabs indisponible (\(error?.localizedDescription ?? "code \(status)")) : voix du Mac.")
                 completion(nil)
             }
