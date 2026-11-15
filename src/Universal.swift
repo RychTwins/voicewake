@@ -26,7 +26,9 @@ enum Universal {
         "move", "transfer", "close",
     ]
 
-    static let defaultConfirmPhrases = ["oui", "je confirme", "confirme", "oui vas y", "oui confirme"]
+    /// Confirmation volontairement explicite : un simple « oui » (fréquent dans une conversation ou une lecture)
+    /// ne suffit jamais.
+    static let defaultConfirmPhrases = ["je confirme", "oui je confirme", "confirme l action"]
     static let defaultCancelPhrases = ["non", "annule", "laisse tomber", "non merci"]
     /// Délai pour confirmer une action sensible.
     static let confirmSeconds: TimeInterval = 8

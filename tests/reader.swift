@@ -179,7 +179,8 @@ struct ReaderTests {
               "liste blanche : éditeurs oui, app quelconque non")
 
         // Confirmation vocale.
-        check(Universal.answer("Oui", config: config) == .confirm, "oui : confirme")
+        check(Universal.answer("Je confirme", config: config) == .confirm, "je confirme : confirme")
+        check(Universal.answer("oui", config: config) == nil, "un simple oui ne confirme jamais")
         check(Universal.answer("non", config: config) == .cancel, "non : annule")
         check(Universal.answer("oui mais non", config: config) == nil, "énoncé plus long : ni oui ni non")
         check(Universal.confirmationPrompt("Supprimer la conversation", config: config) == "Confirmer « Supprimer la conversation » ?", "question avec le libellé")

@@ -179,7 +179,14 @@ final class Coordinator {
         if announcer.isSpeaking { return true } // c'est la question qu'on entend
         confirmWork?.cancel()
         guard let answer = Universal.answer(text, config: config) else { return false }
-        // Réponse stable (résultat définitif ou rien de plus pendant 0,9 s) : « oui mais non » n'est pas un oui.
+        // Pendant une lecture à voix haute, la réponse pourrait venir de la voix : jamais de confirmation.
+        if answer == .confirm, reader.isActive || currentReader() != nil {
+            Feedback.play(.ignored)
+            log("Confirmation ignorée : lecture à voix haute en cours.")
+            return true
+        }
+        // Confirmer : résultat définitif du moteur seulement. Annuler : dès que la réponse est stable (0,9 s).
+        if answer == .confirm, !isFinal { return true }
         let work = DispatchWorkItem { [weak self] in
             guard let self, let p = self.pendingConfirmation else { return }
             self.pendingConfirmation = nil
