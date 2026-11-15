@@ -222,14 +222,23 @@ enum AXButtonPresser {
         guard isFrontmost(app) else { return false }
         AXUIElementPerformAction(el, "AXScrollToVisible" as CFString)
         usleep(300_000)
-        var p: CFTypeRef?, sz: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(el, kAXPositionAttribute as CFString, &p) == .success,
-              AXUIElementCopyAttributeValue(el, kAXSizeAttribute as CFString, &sz) == .success,
-              let p, let sz, CFGetTypeID(p) == AXValueGetTypeID(), CFGetTypeID(sz) == AXValueGetTypeID() else { return false }
-        var origin = CGPoint.zero, size = CGSize.zero
-        guard AXValueGetValue(p as! AXValue, .cgPoint, &origin), AXValueGetValue(sz as! AXValue, .cgSize, &size),
-              size.width > 2, size.height > 2 else { return false }
-        let point = CGPoint(x: origin.x + size.width / 2, y: origin.y + size.height / 2)
+        func rect(_ e: AXUIElement) -> CGRect? {
+            var p: CFTypeRef?, sz: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(e, kAXPositionAttribute as CFString, &p) == .success,
+                  AXUIElementCopyAttributeValue(e, kAXSizeAttribute as CFString, &sz) == .success,
+                  let p, let sz, CFGetTypeID(p) == AXValueGetTypeID(), CFGetTypeID(sz) == AXValueGetTypeID() else { return nil }
+            var origin = CGPoint.zero, size = CGSize.zero
+            guard AXValueGetValue(p as! AXValue, .cgPoint, &origin), AXValueGetValue(sz as! AXValue, .cgSize, &size),
+                  size.width > 2, size.height > 2 else { return nil }
+            return CGRect(origin: origin, size: size)
+        }
+        /// Centre de l'élément, seulement si l'app est devant et que le point est dans sa fenêtre active.
+        func target() -> CGPoint? {
+            guard isFrontmost(app), let r = rect(el), let window = currentWindow(in: app), let w = rect(window) else { return nil }
+            let point = CGPoint(x: r.midX, y: r.midY)
+            return w.contains(point) ? point : nil
+        }
+        guard let point = target() else { return false }
         let back = CGEvent(source: nil)?.location
         let source = CGEventSource(stateID: .hidSystemState)
         func post(_ type: CGEventType, _ at: CGPoint) {
@@ -237,6 +246,11 @@ enum AXButtonPresser {
         }
         post(.mouseMoved, point)
         usleep(250_000) // le survol fait apparaître la barre d'actions du message
+        // Rien n'a bougé pendant l'attente (autre app passée devant, défilement) : sinon on ne clique pas.
+        guard let again = target(), abs(again.x - point.x) < 2, abs(again.y - point.y) < 2 else {
+            if let back { post(.mouseMoved, back) }
+            return false
+        }
         post(.leftMouseDown, point)
         usleep(60_000)
         post(.leftMouseUp, point)
