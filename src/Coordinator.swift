@@ -50,6 +50,7 @@ final class Coordinator {
         detector.requestPermissions { [weak self] granted in
             guard granted, let self else { exit(1) }
             self.detector.start()
+            self.startHintRefresh()
             let names = self.config.targets.map(\.id).joined(separator: ", ")
             log("VoiceWake prêt. Cibles : \(names).")
         }
@@ -123,6 +124,55 @@ final class Coordinator {
         else if case .open? = NavCommands.match(text, target: nil, config: config) { wait = 3 }
         else if case .newSessionIn? = NavCommands.match(text, target: nil, config: config) { wait = 3 }
         DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: work)
+    }
+
+    // MARK: Indices de reconnaissance
+
+    /// Au plus ce nombre d'indices (au-delà, le moteur d'Apple en tire moins de profit).
+    static let maxHints = 100
+    private var hintTimer: Timer?
+
+    /// Met à jour les indices toutes les 60 s : noms de projets et de conversations de l'app au premier plan
+    /// (« ouvre VoxTV » est alors bien mieux compris), puis phrases d'activation et commandes.
+    private func startHintRefresh() {
+        refreshHints()
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in self?.refreshHints() }
+        RunLoop.main.add(timer, forMode: .common)
+        hintTimer = timer
+    }
+
+    private func refreshHints() {
+        // Pas pendant une dictée ou une lecture : la lecture de l'arbre d'accessibilité prend un instant.
+        guard active == nil, !reader.isActive else { return }
+        var names: [String] = []
+        if let t = router.frontmostTarget(), let app = ShortcutTrigger.runningApp(for: t), AXButtonPresser.isFrontmost(app) {
+            let entries = AXButtonPresser.sidebarEntries(in: app)
+            names += entries.filter { $0.kind == .project }.map(\.title)
+            names += AXButtonPresser.menuBarItems(under: NavCommands.conversationMenus, in: app).map(\.title)
+        }
+        let hints = Self.hints(base: router.hints, names: names, config: config, target: router.frontmostTarget())
+        if hints != detector.hints {
+            detector.hints = hints
+            if config.debug { log("Indices de reconnaissance : \(hints.count).") }
+        }
+    }
+
+    /// Ordre de priorité : phrases d'activation, « ouvre <projet> » et noms, puis commandes. Sans doublon.
+    static func hints(base: [String], names: [String], config: Config, target: Target?) -> [String] {
+        var out: [String] = []
+        var seen = Set<String>()
+        func add(_ s: String) {
+            let key = normalize(s)
+            guard !key.isEmpty, out.count < maxHints, seen.insert(key).inserted else { return }
+            out.append(s)
+        }
+        base.forEach(add)
+        for n in names.prefix(30) where n.count <= 60 { add("ouvre \(n)"); add(n) }
+        let commands = target.map(NavCommands.commands(for:)) ?? []
+        (commands.flatMap(\.phrases) + AppCommand.allCases.flatMap { $0.phrases(config) }
+            + (config.readPausePhrases ?? []) + (config.readResumePhrases ?? []) + (config.readFromPhrases ?? [])
+            + (config.sendPhrases ?? [])).forEach(add)
+        return out
     }
 
     private let announcer = Announcer()

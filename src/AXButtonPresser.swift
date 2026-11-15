@@ -13,6 +13,59 @@ enum AXButtonPresser {
         focusedWindow(in: app) ?? value(AXUIElementCreateApplication(app.processIdentifier), kAXMainWindowAttribute)
     }
 
+    enum ConversationIdentity: Equatable {
+        case route(String)
+        case anchor(AXUIElement, String)
+    }
+
+    /// Ne retient ni le texte du brouillon ni la réponse en cours de génération.
+    static func conversationIdentity(in window: AXUIElement, bundleID: String?) -> ConversationIdentity? {
+        let supported = ["com.anthropic.claudefordesktop", "com.openai.codex", "com.google.GeminiMacOS"]
+        guard let bundleID, supported.contains(bundleID) else { return nil }
+        let windowTitle: String = value(window, kAXTitleAttribute) ?? ""
+        var remaining = 1800
+        func find(in element: AXUIElement, depth: Int, inOutline: Bool) -> ConversationIdentity? {
+            guard remaining > 0, depth < 45 else { return nil }
+            remaining -= 1
+            let role: String? = value(element, kAXRoleAttribute)
+            if role == "AXMenuBar" { return nil }
+            switch bundleID {
+            case "com.anthropic.claudefordesktop":
+                if role == "AXWebArea",
+                   let url: URL = value(element, kAXURLAttribute),
+                   let id = claudeConversationID(url) { return .route(id) }
+            case "com.google.GeminiMacOS":
+                if inOutline, role == "AXButton",
+                   (value(element, kAXSelectedAttribute) as Bool?) == true,
+                   let title: String = value(element, kAXDescriptionAttribute), !title.isEmpty {
+                    return .anchor(element, title)
+                }
+            case "com.openai.codex":
+                // Le document Electron a une URL fixe. Le premier message du chat et le titre
+                // de sa fenêtre donnent ensemble un repère qui survit à l'ajout d'une réponse.
+                if role == "AXHeading", !windowTitle.isEmpty,
+                   let title: String = value(element, kAXTitleAttribute),
+                   ["vous avez dit", "you said"].contains(normalize(title)) {
+                    return .anchor(element, windowTitle)
+                }
+            default: break
+            }
+            for child in (value(element, kAXChildrenAttribute) as [AXUIElement]?) ?? [] {
+                if let result = find(in: child, depth: depth + 1, inOutline: inOutline || role == "AXOutline") { return result }
+            }
+            return nil
+        }
+        return find(in: window, depth: 0, inOutline: false)
+    }
+
+    static func claudeConversationID(_ url: URL) -> String? {
+        let path = url.pathComponents
+        guard url.host == "claude.ai", path.count == 3,
+              ["chat", "code", "epitaxy"].contains(path[1]),
+              let id = path.last, UUID(uuidString: String(id.suffix(36))) != nil else { return nil }
+        return id
+    }
+
     static func focusedTextField(in app: NSRunningApplication) -> AXUIElement? {
         let root = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetAttributeValue(root, "AXManualAccessibility" as CFString, kCFBooleanTrue)
@@ -327,6 +380,24 @@ enum AXButtonPresser {
                AXUIElementPerformAction(hit.element, kAXPressAction as CFString) == .success { return hit.title }
         }
         return nil
+    }
+
+    /// Options actives des menus de la barre de menus dont le titre est dans `tops` (ex. « Discussions »).
+    static func menuBarItems(under tops: [String], in app: NSRunningApplication) -> [(title: String, element: AXUIElement)] {
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        guard let bar: AXUIElement = value(root, kAXMenuBarAttribute) else { return [] }
+        let wanted = Set(tops.map { $0.lowercased() })
+        var out: [(title: String, element: AXUIElement)] = []
+        for top in (value(bar, kAXChildrenAttribute) as [AXUIElement]?) ?? []
+        where (value(top, kAXTitleAttribute) as String?).map({ wanted.contains($0.lowercased()) }) == true {
+            for menu in (value(top, kAXChildrenAttribute) as [AXUIElement]?) ?? [] {
+                for item in (value(menu, kAXChildrenAttribute) as [AXUIElement]?) ?? []
+                where (value(item, kAXEnabledAttribute) as Bool?) != false {
+                    if let t: String = value(item, kAXTitleAttribute), !t.isEmpty { out.append((t, item)) }
+                }
+            }
+        }
+        return out
     }
 
     /// Entrée de la barre latérale de l'app (Claude : projets, sessions, navigation).

@@ -137,6 +137,10 @@ Claude au premier plan, en veille. Chaque phrase se dit seule (une phrase qui le
 
 Les noms tolèrent les petites différences (« vox tv » ↔ VoxTV, « le projet equality erp »). Voir ce que « ouvre … » peut viser : `voicewake barre claude`. Essayer sans parler : `voicewake dis claude "ouvre voxtv"`. Autres applications : ajoutez `voiceCommands` à la cible, par exemple `[{"phrases": ["nouveau projet"], "menu": ["Nouveau projet…"]}]` (libellés exacts des menus ou des boutons).
 
+**Codex et Gemini** ont aussi leurs commandes, avec les libellés de leurs menus : « conversation précédente / suivante », « page précédente », « onglet suivant », « nouveau projet », « nouveau chat éphémère » (Codex) ; « toutes les discussions », « discussion temporaire », « modèle suivant », « mini chat », « actualise la page » (Gemini) ; et pour les deux « ouvre la recherche », « ouvre les paramètres », barre latérale, zoom. Chez Gemini, « Ouvre <discussion> » cherche aussi dans le menu « Discussions » (conversations récentes).
+
+**Reconnaissance des noms** : toutes les 60 s, VoiceWake donne au moteur vocal les noms des projets et des conversations de l'app au premier plan, avec les phrases de commande (100 au plus) : « ouvre Equality Holding » est bien mieux compris.
+
 ### Navigation du lecteur intégré
 
 Pendant « Lis à partir de … » (voix ElevenLabs ou voix du Mac) :

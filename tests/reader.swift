@@ -131,6 +131,26 @@ struct ReaderTests {
         check(best("inconnu") == nil, "aucun résultat")
         check(best("equality holding", [.newSession]) == "Nouvelle session dans Equality Holding", "bouton nouvelle session du projet")
 
+        // Codex et Gemini : commandes de leurs menus.
+        func navFor(_ id: String, _ t: String) -> String {
+            guard let target = config.target(id: id), case let .command(c)? = NavCommands.match(t, target: target, config: config) else { return "-" }
+            return (c.menu ?? []).first ?? ""
+        }
+        check(navFor("codex", "conversation précédente") == "Élément précédent de la barre latérale", "Codex : conversation précédente")
+        check(navFor("codex", "page précédente") == "Retour", "Codex : page précédente")
+        check(navFor("gemini", "zoom avant") == "Augmenter la taille du texte", "Gemini : zoom avant (libellé propre)")
+        check(navFor("gemini", "toutes les discussions") == "Afficher toutes les discussions", "Gemini : toutes les discussions")
+        check(navFor("chatgpt", "zoom avant") == "-", "ChatGPT : pas de commandes par défaut")
+
+        // Indices de reconnaissance.
+        let hints = Coordinator.hints(base: ["salut claude", "Salut Claude"], names: ["VoxTV", "Equality Holding"],
+                                      config: config, target: claudeTarget)
+        check(hints.first == "salut claude" && !hints.contains("Salut Claude"), "phrases d'activation d'abord, sans doublon")
+        check(hints.contains("ouvre VoxTV") && hints.contains("Equality Holding"), "noms de projets et « ouvre <projet> »")
+        check(hints.contains("session précédente"), "commandes de navigation")
+        let many = Coordinator.hints(base: [], names: (0..<300).map { "Projet \($0)" }, config: config, target: claudeTarget)
+        check(many.count <= Coordinator.maxHints, "100 indices au plus")
+
         // Voix de lecture contre voix de l'utilisateur.
         let pause = config.readPausePhrases ?? []
         let reading = "Tu refais le test « lis à partir de… » puis « arrête la lecture » ?"

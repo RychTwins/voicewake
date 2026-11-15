@@ -13,7 +13,9 @@ final class WakeWordDetector {
     var onText: ((String, Bool) -> Void)?
 
     private let config: Config
-    private let hints: [String]
+    /// Indices pour le moteur (phrases d'activation, commandes, noms de projets) : pris en compte à la
+    /// prochaine tâche de reconnaissance (après chaque pause ou commande).
+    var hints: [String]
     private let recognizer: SFSpeechRecognizer
     private let audio = AudioListener()
     private let lock = NSLock()

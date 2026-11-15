@@ -64,8 +64,60 @@ enum NavCommands {
         VoiceCommand(phrases: ["raccourcis clavier"], menu: ["Raccourcis clavier", "Keyboard Shortcuts"]),
     ]
 
+    /// Commandes de l'application Codex (libellés de ses menus, en français).
+    static let codex: [VoiceCommand] = [
+        VoiceCommand(phrases: ["page précédente", "retour en arrière"], menu: ["Retour", "Back"]),
+        VoiceCommand(phrases: ["page suivante"], menu: ["Suivant", "Forward"]),
+        VoiceCommand(phrases: ["conversation précédente", "chat précédent", "élément précédent"],
+                     menu: ["Élément précédent de la barre latérale", "Previous Sidebar Item"]),
+        VoiceCommand(phrases: ["conversation suivante", "chat suivant", "élément suivant"],
+                     menu: ["Élément suivant de la barre latérale", "Next Sidebar Item"]),
+        VoiceCommand(phrases: ["onglet précédent"], menu: ["Onglet précédent", "Previous Tab"]),
+        VoiceCommand(phrases: ["onglet suivant"], menu: ["Onglet suivant", "Next Tab"]),
+        VoiceCommand(phrases: ["nouveau chat éphémère", "chat éphémère"], menu: ["Nouveau chat éphémère"]),
+        VoiceCommand(phrases: ["nouveau projet"], menu: ["Nouveau projet…", "New Project…"]),
+        VoiceCommand(phrases: ["ouvre la recherche", "cherche une conversation"], menu: ["Rechercher", "Find"]),
+        VoiceCommand(phrases: ["masque la barre latérale", "cache la barre latérale", "affiche la barre latérale", "montre la barre latérale"],
+                     menu: ["Activer/désactiver la barre latérale", "Toggle Sidebar"]),
+        VoiceCommand(phrases: ["ouvre le terminal", "affiche le terminal"], menu: ["Ouvrir le terminal", "Open Terminal"]),
+        VoiceCommand(phrases: ["affiche le panneau", "masque le panneau"], menu: ["Afficher/masquer le panneau inférieur"]),
+        VoiceCommand(phrases: ["ouvre les paramètres", "ouvre les réglages"], menu: ["Paramètres", "Settings"]),
+        VoiceCommand(phrases: ["raccourcis clavier"], menu: ["Afficher les raccourcis clavier", "Keyboard Shortcuts"]),
+        VoiceCommand(phrases: ["zoom avant", "agrandis le texte"], menu: ["Zoom avant", "Zoom In"]),
+        VoiceCommand(phrases: ["zoom arrière", "réduis le texte"], menu: ["Zoom arrière", "Zoom Out"]),
+        VoiceCommand(phrases: ["taille normale", "taille réelle"], menu: ["Taille réelle", "Actual Size"]),
+    ]
+
+    /// Commandes de l'application Gemini (libellés de ses menus, en français).
+    static let gemini: [VoiceCommand] = [
+        VoiceCommand(phrases: ["ouvre la recherche", "cherche une discussion", "cherche une conversation"], menu: ["Rechercher", "Search"]),
+        VoiceCommand(phrases: ["toutes les discussions", "affiche les discussions"], menu: ["Afficher toutes les discussions", "Show All Chats"]),
+        VoiceCommand(phrases: ["discussion temporaire", "nouvelle discussion temporaire"], menu: ["Nouvelle discussion temporaire"]),
+        VoiceCommand(phrases: ["modèle suivant"], menu: ["Modèle suivant"]),
+        VoiceCommand(phrases: ["modèle précédent"], menu: ["Modèle précédent"]),
+        VoiceCommand(phrases: ["masque la barre latérale", "cache la barre latérale", "affiche la barre latérale", "montre la barre latérale"],
+                     menu: ["Activer/Désactiver la barre latérale", "Toggle Sidebar"]),
+        VoiceCommand(phrases: ["mini chat", "ouvre le mini chat"], menu: ["Activer/Désactiver le mini-chat"]),
+        VoiceCommand(phrases: ["mode discussion", "passe en mode discussion"], menu: ["Passer en mode Discussion"]),
+        VoiceCommand(phrases: ["actualise la page", "recharge la page"], menu: ["Actualiser", "Reload"]),
+        VoiceCommand(phrases: ["ouvre les paramètres", "ouvre les réglages"], menu: ["Paramètres…", "Settings…"]),
+        VoiceCommand(phrases: ["zoom avant", "agrandis le texte"], menu: ["Augmenter la taille du texte"]),
+        VoiceCommand(phrases: ["zoom arrière", "réduis le texte"], menu: ["Réduire la taille du texte"]),
+        VoiceCommand(phrases: ["taille normale", "taille réelle"], menu: ["Mettre le texte à la taille normale"]),
+        VoiceCommand(phrases: ["plein écran"], menu: ["Activer le mode plein écran"]),
+    ]
+
+    static let builtIn: [String: [VoiceCommand]] = [
+        "com.anthropic.claudefordesktop": claude,
+        "com.openai.codex": codex,
+        "com.google.GeminiMacOS": gemini,
+    ]
+
+    /// Menus de la barre de menus qui listent les conversations récentes (Gemini : « Discussions »).
+    static let conversationMenus = ["Discussions", "Chats", "Conversations"]
+
     static func commands(for t: Target) -> [VoiceCommand] {
-        t.voiceCommands ?? (t.bundleID == "com.anthropic.claudefordesktop" ? claude : [])
+        t.voiceCommands ?? t.bundleID.flatMap { builtIn[$0] } ?? []
     }
 
     /// Phrase de navigation qui termine la transcription, pour la cible `t` (ou n'importe quelle cible si nil).
@@ -155,7 +207,14 @@ enum NavCommands {
             case let .open(q):
                 let entries = AXButtonPresser.sidebarEntries(in: app)
                 guard let e = bestEntry(q, in: entries, kinds: [.project, .session]) else {
-                    return done(false, "rien ne correspond à « \(q.joined(separator: " ")) » dans la barre latérale")
+                    // Sinon : conversations récentes listées dans la barre de menus (Gemini).
+                    let recent = AXButtonPresser.menuBarItems(under: conversationMenus, in: app)
+                        .map { AXButtonPresser.SidebarEntry(title: $0.title, element: $0.element, kind: .session, project: nil) }
+                    if let m = bestEntry(q, in: recent, kinds: [.session]),
+                       AXUIElementPerformAction(m.element, kAXPressAction as CFString) == .success {
+                        return done(true, "menu « \(m.title) »")
+                    }
+                    return done(false, "rien ne correspond à « \(q.joined(separator: " ")) » dans la barre latérale ni les menus")
                 }
                 // Projet : sa session la plus récente (la première listée), sinon une nouvelle session dedans.
                 if e.kind == .project {
