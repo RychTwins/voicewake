@@ -223,7 +223,11 @@ final class ShortcutTrigger {
     /// « Reprends la lecture » : reprise là où elle s'était arrêtée.
     func resumeReading(_ t: Target) {
         guard let resume = t.resumeReadShortcut, let app = Self.runningApp(for: t) else {
-            return log("\(t.id) : pas de bouton de reprise configuré.")
+            // Pas de reprise dans l'app (Codex : arrêt seulement) : on relance la lecture de la dernière réponse.
+            guard t.readAloudShortcut != nil else { return log("\(t.id) : pas de bouton de reprise configuré.") }
+            return readAloudNow(t) { ok in
+                log(ok ? "\(t.id) : lecture relancée depuis le début." : "\(t.id) : reprise de la lecture non effectuée.")
+            }
         }
         var resumeTarget = t
         resumeTarget.shortcut = resume

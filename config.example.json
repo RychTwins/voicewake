@@ -151,7 +151,12 @@
         "launch": "startmenu:Codex",
         "shortcut": "button:Dicter|Dictate",
         "stopShortcut": "button:Arrêter la dictée|Stop dictation"
-      }
+      },
+      "pauseReadShortcut": "button:Arrêter la lecture à voix haute|Stop reading aloud",
+      "busyLabels": [
+        "Arrêter",
+        "Stop"
+      ]
     },
     {
       "id": "gemini",

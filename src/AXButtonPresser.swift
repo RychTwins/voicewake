@@ -185,7 +185,7 @@ enum AXButtonPresser {
         for w in windows {
             if let (el, name) = find(w, wanted, depth: 0),
                window == nil || (isFrontmost(app) && currentWindow(in: app).map { CFEqual($0, w) } == true),
-               AXUIElementPerformAction(el, kAXPressAction as CFString) == .success {
+               activate(el, in: app) {
                 return name
             }
         }
@@ -208,7 +208,41 @@ enum AXButtonPresser {
     static func pressLast(_ labels: [String], in app: NSRunningApplication, window: AXUIElement) -> Bool {
         guard let last = all(labels, in: app, window: window).last,
               isFrontmost(app), currentWindow(in: app).map({ CFEqual($0, window) }) == true else { return false }
-        return AXUIElementPerformAction(last, kAXPressAction as CFString) == .success
+        return activate(last, in: app)
+    }
+
+    /// Appuie sur un élément : action AXPress s'il la propose, sinon vrai clic de souris.
+    /// (Codex : « Lire à voix haute » n'expose pas AXPress ; l'action « réussit » sans rien lancer.)
+    static func activate(_ el: AXUIElement, in app: NSRunningApplication) -> Bool {
+        var names: CFArray?
+        let listed = AXUIElementCopyActionNames(el, &names) == .success
+        if !listed || ((names as? [String]) ?? []).contains(kAXPressAction as String) {
+            return AXUIElementPerformAction(el, kAXPressAction as CFString) == .success
+        }
+        guard isFrontmost(app) else { return false }
+        AXUIElementPerformAction(el, "AXScrollToVisible" as CFString)
+        usleep(300_000)
+        var p: CFTypeRef?, sz: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(el, kAXPositionAttribute as CFString, &p) == .success,
+              AXUIElementCopyAttributeValue(el, kAXSizeAttribute as CFString, &sz) == .success,
+              let p, let sz, CFGetTypeID(p) == AXValueGetTypeID(), CFGetTypeID(sz) == AXValueGetTypeID() else { return false }
+        var origin = CGPoint.zero, size = CGSize.zero
+        guard AXValueGetValue(p as! AXValue, .cgPoint, &origin), AXValueGetValue(sz as! AXValue, .cgSize, &size),
+              size.width > 2, size.height > 2 else { return false }
+        let point = CGPoint(x: origin.x + size.width / 2, y: origin.y + size.height / 2)
+        let back = CGEvent(source: nil)?.location
+        let source = CGEventSource(stateID: .hidSystemState)
+        func post(_ type: CGEventType, _ at: CGPoint) {
+            CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: at, mouseButton: .left)?.post(tap: .cghidEventTap)
+        }
+        post(.mouseMoved, point)
+        usleep(250_000) // le survol fait apparaître la barre d'actions du message
+        post(.leftMouseDown, point)
+        usleep(60_000)
+        post(.leftMouseUp, point)
+        usleep(150_000)
+        if let back { post(.mouseMoved, back) }
+        return true
     }
 
     /// Choisit une option dans un menu ouvert de l'app (menu contextuel ou déroulant), libellé exact.
