@@ -240,10 +240,8 @@ final class Coordinator {
     private func askConfirmation(_ action: Universal.Action, in name: String) {
         pendingConfirmation = (action, name, Date().addingTimeInterval(Universal.confirmSeconds + 3))
         log("Confirmation demandée → \(name)\(label(action.title)).")
-        announcer.say(Universal.confirmationPrompt(action.title, config: config), locale: config.locale, voice: config.readerVoice) { [weak self] in
-            guard let self, self.pendingConfirmation != nil else { return }
-            self.detector.reset() // oublier l'annonce elle-même
-            self.pendingConfirmation?.expires = Date().addingTimeInterval(Universal.confirmSeconds)
+        speak(Universal.confirmationPrompt(action.title, config: config)) { [weak self] in
+            self?.pendingConfirmation?.expires = Date().addingTimeInterval(Universal.confirmSeconds)
         }
     }
 
@@ -360,7 +358,11 @@ final class Coordinator {
         DispatchQueue.global().async { [weak self] in
             guard let self else { return }
             var parts: [String] = []
-            let name = app?.localizedName ?? "cette application"
+            // Nom de l'app : jamais une phrase de commande à voix haute.
+            let raw = app?.localizedName ?? ""
+            let risky = raw.isEmpty || Universal.match(raw, config: self.config) != nil || Palette.request(raw, config: self.config) != nil
+                || SkillCatalog.request(raw, config: self.config) != nil || self.wakeKey(raw) != nil
+            let name = risky ? "cette application" : raw
             if let app, allowed {
                 let menus = AXButtonPresser.allMenuBarItems(in: app).count
                 let buttons = AXButtonPresser.visibleButtons(in: app).count
@@ -374,7 +376,7 @@ final class Coordinator {
             if let t = target {
                 let skills = SkillCatalog.entries(for: t).count
                 if skills > 0 { parts.append("\(skills) skills et commandes slash se lancent avec lance le skill puis leur nom.") }
-                if !(AXButtonPresser.sidebarEntries(in: ShortcutTrigger.runningApp(for: t)!).isEmpty) {
+                if let assistant = ShortcutTrigger.runningApp(for: t), !AXButtonPresser.sidebarEntries(in: assistant).isEmpty {
                     parts.append("Un projet de la barre latérale s'ouvre avec ouvre puis son nom.")
                 }
             }
@@ -382,12 +384,22 @@ final class Coordinator {
             let message = parts.joined(separator: " ")
             DispatchQueue.main.async {
                 log("Aide vocale : \(name).")
-                self.announcer.say(message, locale: self.config.locale, voice: self.config.readerVoice) { [weak self] in self?.detector.reset() }
+                self.speak(message)
             }
         }
     }
 
     private let announcer = Announcer()
+
+    /// Annonce parlée : le micro est coupé pendant toute l'annonce (VoiceWake ne peut pas s'entendre lui-même),
+    /// puis relancé avec une transcription vide.
+    private func speak(_ message: String, then: (() -> Void)? = nil) {
+        detector.stop()
+        announcer.say(message, locale: config.locale, voice: config.readerVoice) { [weak self] in
+            self?.detector.start()
+            then?()
+        }
+    }
     private var lastStatus = Date.distantPast
 
     /// « Où on en est ? » : dit l'état de VoiceWake avec une voix du Mac. Le texte ne contient aucune
@@ -413,9 +425,7 @@ final class Coordinator {
             message = "En veille, prêt."
         }
         log("État : \(message)")
-        announcer.say(message, locale: config.locale, voice: config.readerVoice) { [weak self] in
-            self?.detector.reset() // oublier ce que le micro a entendu de l'annonce
-        }
+        speak(message)
     }
 
     private let reader = Reader()
