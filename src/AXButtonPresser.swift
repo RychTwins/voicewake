@@ -414,6 +414,13 @@ enum AXButtonPresser {
         return out
     }
 
+    /// Libellé actuel d'un élément (titre ou description) et s'il est actif : relu juste avant d'agir.
+    static func currentLabel(of e: AXUIElement) -> (label: String?, enabled: Bool) {
+        let label = [value(e, kAXTitleAttribute), value(e, kAXDescriptionAttribute)].compactMap { $0 as String? }
+            .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        return (label, (value(e, kAXEnabledAttribute) as Bool?) != false)
+    }
+
     /// Boutons actifs de la fenêtre au premier plan, avec leur libellé (titre ou description).
     static func visibleButtons(in app: NSRunningApplication) -> [(title: String, element: AXUIElement)] {
         let root = AXUIElementCreateApplication(app.processIdentifier)

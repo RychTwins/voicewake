@@ -13,9 +13,17 @@ enum Universal {
 
     /// Mots d'une action irréversible ou sensible : jamais exécutée sans confirmation.
     static let dangerWords: Set<String> = [
-        "supprimer", "supprime", "suppression", "effacer", "efface", "vider", "vide", "archiver", "archive",
+        // Français
+        "supprimer", "supprime", "suppression", "effacer", "efface", "vider", "vide", "corbeille", "archiver", "archive",
         "deconnecter", "deconnexion", "quitter", "reinitialiser", "desinstaller", "envoyer", "publier", "partager",
-        "delete", "remove", "erase", "clear", "empty", "quit", "logout", "signout", "reset", "uninstall", "send", "publish", "share",
+        "autoriser", "approuver", "accepter", "confirmer", "valider", "rejeter", "refuser", "revoquer", "abandonner",
+        "ignorer", "ecraser", "remplacer", "payer", "acheter", "souscrire", "abonner", "redemarrer", "desactiver",
+        "fusionner", "pousser", "deplacer", "transferer", "fermer",
+        // Anglais
+        "delete", "remove", "erase", "clear", "empty", "trash", "archive", "quit", "logout", "signout", "reset",
+        "uninstall", "send", "publish", "share", "allow", "approve", "accept", "confirm", "reject", "deny", "revoke",
+        "discard", "overwrite", "replace", "pay", "buy", "purchase", "subscribe", "restart", "disable", "merge", "push",
+        "move", "transfer", "close",
     ]
 
     static let defaultConfirmPhrases = ["oui", "je confirme", "confirme", "oui vas y", "oui confirme"]
@@ -65,22 +73,30 @@ enum Universal {
         return short.count >= 4 && long.hasPrefix(short) && long.count - short.count <= 3
     }
 
-    /// Meilleur libellé : tous les mots cités y sont (petites différences tolérées), le moins de mots en trop,
-    /// puis le premier dans l'ordre de l'app. `nil` si rien ne convient.
+    /// Meilleur libellé : tous les mots cités y sont (petites différences tolérées), le moins de mots en trop.
+    /// `nil` si rien ne convient, ou si plusieurs libellés différents conviennent aussi bien (ambigu : on n'agit pas).
     static func best<T>(_ query: [String], in candidates: [(title: String, value: T)]) -> (title: String, value: T)? {
         let q = query.filter { !fillers.contains($0) }
         guard !q.isEmpty else { return nil }
         var found: (title: String, value: T, extra: Int)?
+        var tie = false
         for c in candidates {
             let words = normalize(c.title).split(separator: " ").map(String.init)
             guard q.allSatisfy({ w in words.contains(where: { same($0, w) }) }) || words.joined() == q.joined() else { continue }
             let extra = words.count - q.count
-            if found == nil || extra < found!.extra { found = (c.title, c.value, extra) }
+            if found == nil || extra < found!.extra { found = (c.title, c.value, extra); tie = false }
+            else if extra == found!.extra, normalize(c.title) != normalize(found!.title) { tie = true }
         }
-        return found.map { ($0.title, $0.value) }
+        return tie ? nil : found.map { ($0.title, $0.value) }
     }
 
-    static func isDangerous(_ title: String) -> Bool {
+    /// Action sensible si le libellé, ou le chemin de menu qui y mène (« Dépannage > … »), contient un mot à risque.
+    static func isDangerous(_ title: String, path: String = "") -> Bool {
+        if !path.isEmpty, isDangerous(path) { return true }
+        return isDangerousLabel(title)
+    }
+
+    private static func isDangerousLabel(_ title: String) -> Bool {
         let words = normalize(title).split(separator: " ").map(String.init)
         // « Se déconnecter » → « se deconnecter » ; « Sign out » → « signout ».
         let joined = zip(words, words.dropFirst()).map { $0 + $1 }
@@ -91,11 +107,18 @@ enum Universal {
     struct Action {
         let kind: Kind
         let title: String
+        var path: String = ""
         let app: NSRunningApplication
         let element: AXUIElement
-        var dangerous: Bool { Universal.isDangerous(title) }
+        var dangerous: Bool { Universal.isDangerous(title, path: path) }
 
-        func perform() -> Bool {
+        /// Revérifie juste avant d'agir : même app au premier plan, élément toujours là, actif et au même libellé,
+        /// et pas devenu sensible (sauf confirmation déjà donnée).
+        func perform(confirmed: Bool = false) -> Bool {
+            guard Universal.frontApp()?.processIdentifier == app.processIdentifier else { return false }
+            let now = AXButtonPresser.currentLabel(of: element)
+            guard now.enabled, let label = now.label, normalize(label) == normalize(title) else { return false }
+            if !confirmed, Universal.isDangerous(label, path: path) { return false }
             switch kind {
             case .menu: return AXUIElementPerformAction(element, kAXPressAction as CFString) == .success
             case .click: return AXButtonPresser.activate(element, in: app)
@@ -107,12 +130,23 @@ enum Universal {
     static func find(_ kind: Kind, _ query: [String], in app: NSRunningApplication) -> Action? {
         switch kind {
         case .menu:
-            let items = AXButtonPresser.allMenuBarItems(in: app).map { (title: $0.title, value: $0.element) }
-            return best(query, in: items).map { Action(kind: .menu, title: $0.title, app: app, element: $0.value) }
+            let items = AXButtonPresser.allMenuBarItems(in: app).map { (title: $0.title, value: ($0.element, $0.path)) }
+            return best(query, in: items).map { Action(kind: .menu, title: $0.title, path: $0.value.1, app: app, element: $0.value.0) }
         case .click:
             let buttons = AXButtonPresser.visibleButtons(in: app).map { (title: $0.title, value: $0.element) }
             return best(query, in: buttons).map { Action(kind: .click, title: $0.title, app: app, element: $0.value) }
         }
+    }
+
+    /// Éditeurs de code acceptés en plus des cibles et éditeurs de la configuration.
+    static let defaultApps = ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "dev.zed.Zed", "dev.zed.Zed-Preview",
+                              "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf"]
+
+    /// Applications pilotables par les commandes universelles : cibles, éditeurs configurés, éditeurs connus,
+    /// et `universalApps` (liste blanche) : jamais une app quelconque.
+    static func allowedApps(_ config: Config) -> Set<String> {
+        Set(config.targets.compactMap(\.bundleID) + (config.editors ?? []).flatMap(\.bundleIDs)
+            + (config.universalApps ?? defaultApps))
     }
 
     /// App au premier plan, si ce n'est pas VoiceWake lui-même.

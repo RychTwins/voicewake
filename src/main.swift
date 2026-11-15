@@ -263,7 +263,7 @@ case "trouve":
     let phrase = args.dropFirst(2).joined(separator: " ")
     guard let u = Universal.match(phrase, config: config) else { print("→ pas une commande universelle"); exit(1) }
     if let a = Universal.find(u.kind, u.query, in: app) {
-        print("→ \(u.kind == .menu ? "menu" : "bouton") « \(a.title) »\(a.dangerous ? " (confirmation requise)" : "")")
+        print("→ \(u.kind == .menu ? "menu" : "bouton") « \(a.title) »\(a.path.isEmpty ? "" : " (\(a.path))")\(a.dangerous ? " — confirmation requise" : "")")
     } else { print("→ rien ne correspond") }
 
 case "sons", "sounds":

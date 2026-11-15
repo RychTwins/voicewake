@@ -187,7 +187,7 @@ final class Coordinator {
             switch answer {
             case .confirm:
                 log("Confirmé.")
-                self.performUniversal(p.action, in: p.app)
+                self.performUniversal(p.action, in: p.app, confirmed: true)
             case .cancel:
                 Feedback.play(.micClosed)
                 log("Annulé : rien n'a été fait.")
@@ -198,9 +198,9 @@ final class Coordinator {
         return true
     }
 
-    private func performUniversal(_ action: Universal.Action, in name: String) {
+    private func performUniversal(_ action: Universal.Action, in name: String, confirmed: Bool = false) {
         DispatchQueue.global().async { [weak self] in
-            let ok = action.perform()
+            let ok = action.perform(confirmed: confirmed)
             DispatchQueue.main.async {
                 Feedback.play(ok ? .understood : .failed)
                 log("Commande universelle → \(name) : \(action.kind == .menu ? "menu" : "bouton")\(self?.label(action.title) ?? "") \(ok ? "exécuté" : "non exécuté").")
@@ -431,7 +431,10 @@ final class Coordinator {
             }
             guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
             lastWake = Date()
-            guard let app = Universal.frontApp() else { Feedback.play(.failed); return log("Commande universelle : aucune app au premier plan.") }
+            guard let app = Universal.frontApp(), let bid = app.bundleIdentifier, Universal.allowedApps(config).contains(bid) else {
+                Feedback.play(.failed)
+                return log("Commande universelle : app au premier plan non autorisée (ajouter son identifiant à universalApps).")
+            }
             runUniversal(u.kind, u.query, in: app)
             return
         }

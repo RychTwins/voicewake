@@ -166,6 +166,13 @@ struct ReaderTests {
         check(Universal.isDangerous("Se déconnecter"), "se déconnecter : sensible")
         check(Universal.isDangerous("Sign out"), "sign out : sensible")
         check(!Universal.isDangerous("Afficher le terminal"), "afficher : pas sensible")
+        check(Universal.isDangerous("Données de session", path: "Aide > Dépannage > Supprimer les données"), "chemin de menu sensible")
+        check(Universal.isDangerous("Move to Trash"), "trash : sensible")
+        check(Universal.isDangerous("Autoriser"), "autoriser : sensible")
+        let tied: [(title: String, value: Int)] = [("Afficher le terminal", 1), ("Afficher le navigateur", 2)]
+        check(Universal.best(["afficher"], in: tied) == nil, "deux libellés aussi proches : ambigu, rien")
+        check(Universal.allowedApps(config).contains("dev.zed.Zed") && !Universal.allowedApps(config).contains("com.apple.finder"),
+              "liste blanche : éditeurs oui, app quelconque non")
 
         // Confirmation vocale.
         check(Universal.answer("Oui", config: config) == .confirm, "oui : confirme")
