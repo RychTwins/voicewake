@@ -39,6 +39,66 @@ struct ReaderTests {
         check(PassageFinder.passage(tokens, from: 2) == ["Cause", ":", "voilà", "fin."], "lecture arrêtée à la fin de la réponse")
         check(PassageFinder.passage(tokens, from: 7) == ["Tu", "refais", "le", "test", "?"], "dernier bloc sans marque")
         check(PassageFinder.passage(tokens, from: 2, maxWords: 2) == ["Cause", ":"], "limite de mots")
+        // Navigation par phrases.
+        let story = "Première phrase ici. Deuxième phrase un peu plus longue ! Troisième ?\nQuatrième ligne." as NSString
+        let sentenceStarts = Reader.sentenceStarts(in: story)
+        check(sentenceStarts == [0, 21, 58, 70], "débuts de phrases (. ! ? et retour à la ligne)")
+        check(Reader.sentenceTarget(in: story, from: 45, forward: true) == 58, "phrase suivante")
+        check(Reader.sentenceTarget(in: story, from: 45, forward: false) == 21, "répète : début de la phrase en cours")
+        check(Reader.sentenceTarget(in: story, from: 24, forward: false) == 0, "répète juste après le début : phrase précédente")
+        check(Reader.sentenceTarget(in: story, from: 75, forward: true) == nil, "pas de phrase après la dernière")
+        check(Reader.wordStart(in: story, at: 25) == 21, "début du mot en cours")
+
+        // Phrases de commande (configuration d'exemple).
+        guard let config = try? Config.load(path: "config.example.json") else { print("ÉCHEC : config.example.json illisible"); exit(1) }
+        let router = Router(config: config)
+        check(AppCommand.match("bon efface le brouillon", router: router, config: config) == .clearDraft, "efface le brouillon")
+        check(AppCommand.match("nouvelle conversation", router: router, config: config) == .newChat, "nouvelle conversation")
+        check(AppCommand.match("copie la réponse", router: router, config: config) == .copyResponse, "copie la réponse")
+        check(AppCommand.match("où on en est", router: router, config: config) == .status, "où on en est (accents ignorés)")
+        check(AppCommand.match("je copie le code", router: router, config: config) == nil, "phrase ordinaire : aucune commande")
+        check(!router.isSendCommand("efface le brouillon"), "efface le brouillon n'envoie pas")
+        check(ReaderNav.match("plus vite", config: config) == .faster, "plus vite")
+        check(ReaderNav.match("ralentis", config: config) == .slower, "ralentis")
+        check(ReaderNav.match("répète", config: config) == .repeatSentence, "répète")
+        check(ReaderNav.match("phrase suivante", config: config) == .nextSentence, "phrase suivante")
+        check(ReaderNav.match("plus vite non moins vite", config: config) == .slower, "la commande la plus récente l'emporte")
+
+        // Voix de lecture contre voix de l'utilisateur.
+        let pause = config.readPausePhrases ?? []
+        let reading = "Tu refais le test « lis à partir de… » puis « arrête la lecture » ?"
+        check(VoiceFilter.spokenByReader("tout de suite arrête la lecture", phrases: pause, spokenNow: reading, router: router),
+              "commande lue par la voix, mot précédent déformé : attribuée à la voix")
+        check(!VoiceFilter.spokenByReader("arrête la lecture", phrases: pause, spokenNow: "Le passage parle d'autre chose.", router: router),
+              "commande absente du texte lu : c'est l'utilisateur")
+        var insist = Insistence()
+        let t0 = Date()
+        check(!insist.accept("arrete la lecture", spokenNow: reading, now: t0), "1re fois : ignorée")
+        check(insist.accept("arrete la lecture", spokenNow: reading, now: t0.addingTimeInterval(2)), "redite dans les 6 s : acceptée")
+        var late = Insistence()
+        _ = late.accept("arrete la lecture", spokenNow: reading, now: t0)
+        check(!late.accept("arrete la lecture", spokenNow: reading, now: t0.addingTimeInterval(7)), "redite après 6 s : recompte depuis 1")
+        let twice = "arrête la lecture, puis arrête la lecture"
+        var again = Insistence()
+        _ = again.accept("arrete la lecture", spokenNow: twice, now: t0)
+        check(!again.accept("arrete la lecture", spokenNow: twice, now: t0.addingTimeInterval(1)), "texte qui la répète : 2e fois encore ignorée")
+        check(again.accept("arrete la lecture", spokenNow: twice, now: t0.addingTimeInterval(2)), "3e fois : toujours acceptée")
+
+        // Rotation du journal (sortie standard redirigée vers un fichier temporaire).
+        let tmp = NSTemporaryDirectory() + "voicewake-test-\(getpid()).log"
+        FileManager.default.createFile(atPath: tmp, contents: Data(repeating: 65, count: 200))
+        fflush(stdout)
+        let saved = dup(STDOUT_FILENO)
+        freopen(tmp, "a", stdout)
+        rotateLogIfNeeded(path: tmp, maxBytes: 100)
+        fflush(stdout)
+        dup2(saved, STDOUT_FILENO); close(saved)
+        let archived = (try? FileManager.default.attributesOfItem(atPath: tmp + ".1")[.size] as? Int) ?? nil
+        let fresh = (try? String(contentsOfFile: tmp, encoding: .utf8)) ?? ""
+        check(archived == 200, "journal trop gros archivé en .1")
+        check(fresh.contains("Journal précédent archivé"), "journal neuf ouvert")
+        try? FileManager.default.removeItem(atPath: tmp); try? FileManager.default.removeItem(atPath: tmp + ".1")
+
         print("Tous les tests passent.")
     }
 }

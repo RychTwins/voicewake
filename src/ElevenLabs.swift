@@ -108,12 +108,22 @@ final class AudioClip: NSObject, AVAudioPlayerDelegate {
         player = p
         super.init()
         p.delegate = self
+        p.enableRate = true // « plus vite » / « moins vite »
+        p.prepareToPlay()
     }
 
     /// Part de l'extrait déjà lue (0 à 1).
     var progress: Double { player.duration > 0 ? player.currentTime / player.duration : 0 }
     /// Position de lecture (s).
     var currentTime: Double { player.currentTime }
+    var duration: Double { player.duration }
+    /// Vitesse (1 = normale, de 0,5 à 2).
+    var rate: Float {
+        get { player.rate }
+        set { player.rate = newValue }
+    }
+    /// Se place à `time` (s), en lecture comme en pause.
+    func seek(to time: Double) { player.currentTime = min(max(0, time), max(0, player.duration - 0.05)) }
     func play() { player.play() }
     func pause() { player.pause() }
     func stop() { player.stop() }

@@ -2,7 +2,7 @@ import AppKit
 import AVFoundation
 
 /// Lecteur intégré : lit un texte (voix ElevenLabs ou voix du Mac) à partir d'un endroit précis.
-/// Pas de bandeau à l'écran : seule la voix.
+/// Pas de bandeau à l'écran : seule la voix. Navigation : vitesse, phrase précédente ou suivante.
 final class Reader: NSObject, AVSpeechSynthesizerDelegate {
     private let synth = AVSpeechSynthesizer()
     private var text = ""
@@ -15,6 +15,16 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
     private var timings: [Double]?
     private var generation = 0
     var onFinish: (() -> Void)?
+
+    /// Voix du Mac : énoncé en cours, qui commence à `utteranceStart` dans `text`.
+    private var utterance: AVSpeechUtterance?
+    private var utteranceStart = 0
+    private var locale = "fr-FR"
+    /// Voix du Mac en pause après un déplacement : la lecture reprendra à cet endroit.
+    private var resumeFrom: Int?
+    /// Vitesse relative (1 = normale), de `minRate` à `maxRate`.
+    private(set) var rate: Double = 1
+    static let minRate = 0.5, maxRate = 2.0, rateStep = 1.25
 
     override init() {
         super.init()
@@ -30,13 +40,12 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
         // Large fenêtre vers l'arrière : la transcription du micro a plusieurs secondes de retard.
         let ns = text as NSString
         guard ns.length > 0 else { return "" }
-        // Voix ElevenLabs : position seulement estimée d'après l'avancement de l'audio (débit irrégulier :
-        // nombres, heures, pauses). On regarde donc bien plus loin devant que pour la voix du Mac,
-        // dont la position est exacte, pour que la voix ne déclenche jamais ses propres commandes.
+        // Voix ElevenLabs : sans alignement, position seulement estimée (débit irrégulier : nombres,
+        // heures, pauses) ; on regarde donc bien plus loin devant, pour que la voix ne déclenche jamais
+        // ses propres commandes. Voix du Mac ou alignement ElevenLabs : position exacte.
         var ahead = 80
         if clip != nil {
             updateClipPosition()
-            // Position exacte (alignement ElevenLabs) : même marge que la voix du Mac, un peu élargie.
             ahead = timings == nil ? 500 : 150
         }
         let p = min(max(0, position), ns.length)
@@ -50,6 +59,7 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
         guard config.elevenLabs?.enabled == true else { return speak(text, locale: config.locale) }
         stop()
         self.text = text
+        locale = config.locale
         position = 0
         isActive = true
         isPaused = false
@@ -60,6 +70,7 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
             guard let speech, let clip = AudioClip(speech.audio) else { return self.speak(text, locale: config.locale) }
             self.clip = clip
             self.timings = speech.timings
+            clip.rate = Float(self.rate)
             clip.onFinish = { [weak self] in
                 guard let self, gen == self.generation, self.isActive else { return }
                 self.isActive = false
@@ -97,12 +108,26 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
     func speak(_ text: String, locale: String) {
         stop()
         self.text = text
-        position = 0
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = Self.bestVoice(locale: locale, preferred: voiceName)
+        self.locale = locale
         isActive = true
         isPaused = false
-        synth.speak(utterance)
+        speakMac(from: 0)
+    }
+
+    /// Voix du Mac : (re)lit `text` à partir de l'indice `start`, à la vitesse en cours.
+    private func speakMac(from start: Int) {
+        let ns = text as NSString
+        let from = min(max(0, start), ns.length)
+        resumeFrom = nil
+        utteranceStart = from
+        position = from
+        let u = AVSpeechUtterance(string: ns.substring(from: from))
+        u.voice = Self.bestVoice(locale: locale, preferred: voiceName)
+        u.rate = Float(min(max(Double(AVSpeechUtteranceDefaultSpeechRate) * rate,
+                               Double(AVSpeechUtteranceMinimumSpeechRate)), Double(AVSpeechUtteranceMaximumSpeechRate)))
+        utterance = u
+        if synth.isSpeaking || synth.isPaused { synth.stopSpeaking(at: .immediate) }
+        synth.speak(u)
     }
 
     func pause() {
@@ -114,9 +139,9 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
 
     func resume() {
         guard isActive, isPaused else { return }
-        clip?.play()
-        synth.continueSpeaking()
         isPaused = false
+        if let clip { return clip.play() }
+        if let from = resumeFrom { speakMac(from: from) } else { synth.continueSpeaking() }
     }
 
     func stop() {
@@ -125,7 +150,91 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
         isPaused = false
         generation += 1
         endClip()
+        resumeFrom = nil
+        utterance = nil
         synth.stopSpeaking(at: .immediate)
+    }
+
+    // MARK: Navigation
+
+    /// Change la vitesse (« plus vite » : `faster` true). Renvoie la nouvelle vitesse, ou nil si déjà à la limite.
+    @discardableResult
+    func changeRate(faster: Bool) -> Double? {
+        guard isActive else { return nil }
+        let next = min(max(faster ? rate * Self.rateStep : rate / Self.rateStep, Self.minRate), Self.maxRate)
+        guard abs(next - rate) > 0.001 else { return nil }
+        rate = next
+        if let clip { clip.rate = Float(rate); return rate }
+        // Voix du Mac : la vitesse d'un énoncé est fixe ; on relit depuis le début du mot en cours.
+        let start = Self.wordStart(in: text as NSString, at: position)
+        if isPaused { stopMac(resumeAt: start) } else { speakMac(from: start) }
+        return rate
+    }
+
+    /// « Répète » / « phrase précédente » (`forward` false) ou « phrase suivante » (`forward` true).
+    /// Renvoie false s'il n'y a pas de phrase dans ce sens.
+    @discardableResult
+    func skipSentence(forward: Bool) -> Bool {
+        guard isActive else { return false }
+        if clip != nil { updateClipPosition() }
+        guard let target = Self.sentenceTarget(in: text as NSString, from: position, forward: forward) else { return false }
+        seek(to: target)
+        return true
+    }
+
+    private func seek(to index: Int) {
+        position = index
+        if let clip {
+            let length = (text as NSString).length
+            if let timings, timings.count == length, index < length { clip.seek(to: timings[index]) }
+            else if length > 0 { clip.seek(to: clip.duration * Double(index) / Double(length)) }
+            return
+        }
+        if isPaused { stopMac(resumeAt: index) } else { speakMac(from: index) }
+    }
+
+    /// Voix du Mac en pause : abandonne l'énoncé et reprendra à `index` au prochain `resume()`.
+    private func stopMac(resumeAt index: Int) {
+        utterance = nil
+        synth.stopSpeaking(at: .immediate)
+        resumeFrom = index
+        position = index
+    }
+
+    /// Début des phrases de `ns` : 0, puis après « . », « ! », « ? », « … » suivis d'un espace, et après chaque retour à la ligne.
+    static func sentenceStarts(in ns: NSString) -> [Int] {
+        var starts = [0]
+        var i = 0
+        while i < ns.length {
+            let c = ns.character(at: i)
+            var end: Int?
+            if c == 10 { end = i + 1 }
+            else if c == 46 || c == 33 || c == 63 || c == 0x2026, i + 1 < ns.length,
+                    ns.character(at: i + 1) == 32 || ns.character(at: i + 1) == 10 { end = i + 1 }
+            if var e = end {
+                while e < ns.length, ns.character(at: e) == 32 || ns.character(at: e) == 10 { e += 1 }
+                if e < ns.length, e > starts.last! { starts.append(e) }
+                i = e
+            } else { i += 1 }
+        }
+        return starts
+    }
+
+    /// Où aller depuis `position`. En arrière : début de la phrase en cours, ou de la précédente si l'on vient
+    /// de la commencer (moins de 20 caractères lus). En avant : début de la phrase suivante.
+    static func sentenceTarget(in ns: NSString, from position: Int, forward: Bool) -> Int? {
+        let starts = sentenceStarts(in: ns)
+        guard let current = starts.lastIndex(where: { $0 <= position }) else { return nil }
+        if forward { return current + 1 < starts.count ? starts[current + 1] : nil }
+        if position - starts[current] >= 20 || current == 0 { return starts[current] }
+        return starts[current - 1]
+    }
+
+    /// Début du mot qui contient l'indice `i`.
+    static func wordStart(in ns: NSString, at i: Int) -> Int {
+        var lo = min(max(0, i), ns.length)
+        while lo > 0, ns.character(at: lo - 1) != 32, ns.character(at: lo - 1) != 10 { lo -= 1 }
+        return lo
     }
 
     /// Meilleure voix installée pour la langue : Premium, puis Améliorée, puis standard.
@@ -138,18 +247,18 @@ final class Reader: NSObject, AVSpeechSynthesizerDelegate {
             ?? AVSpeechSynthesisVoice(language: locale)
     }
 
-    func speechSynthesizer(_ s: AVSpeechSynthesizer, willSpeakRangeOfSpeechString range: NSRange, utterance: AVSpeechUtterance) {
-        let spoken = utterance.speechString
+    func speechSynthesizer(_ s: AVSpeechSynthesizer, willSpeakRangeOfSpeechString range: NSRange, utterance u: AVSpeechUtterance) {
         DispatchQueue.main.async { [self] in
-            guard spoken == text else { return } // rappel d'une lecture précédente
-            position = range.location
+            guard u === utterance else { return } // rappel d'un énoncé abandonné
+            position = utteranceStart + range.location
         }
     }
 
-    func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+    func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish u: AVSpeechUtterance) {
         DispatchQueue.main.async { [self] in
-            guard isActive else { return }
+            guard isActive, u === utterance else { return }
             isActive = false
+            utterance = nil
             onFinish?()
         }
     }

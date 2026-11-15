@@ -104,6 +104,31 @@ La voix de lecture ne déclenche pas ses propres commandes : une commande entend
 
 ---
 
+### Gestion de l'assistant
+
+En veille, l'assistant au premier plan :
+
+| Phrase | Effet |
+| --- | --- |
+| « Efface le brouillon », « Efface tout » | vide la zone de saisie (si le curseur y est) |
+| « Nouvelle conversation », « Nouvelle discussion » | commande de menu de l'app : Claude « Nouvelle session », Codex « Nouveau chat », Gemini « Nouvelle discussion » |
+| « Copie la réponse » | bouton « Copier » de la dernière réponse ; vérifie que le presse-papier a changé |
+| « Où on en est ? » | annonce l'état : en veille, dictée, brouillon en attente d'envoi, lecture en pause… |
+
+Pendant une lecture à voix haute, ces commandes sont ignorées (la voix pourrait les dire) : mettez d'abord en pause. « Où on en est ? » pendant l'attente de « OK envoie » garde le brouillon. Essai sans la voix : `voicewake action claude copyResponse`. Réglages : `newChatMenuItems` et `copyResponseShortcut` par cible ; `clearDraftPhrases`, `newChatPhrases`, `copyResponsePhrases`, `statusPhrases`.
+
+### Navigation du lecteur intégré
+
+Pendant « Lis à partir de … » (voix ElevenLabs ou voix du Mac) :
+
+| Phrase | Effet |
+| --- | --- |
+| « Plus vite », « Moins vite », « Ralentis » | vitesse × 1,25 ou ÷ 1,25 (de 0,5 à 2) |
+| « Répète », « Phrase précédente », « Recule » | début de la phrase en cours (ou de la précédente si elle vient de commencer) |
+| « Phrase suivante », « Saute la phrase » | début de la phrase suivante |
+
+La lecture à voix haute intégrée aux applications ne permet ni de changer la vitesse ni de reculer : ces commandes ne s'appliquent qu'au lecteur intégré. Réglages : `readFasterPhrases`, `readSlowerPhrases`, `readRepeatPhrases`, `readNextPhrases`.
+
 ### Sons de confirmation
 
 VoiceWake n'a pas d'interface : un son discret dit ce qu'il a compris.
@@ -278,7 +303,8 @@ voicewake route "dis claude"       # cible ou commande associée à une phrase
 voicewake set codex "cmd+shift+d"  # change le raccourci d'une cible
 voicewake record claude            # enregistre un raccourci tapé au clavier
 voicewake sons                     # fait entendre les sons de confirmation
-tail -f ~/Library/Logs/voicewake.log
+voicewake action claude newChat    # commande de gestion dans 3 s (clearDraft, newChat, copyResponse)
+tail -f ~/Library/Logs/voicewake.log   # archivé en voicewake.log.1 au-delà de 5 Mo
 ```
 
 ---

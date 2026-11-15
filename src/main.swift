@@ -11,6 +11,7 @@ Usage : voicewake [commande] [--config chemin]
   set <cible> "raccourci"   ex. "ctrl+shift+v", "double option", "capslock", "hold 1 fn"
   route "texte"  montre quelle cible une phrase déclencherait
   sons           fait entendre chaque son de confirmation
+  action <cible> <clearDraft|newChat|copyResponse>   exécute une commande de gestion dans 3 s (app au premier plan)
 """
 
 var args = Array(CommandLine.arguments.dropFirst())
@@ -65,7 +66,11 @@ app.setActivationPolicy(.prohibited) // aucune fenêtre, aucune icône dans le D
 
 switch command {
 case "run":
-    app.setActivationPolicy(.accessory) // pas d'icône dans le Dock, mais le bandeau de lecture peut s'afficher
+    app.setActivationPolicy(.accessory) // pas d'icône dans le Dock
+    rotateLogIfNeeded()
+    // Service lancé pour des jours : vérification toutes les heures.
+    let logTimer = Timer(timeInterval: 3600, repeats: true) { _ in rotateLogIfNeeded() }
+    RunLoop.main.add(logTimer, forMode: .common)
     do {
         let coordinator = try Coordinator(config: config)
         coordinator.start()
@@ -180,6 +185,7 @@ case "route":
     let text = args.dropFirst().joined(separator: " ")
     let router = Router(config: config)
     print(router.route(text).map { "→ \($0.id)" } ?? "→ aucune cible")
+    if let command = AppCommand.match(text, router: router, config: config) { print("→ commande : \(command.rawValue)") }
     if config.externalDictation == nil && router.isThoughtPause(text) {
         print("→ suspension de l'envoi automatique")
     } else if config.externalDictation == nil && router.isSendCommand(text) {
@@ -187,6 +193,21 @@ case "route":
     } else if (config.externalDictation == nil || config.externalDictation?.stopShortcut != nil) && router.endsWithStopPhrase(text) {
         print("→ phrase d'arrêt du micro (pendant une dictée)")
     }
+
+case "action":
+    // voicewake action <cible> <commande> : laisse 3 s pour mettre l'app devant, puis exécute la commande.
+    let t = requireTarget(args)
+    guard args.count >= 3, let command = AppCommand(rawValue: args[2]), command != .status else {
+        print("Commandes : clearDraft, newChat, copyResponse"); exit(1)
+    }
+    print("Mets \(t.id) au premier plan : \(command.rawValue) dans 3 s…")
+    RunLoop.main.run(until: Date().addingTimeInterval(3))
+    var finished = false
+    AppActions.run(command, target: t) { ok, detail in
+        print(ok ? "✓ \(detail)" : "✗ \(detail)")
+        finished = true
+    }
+    while !finished { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
 
 case "sons", "sounds":
     // Fait entendre les sons de confirmation, dans l'ordre, avec leur signification.

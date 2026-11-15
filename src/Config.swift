@@ -1,8 +1,28 @@
 import CoreGraphics
 import Foundation
 
+private let logDateFormatter = ISO8601DateFormatter()
+
 func log(_ message: String) {
-    print("[\(ISO8601DateFormatter().string(from: Date()))] \(message)")
+    print("[\(logDateFormatter.string(from: Date()))] \(message)")
+}
+
+/// Journal du service (~/Library/Logs/voicewake.log, ouvert par le LaunchAgent comme sortie standard) :
+/// au-delà de `maxBytes`, il devient voicewake.log.1 (l'ancien est remplacé) et un journal neuf commence.
+/// Ne fait rien si la sortie standard n'est pas ce fichier (terminal, autre chemin).
+func rotateLogIfNeeded(path: String = ("~/Library/Logs/voicewake.log" as NSString).expandingTildeInPath,
+                       maxBytes: Int = 5_000_000) {
+    var out = stat(), file = stat()
+    guard fstat(STDOUT_FILENO, &out) == 0, stat(path, &file) == 0,
+          out.st_ino == file.st_ino, out.st_dev == file.st_dev, Int(file.st_size) > maxBytes else { return }
+    fflush(stdout); fflush(stderr)
+    let old = path + ".1"
+    try? FileManager.default.removeItem(atPath: old)
+    guard (try? FileManager.default.moveItem(atPath: path, toPath: old)) != nil else { return }
+    freopen(path, "a", stdout)
+    freopen(path, "a", stderr)
+    setvbuf(stdout, nil, _IOLBF, 0)
+    log("Journal précédent archivé : \(old).")
 }
 
 /// "Salut, Chat GPT !" -> "salut chat gpt"
@@ -51,6 +71,11 @@ struct Target: Codable {
     var resumeReadShortcut: Shortcut?
     /// Attente entre l'arrêt du micro et l'envoi, le temps que le texte s'affiche (défaut 1,5 s).
     var submitDelaySeconds: Double?
+    /// « Nouvelle conversation » : commande de la barre de menus (libellés exacts, le premier trouvé).
+    /// Défaut : Nouvelle conversation, Nouvelle session, Nouveau chat, Nouvelle discussion (et en anglais).
+    var newChatMenuItems: [String]?
+    /// « Copie la réponse » : bouton de copie du dernier message (défaut "button:Copier|Copy").
+    var copyResponseShortcut: Shortcut?
 }
 
 /// Un assistant intégré à un éditeur (ex. extension Claude Code dans VS Code).
@@ -95,6 +120,17 @@ struct Config: Codable {
     var requireOnDevice: Bool
     /// Annulation d'écho : VoiceWake n'entend pas la voix de lecture des haut-parleurs (défaut true).
     var echoCancellation: Bool?
+    /// « Efface le brouillon », « Nouvelle conversation », « Copie la réponse », « Où on en est ? »
+    /// (défauts dans `AppCommand`).
+    var clearDraftPhrases: [String]?
+    var newChatPhrases: [String]?
+    var copyResponsePhrases: [String]?
+    var statusPhrases: [String]?
+    /// Navigation du lecteur intégré (« lis à partir de … ») : vitesse, phrase précédente ou suivante (défauts dans `ReaderNav`).
+    var readFasterPhrases: [String]?
+    var readSlowerPhrases: [String]?
+    var readRepeatPhrases: [String]?
+    var readNextPhrases: [String]?
     /// Sons de confirmation (commande comprise, micro ouvert/coupé, envoi, commande ignorée, échec). Défaut true.
     var feedbackSounds: Bool?
     /// Volume des sons de confirmation, de 0 à 1 (défaut 0,35).

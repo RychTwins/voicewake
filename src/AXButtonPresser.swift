@@ -301,6 +301,29 @@ enum AXButtonPresser {
         return true
     }
 
+    /// Choisit une commande de la barre de menus de l'app (ex. Fichier > « Nouvelle session »), sans ouvrir le menu.
+    /// Premier libellé trouvé dans l'ordre de `labels`, libellé exact, option active uniquement. Renvoie le libellé choisi.
+    static func pressMenuBarItem(_ labels: [String], in app: NSRunningApplication) -> String? {
+        guard AXIsProcessTrusted() else { return nil }
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        guard let bar: AXUIElement = value(root, kAXMenuBarAttribute) else { return nil }
+        var items: [(title: String, element: AXUIElement)] = []
+        for top in (value(bar, kAXChildrenAttribute) as [AXUIElement]?) ?? [] {
+            for menu in (value(top, kAXChildrenAttribute) as [AXUIElement]?) ?? [] {
+                for item in (value(menu, kAXChildrenAttribute) as [AXUIElement]?) ?? []
+                where (value(item, kAXEnabledAttribute) as Bool?) != false {
+                    if let title: String = value(item, kAXTitleAttribute), !title.isEmpty { items.append((title, item)) }
+                }
+            }
+        }
+        for label in labels {
+            let wanted = label.lowercased().trimmingCharacters(in: .whitespaces)
+            if let hit = items.first(where: { $0.title.lowercased() == wanted }),
+               AXUIElementPerformAction(hit.element, kAXPressAction as CFString) == .success { return hit.title }
+        }
+        return nil
+    }
+
     /// Choisit l'option dès que le menu est ouvert (essai toutes les 20 ms) : le menu ne reste visible qu'un instant.
     static func pressMenuItemSoon(_ label: String, in app: NSRunningApplication, within seconds: Double = 1.2) -> Bool {
         let deadline = Date().addingTimeInterval(seconds)

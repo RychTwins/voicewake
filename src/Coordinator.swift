@@ -73,6 +73,11 @@ final class Coordinator {
         // (« lis à partir de… », « fais la lecture », « dis Claude »…) abandonne l'attente de « ok envoie ».
         if active != nil, !recording, !stopping, reviewUntil != nil,
            !router.isSendCommand(text), wakeKey(text) != nil {
+            // « Où on en est ? » : on répond sans abandonner le brouillon.
+            if AppCommand.match(text, router: router, config: config) == .status {
+                announceStatus()
+                return
+            }
             log("Attente de « ok envoie » abandonnée : nouvelle commande.")
             endPause()
             // Pas de return : la même phrase est traitée tout de suite par la veille, ci-dessous.
@@ -116,6 +121,37 @@ final class Coordinator {
         DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: work)
     }
 
+    private let announcer = Announcer()
+    private var lastStatus = Date.distantPast
+
+    /// « Où on en est ? » : dit l'état de VoiceWake avec une voix du Mac. Le texte ne contient aucune
+    /// phrase de commande, pour que VoiceWake ne réagisse pas à sa propre annonce.
+    private func announceStatus() {
+        guard !announcer.isSpeaking, Date().timeIntervalSince(lastStatus) >= 4 else { return }
+        lastStatus = Date()
+        let name = { (t: Target) in t.appName ?? t.id.capitalized }
+        let message: String
+        if let t = active, let until = reviewUntil {
+            message = "Brouillon gardé pour \(name(t)), en attente d'envoi encore \(max(0, Int(until.timeIntervalSinceNow))) secondes."
+        } else if let t = active {
+            message = "Dictée en cours vers \(name(t))."
+        } else if reader.isActive {
+            message = reader.isPaused ? "Lecteur intégré en pause." : "Lecteur intégré en cours."
+        } else if let t = trigger.readingTarget() {
+            message = "Lecture à voix haute de \(name(t)) en cours."
+        } else if let t = trigger.pausedTarget() {
+            message = "Lecture de \(name(t)) en pause."
+        } else if let t = router.frontmostTarget(), let app = ShortcutTrigger.runningApp(for: t), AXButtonPresser.isFrontmost(app) {
+            message = "En veille, prêt. \(name(t)) est au premier plan."
+        } else {
+            message = "En veille, prêt."
+        }
+        log("État : \(message)")
+        announcer.say(message, locale: config.locale, voice: config.readerVoice) { [weak self] in
+            self?.detector.reset() // oublier ce que le micro a entendu de l'annonce
+        }
+    }
+
     private let reader = Reader()
     private let follower = ReadingFollower()
     private var detectedReader: (target: Target?, at: Date) = (nil, .distantPast)
@@ -157,33 +193,19 @@ final class Coordinator {
         reader.speak(passage, config: config)
     }
 
-    /// Le micro entend aussi le lecteur intégré : une commande présente dans son texte, précédée du même mot, est ignorée.
+    /// Le micro entend aussi le lecteur intégré : une commande présente dans ce qu'il lit en ce moment est ignorée.
     private func spokenByOwnReader(_ text: String) -> Bool {
         let phrases = (config.readPausePhrases ?? []) + (config.interruptPhrases ?? []) + (config.readResumePhrases ?? [])
-        guard let hit = router.lastMatch(text, phrases) else { return false }
-        let spoken = " " + normalize(reader.spokenNow) + " "
-        // Pas de vérification du mot précédent : la transcription de la voix est souvent déformée
-        // (« puis arrête » → « suite arrête »). Si la phrase est dans ce que le lecteur dit en ce moment,
-        // elle est attribuée au lecteur ; l'utilisateur la fait passer en la redisant (voir `insisted`).
-        return spoken.contains(" " + hit.phrase + " ")
+            + ReaderNav.allPhrases(config)
+        return VoiceFilter.spokenByReader(text, phrases: phrases, spokenNow: reader.spokenNow, router: router)
     }
 
-    /// La commande entendue vient-elle de la voix de lecture ? Oui si le texte affiché par l'app
-    /// contient cette phrase précédée du même mot (ou si on n'a pas entendu de mot avant).
-    private var suppressed: [String: (count: Int, at: Date)] = [:]
+    private var insistence = Insistence()
 
-    /// Une commande attribuée à la voix de lecture passe quand la même phrase est redite dans les 6 s :
-    /// dès la 2e fois si le texte lu à cet instant ne la répète pas, et toujours à la 3e fois.
-    /// Le contenu lu ne peut donc jamais bloquer l'utilisateur.
+    /// Commande attribuée à la voix de lecture mais redite par l'utilisateur (voir `Insistence`).
     private func insisted(_ text: String, phrases: [String]?, spokenNow: String) -> Bool {
         guard let phrase = router.lastMatch(text, phrases)?.phrase else { return false }
-        let previous = suppressed[phrase].flatMap { Date().timeIntervalSince($0.at) < 6 ? $0.count : nil } ?? 0
-        let count = previous + 1
-        suppressed[phrase] = (count, Date())
-        let occurrences = (" " + normalize(spokenNow) + " ").components(separatedBy: " " + phrase + " ").count - 1
-        let accepted = count >= 3 || (count == 2 && occurrences < 2)
-        if accepted { suppressed[phrase] = nil }
-        return accepted
+        return insistence.accept(phrase, spokenNow: spokenNow)
     }
 
     private var readCommandPhrases: [String] { (config.readPausePhrases ?? []) + (config.interruptPhrases ?? []) }
@@ -207,6 +229,8 @@ final class Coordinator {
         if router.containsAny(text, config.readPausePhrases) { return "#pause" }
         if router.containsAny(text, config.readResumePhrases) { return "#resume" }
         if router.containsReadAloudPhrase(text) { return "#readaloud" }
+        if reader.isActive, let nav = ReaderNav.match(text, config: config) { return "#" + nav.rawValue }
+        if let command = AppCommand.match(text, router: router, config: config) { return "#" + command.rawValue }
         return router.route(text)?.id
     }
 
@@ -234,7 +258,7 @@ final class Coordinator {
         // Lecteur intégré en cours : pause, reprise, écoute.
         if reader.isActive {
             defer { detector.reset() }
-            if spokenByOwnReader(text), !insisted(text, phrases: readCommandPhrases + (config.readResumePhrases ?? []), spokenNow: reader.spokenNow) { Feedback.play(.ignored); return log("Commande ignorée : prononcée par le lecteur intégré.") }
+            if spokenByOwnReader(text), !insisted(text, phrases: readCommandPhrases + (config.readResumePhrases ?? []) + ReaderNav.allPhrases(config), spokenNow: reader.spokenNow) { Feedback.play(.ignored); return log("Commande ignorée : prononcée par le lecteur intégré.") }
             if interrupt, let t = readerTarget {
                 reader.stop()
                 lastWake = Date()
@@ -245,6 +269,38 @@ final class Coordinator {
                 reader.pause(); Feedback.play(.understood); log("Lecteur intégré : pause.")
             } else if resumeRead {
                 reader.resume(); Feedback.play(.understood); log("Lecteur intégré : reprise.")
+            } else if let nav = ReaderNav.match(text, config: config) {
+                let ok: Bool
+                switch nav {
+                case .faster, .slower:
+                    let r = reader.changeRate(faster: nav == .faster)
+                    ok = r != nil
+                    log(r.map { "Lecteur intégré : vitesse × \(String(format: "%.2f", $0))." } ?? "Lecteur intégré : vitesse déjà à la limite.")
+                case .repeatSentence, .nextSentence:
+                    ok = reader.skipSentence(forward: nav == .nextSentence)
+                    log(ok ? "Lecteur intégré : \(nav == .nextSentence ? "phrase suivante" : "phrase reprise")." : "Lecteur intégré : pas d'autre phrase.")
+                }
+                Feedback.play(ok ? .understood : .failed)
+            }
+            return
+        }
+        // Gestion de l'assistant : efface le brouillon, nouvelle conversation, copie, état.
+        if !interrupt, !pauseRead, !resumeRead, !readAloud,
+           let command = AppCommand.match(text, router: router, config: config) {
+            detector.reset()
+            if command == .status { return announceStatus() }
+            // Pendant une lecture à voix haute, la voix pourrait dire la phrase : on n'agit pas.
+            if let r = currentReader() {
+                Feedback.play(.ignored)
+                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
+            }
+            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
+            lastWake = Date()
+            guard let t = router.frontmostTarget() else { Feedback.play(.failed); return log("Commande : aucun assistant ouvert.") }
+            if config.dryRun == true { return log("[essai] → \(command.rawValue) sur \(t.id)") }
+            AppActions.run(command, target: t) { ok, detail in
+                Feedback.play(ok ? .understood : .failed)
+                log("Commande \(command.rawValue) → \(t.id) : \(ok ? "faite" : "impossible") (\(detail)).")
             }
             return
         }
