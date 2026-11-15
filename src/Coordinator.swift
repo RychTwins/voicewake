@@ -110,8 +110,10 @@ final class Coordinator {
         // L'app au premier plan seulement si c'est une cible (pas de recherche dans les éditeurs ici).
         if let front = NSWorkspace.shared.frontmostApplication,
            let t = config.targets.first(where: { ShortcutTrigger.matches(front, $0) }),
+           // Même processus que celui que VoiceWake pilotera ensuite pour cette cible.
+           let app = ShortcutTrigger.runningApp(for: t), app.processIdentifier == front.processIdentifier,
            let pause = t.pauseReadShortcut?.buttons, !pause.isEmpty,
-           !AXButtonPresser.all(pause, in: front).isEmpty { found = t }
+           !AXButtonPresser.all(pause, in: app).isEmpty { found = t }
         detectedReader = (found, Date())
         return found
     }
