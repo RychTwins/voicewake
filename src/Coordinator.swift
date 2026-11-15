@@ -474,8 +474,8 @@ final class Coordinator {
         guard config.continuousConversation == true, externalDictation(for: t) == nil, config.dryRun != true,
               active == nil, pendingWake == nil, !reader.isActive else { return }
         // Seulement si l'assistant est resté devant : on ne reprend pas la main sur une autre app.
-        guard window.isFocused else {
-            return log("Conversation continue : fenêtre de \(t.id) changée, veille.")
+        guard window.isSameConversation else {
+            return log("Conversation continue : chat de \(t.id) changé ou non identifié, veille.")
         }
         lastWake = Date()
         log("Conversation continue → \(t.id) (micro).")
@@ -646,6 +646,7 @@ final class Coordinator {
         let now = ProcessInfo.processInfo.systemUptime
         guard dictatedContent.shouldSend(now: now, startedAt: max(startedAt, lastAutoSendPause), lastBuffer: audio.lastBuffer,
                                          lastSpeech: audio.lastSpeech, delay: delay) else { return false }
+        guard dictationWindow?.isSameConversation == true else { return false }
         var submission = target
         if (submission.submitShortcut?.buttons ?? []).isEmpty, submission.bundleID == "com.anthropic.claudefordesktop" {
             submission.submitShortcut = try? Shortcut(spec: "button:Envoyer|Send|Send message")
@@ -713,7 +714,10 @@ final class Coordinator {
         Feedback.play(.micOpen)
         if listening {
             active = target
-            dictationWindow = window ?? (external == nil ? ShortcutTrigger.dictationWindow(for: target) : trigger.externalDictationWindow)
+            dictationWindow = window ?? (external == nil ? trigger.nativeDictationWindow : trigger.externalDictationWindow)
+            if natural, dictationWindow?.conversation == nil {
+                log("\(target.id) : chat non identifié, envoi automatique désactivé pour ce tour.")
+            }
             recording = true
             reviewUntil = nil
             detector.start()
@@ -724,6 +728,14 @@ final class Coordinator {
             guard let self else { timer.invalidate(); return }
             guard !self.stopping else { return }
             if natural, self.active?.id == target.id {
+                if let origin = self.dictationWindow,
+                   !origin.isFocused || (origin.conversation != nil && !origin.isSameConversation) {
+                    self.endPause()
+                    Feedback.play(.failed)
+                    log("\(target.id) : envoi automatique annulé, chat ou fenêtre changé.")
+                    self.detector.reset()
+                    return
+                }
                 if self.sendAfterSilence(target, startedAt: startedAt) { return }
                 let lastSpeech = self.detector.audioActivity?.lastSpeech ?? startedAt
                 if window != nil, self.dictatedContent == .empty, self.pendingSend == nil,

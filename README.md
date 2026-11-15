@@ -175,7 +175,7 @@ Avec `"continuousConversation": true`, VoiceWake envoie la dictée après 5 s de
 - **« Attends, je réfléchis »** suspend l'envoi jusqu'à ce que vous repreniez la parole.
 - **« Garde le brouillon »** ou **« OK arrête »** coupe le micro et laisse le texte dans le composeur.
 
-Le micro se rouvre dans la même fenêtre après la lecture de la réponse. Si aucune lecture n'est configurée, VoiceWake attend que le texte de la fenêtre se stabilise pendant 6 s. Après une réouverture sans parole pendant `continueSilenceSeconds` (10 s par défaut), le micro se referme et VoiceWake repasse en veille.
+L'envoi automatique et la réouverture du micro exigent que VoiceWake reconnaisse toujours le chat de départ. Changer de chat, même dans la même fenêtre, annule le tour en cours. Dans une conversation vide ou si l'application n'expose aucun repère de chat, utilisez « OK envoie ». Après une réouverture sans parole pendant `continueSilenceSeconds` (10 s par défaut), le micro se referme et VoiceWake repasse en veille.
 
 Sans casque, la voix de lecture peut laisser un écho : la reprise attend 3 s de silence après la fin de la lecture.
 

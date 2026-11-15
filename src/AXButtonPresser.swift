@@ -197,7 +197,7 @@ enum AXButtonPresser {
     /// Tout le texte affiché dans les fenêtres de l'app (messages, titres), dans l'ordre de l'écran.
     /// `boundaries` : libellés des boutons qui suivent chaque réponse (ex. « Lire à voix haute ») ;
     /// à chacun, et entre deux fenêtres, une marque `messageEnd` est insérée.
-    static func windowTexts(in app: NSRunningApplication, boundaries: [String] = []) -> [String] {
+    static func windowTexts(in app: NSRunningApplication, boundaries: [String] = [], window: AXUIElement? = nil) -> [String] {
         let root = AXUIElementCreateApplication(app.processIdentifier)
         let ends = Set(boundaries.map { $0.lowercased().trimmingCharacters(in: .whitespaces) })
         var out: [String] = []
@@ -223,6 +223,10 @@ enum AXButtonPresser {
             for child in (value(e, kAXChildrenAttribute) as [AXUIElement]?) ?? [] { walk(child, depth + 1) }
         }
         // Fenêtre active d'abord (certaines apps ne listent pas toutes leurs fenêtres), puis les autres.
+        if let window {
+            walk(window, 0)
+            return out
+        }
         var windows: [AXUIElement] = []
         if let focused: AXUIElement = value(root, kAXFocusedWindowAttribute) { windows.append(focused) }
         if let main: AXUIElement = value(root, kAXMainWindowAttribute), !windows.contains(where: { CFEqual($0, main) }) { windows.append(main) }
@@ -244,7 +248,8 @@ enum AXButtonPresser {
     }
 
     /// Renvoie le libellé du bouton pressé, ou nil.
-    static func press(_ labels: [String], in app: NSRunningApplication, window: AXUIElement? = nil) -> String? {
+    static func press(_ labels: [String], in app: NSRunningApplication, window: AXUIElement? = nil,
+                      while allowed: () -> Bool = { true }) -> String? {
         let root = AXUIElementCreateApplication(app.processIdentifier)
         // Applications Electron/Chromium : exposer l'arbre d'accessibilité.
         AXUIElementSetAttributeValue(root, "AXManualAccessibility" as CFString, kCFBooleanTrue)
@@ -262,7 +267,7 @@ enum AXButtonPresser {
         for w in windows {
             if let (el, name) = find(w, wanted, depth: 0),
                window == nil || (isFrontmost(app) && currentWindow(in: app).map { CFEqual($0, w) } == true),
-               activate(el, in: app) {
+               activate(el, in: app, while: allowed) {
                 return name
             }
         }
@@ -282,19 +287,21 @@ enum AXButtonPresser {
     }
 
     /// Presse le dernier élément trouvé (ex. « Lire à voix haute » du message le plus récent).
-    static func pressLast(_ labels: [String], in app: NSRunningApplication, window: AXUIElement) -> Bool {
+    static func pressLast(_ labels: [String], in app: NSRunningApplication, window: AXUIElement,
+                          while allowed: () -> Bool = { true }) -> Bool {
         guard let last = all(labels, in: app, window: window).last,
               isFrontmost(app), currentWindow(in: app).map({ CFEqual($0, window) }) == true else { return false }
-        return activate(last, in: app)
+        return activate(last, in: app, while: allowed)
     }
 
     /// Appuie sur un élément : action AXPress s'il la propose, sinon focus clavier + Espace, sinon vrai clic de souris.
     /// (Codex : « Lire à voix haute » n'expose pas AXPress ; l'action « réussit » sans rien lancer.)
-    static func activate(_ el: AXUIElement, in app: NSRunningApplication) -> Bool {
+    static func activate(_ el: AXUIElement, in app: NSRunningApplication, while allowed: () -> Bool = { true }) -> Bool {
+        guard allowed() else { return false }
         var names: CFArray?
         let listed = AXUIElementCopyActionNames(el, &names) == .success
         if !listed || ((names as? [String]) ?? []).contains(kAXPressAction as String) {
-            return AXUIElementPerformAction(el, kAXPressAction as CFString) == .success
+            return allowed() && AXUIElementPerformAction(el, kAXPressAction as CFString) == .success
         }
         guard isFrontmost(app) else { return false }
         AXUIElementPerformAction(el, "AXScrollToVisible" as CFString)
@@ -305,7 +312,8 @@ enum AXButtonPresser {
         if AXUIElementSetAttributeValue(el, kAXFocusedAttribute as CFString, kCFBooleanTrue) == .success {
             usleep(250_000)
             // Espace seulement si le focus est bien sur l'élément : sinon il s'écrirait dans le champ de saisie.
-            if isFrontmost(app), let focused: AXUIElement = value(root, kAXFocusedUIElementAttribute), CFEqual(focused, el) {
+            if isFrontmost(app), let focused: AXUIElement = value(root, kAXFocusedUIElementAttribute),
+               CFEqual(focused, el), allowed() {
                 let source = CGEventSource(stateID: .hidSystemState)
                 for down in [true, false] {
                     CGEvent(keyboardEventSource: source, virtualKey: 49, keyDown: down)?.postToPid(app.processIdentifier)
@@ -329,7 +337,8 @@ enum AXButtonPresser {
         }
         /// Centre de l'élément, seulement si l'app est devant et que le point est dans sa fenêtre active.
         func target() -> CGPoint? {
-            guard isFrontmost(app), let r = rect(el), let window = currentWindow(in: app), let w = rect(window) else { return nil }
+            guard allowed(), isFrontmost(app), let r = rect(el), let window = currentWindow(in: app),
+                  let w = rect(window) else { return nil }
             let point = CGPoint(x: r.midX, y: r.midY)
             return w.contains(point) ? point : nil
         }
@@ -454,17 +463,20 @@ enum AXButtonPresser {
     }
 
     /// Choisit l'option dès que le menu est ouvert (essai toutes les 20 ms) : le menu ne reste visible qu'un instant.
-    static func pressMenuItemSoon(_ label: String, in app: NSRunningApplication, within seconds: Double = 1.2) -> Bool {
+    static func pressMenuItemSoon(_ label: String, in app: NSRunningApplication, within seconds: Double = 1.2,
+                                  while allowed: () -> Bool = { true }) -> Bool {
         let deadline = Date().addingTimeInterval(seconds)
         repeat {
-            if pressMenuItem(label, in: app) { return true }
+            guard allowed() else { return false }
+            if pressMenuItem(label, in: app, while: allowed) { return true }
             usleep(20_000)
         } while Date() < deadline
         return false
     }
 
     /// Choisit une option dans un menu ouvert de l'app (menu contextuel ou déroulant), libellé exact.
-    static func pressMenuItem(_ label: String, in app: NSRunningApplication) -> Bool {
+    static func pressMenuItem(_ label: String, in app: NSRunningApplication,
+                              while allowed: () -> Bool = { true }) -> Bool {
         let wanted = label.lowercased()
         // Jamais dans la barre de menus en haut de l'écran ; option active uniquement, libellé exact.
         func search(_ e: AXUIElement, _ depth: Int) -> AXUIElement? {
@@ -485,7 +497,7 @@ enum AXButtonPresser {
         if let window: AXUIElement = value(root, kAXFocusedWindowAttribute) { near += (value(window, kAXChildrenAttribute) as [AXUIElement]?) ?? [] }
         let menus = near.filter { (value($0, kAXRoleAttribute) as String?) == "AXMenu" }
         guard let item = menus.lazy.compactMap({ search($0, 0) }).first ?? search(root, 0) else { return false }
-        return AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
+        return allowed() && AXUIElementPerformAction(item, kAXPressAction as CFString) == .success
     }
 
     private static func collect(_ e: AXUIElement, _ wanted: [String], anyRole: Bool, depth: Int, into out: inout [AXUIElement]) {
