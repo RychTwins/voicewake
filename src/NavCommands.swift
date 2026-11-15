@@ -116,6 +116,20 @@ enum NavCommands {
     /// Menus de la barre de menus qui listent les conversations récentes (Gemini : « Discussions »).
     static let conversationMenus = ["Discussions", "Chats", "Conversations"]
 
+    /// Verbes d'action qui ne désignent jamais une conversation : leurs options ne sont jamais pressées par « ouvre … ».
+    static let actionWords: Set<String> = ["supprimer", "supprime", "effacer", "efface", "archiver", "archive", "retirer",
+                                           "quitter", "fermer", "delete", "remove", "clear", "archive", "quit", "close",
+                                           "rechercher", "search", "afficher", "show", "nouvelle", "nouveau", "new"]
+
+    /// Option du menu des conversations récentes qui est vraiment une conversation : ni commande de l'app
+    /// (« Rechercher », « Afficher toutes les discussions »…), ni action (supprimer, archiver…).
+    static func isConversationTitle(_ title: String, for t: Target) -> Bool {
+        let words = Set(normalize(title).split(separator: " ").map(String.init))
+        guard !words.isEmpty, words.isDisjoint(with: actionWords) else { return false }
+        let known = Set(commands(for: t).flatMap { ($0.menu ?? []) + ($0.buttons ?? []) }.map(normalize))
+        return !known.contains(normalize(title)) && !["recentes", "recent"].contains(normalize(title))
+    }
+
     static func commands(for t: Target) -> [VoiceCommand] {
         t.voiceCommands ?? t.bundleID.flatMap { builtIn[$0] } ?? []
     }
@@ -209,6 +223,7 @@ enum NavCommands {
                 guard let e = bestEntry(q, in: entries, kinds: [.project, .session]) else {
                     // Sinon : conversations récentes listées dans la barre de menus (Gemini).
                     let recent = AXButtonPresser.menuBarItems(under: conversationMenus, in: app)
+                        .filter { isConversationTitle($0.title, for: t) }
                         .map { AXButtonPresser.SidebarEntry(title: $0.title, element: $0.element, kind: .session, project: nil) }
                     if let m = bestEntry(q, in: recent, kinds: [.session]),
                        AXUIElementPerformAction(m.element, kAXPressAction as CFString) == .success {

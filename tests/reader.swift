@@ -142,6 +142,12 @@ struct ReaderTests {
         check(navFor("gemini", "toutes les discussions") == "Afficher toutes les discussions", "Gemini : toutes les discussions")
         check(navFor("chatgpt", "zoom avant") == "-", "ChatGPT : pas de commandes par défaut")
 
+        guard let geminiTarget = config.target(id: "gemini") else { print("ÉCHEC : cible gemini absente"); exit(1) }
+        check(NavCommands.isConversationTitle("Test du mode vocal automatique", for: geminiTarget), "conversation récente acceptée")
+        check(!NavCommands.isConversationTitle("Supprimer la discussion", for: geminiTarget), "action destructrice refusée")
+        check(!NavCommands.isConversationTitle("Afficher toutes les discussions", for: geminiTarget), "commande de l'app refusée")
+        check(!NavCommands.isConversationTitle("Récentes", for: geminiTarget), "en-tête de menu refusé")
+
         // Indices de reconnaissance.
         let hints = Coordinator.hints(base: ["salut claude", "Salut Claude"], names: ["VoxTV", "Equality Holding"],
                                       config: config, target: claudeTarget)
