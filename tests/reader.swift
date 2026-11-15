@@ -81,6 +81,8 @@ struct ReaderTests {
         check(nav("nouvelle session dans VoxTV") == "new:voxtv", "nouvelle session dans <projet>")
         check(nav("je reviens à la page précédente demain") == "-", "phrase au milieu d'une autre : rien")
         check(nav("nouvelle conversation") == "-", "nouvelle conversation reste la commande de gestion")
+        check(nav("il faut que j'ouvre la porte") == "-", "« ouvre » au milieu d'une phrase : rien")
+        check(nav("ouvre un texte beaucoup trop long pour être un nom de projet ici") == "-", "nom trop long : rien")
 
         let dummy = AXUIElementCreateApplication(getpid())
         typealias E = AXButtonPresser.SidebarEntry

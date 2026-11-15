@@ -23,6 +23,8 @@ enum NavRequest {
 /// au milieu ne déclenche rien.
 enum NavCommands {
     static let defaultOpenPhrases = ["ouvre le projet", "ouvre la session", "ouvre la conversation", "va dans le projet", "ouvre"]
+    /// Nom cité après « ouvre » : au plus ce nombre de mots.
+    static let maxNameWords = 8
     static let defaultNewSessionInPhrases = ["nouvelle session dans", "nouvelle conversation dans", "nouvelle session pour"]
 
     /// Commandes de l'application Claude (libellés relevés dans ses menus et sa barre latérale, FR et EN).
@@ -71,18 +73,17 @@ enum NavCommands {
         let n = normalize(text)
         guard !n.isEmpty else { return nil }
         let words = n.split(separator: " ").map(String.init)
-        // « Nouvelle session dans X » / « Ouvre X » : la phrase, puis au moins un mot.
+        // « Nouvelle session dans X » / « Ouvre X » : la phrase doit ouvrir l'énoncé (le moteur repart d'une
+        // transcription vide après chaque pause), suivie d'un nom court. « Il faut que j'ouvre la porte » ou
+        // une phrase lue à voix haute qui contient « ouvre » au milieu ne déclenchent donc rien.
         func query(after phrases: [String]) -> [String]? {
             var best: [String]?
             for p in phrases.map(normalize) where !p.isEmpty {
                 let pw = p.split(separator: " ").map(String.init)
-                guard words.count > pw.count else { continue }
-                // Dernière occurrence de la phrase.
-                for i in stride(from: words.count - pw.count - 1, through: 0, by: -1) where Array(words[i..<i + pw.count]) == pw {
-                    let rest = Array(words[(i + pw.count)...])
-                    if best == nil || rest.count < best!.count { best = rest }
-                    break
-                }
+                guard words.count > pw.count, Array(words.prefix(pw.count)) == pw else { continue }
+                let rest = Array(words.dropFirst(pw.count))
+                guard rest.count <= maxNameWords else { continue }
+                if best == nil || rest.count < best!.count { best = rest }
             }
             return best
         }

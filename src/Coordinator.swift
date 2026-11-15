@@ -299,10 +299,11 @@ final class Coordinator {
             }
             guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
             lastWake = Date()
-            if config.dryRun == true { return log("[essai] → navigation \(request) sur \(front.id)") }
-            NavCommands.run(request, target: front) { ok, detail in
+            // Noms de projets et titres de sessions : journalisés seulement en mode debug (données privées).
+            if config.dryRun == true { return log("[essai] → navigation sur \(front.id)\(config.debug ? " : \(request)" : "")") }
+            NavCommands.run(request, target: front) { [weak self] ok, detail in
                 Feedback.play(ok ? .understood : .failed)
-                log("Navigation → \(front.id) : \(ok ? "faite" : "impossible") (\(detail)).")
+                log("Navigation → \(front.id) : \(ok ? "faite" : "impossible")\(self?.config.debug == true ? " (\(detail))" : "").")
             }
             return
         }
