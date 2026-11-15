@@ -117,7 +117,11 @@ final class Coordinator {
         let work = DispatchWorkItem(block: fire)
         pendingWake = work
         // « Lis à partir de … » : laisser le temps de dire la citation.
-        let wait = router.containsAny(text, config.readFromPhrases) ? 6 : (config.wakeMaxWaitSeconds ?? 1.8)
+        // « Ouvre … » / « Nouvelle session dans … » : laisser le temps de dire le nom.
+        var wait = config.wakeMaxWaitSeconds ?? 1.8
+        if router.containsAny(text, config.readFromPhrases) { wait = 6 }
+        else if case .open? = NavCommands.match(text, target: nil, config: config) { wait = 3 }
+        else if case .newSessionIn? = NavCommands.match(text, target: nil, config: config) { wait = 3 }
         DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: work)
     }
 
@@ -230,6 +234,7 @@ final class Coordinator {
         if router.containsAny(text, config.readResumePhrases) { return "#resume" }
         if router.containsReadAloudPhrase(text) { return "#readaloud" }
         if reader.isActive, let nav = ReaderNav.match(text, config: config) { return "#" + nav.rawValue }
+        if NavCommands.match(text, target: nil, config: config) != nil { return "#nav" }
         if let command = AppCommand.match(text, router: router, config: config) { return "#" + command.rawValue }
         return router.route(text)?.id
     }
@@ -281,6 +286,23 @@ final class Coordinator {
                     log(ok ? "Lecteur intégré : \(nav == .nextSentence ? "phrase suivante" : "phrase reprise")." : "Lecteur intégré : pas d'autre phrase.")
                 }
                 Feedback.play(ok ? .understood : .failed)
+            }
+            return
+        }
+        // Navigation dans l'app au premier plan : menus, barre latérale, « ouvre <projet> ».
+        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil,
+           let front = router.frontmostTarget(), let request = NavCommands.match(text, target: front, config: config) {
+            detector.reset()
+            if let r = currentReader() {
+                Feedback.play(.ignored)
+                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
+            }
+            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
+            lastWake = Date()
+            if config.dryRun == true { return log("[essai] → navigation \(request) sur \(front.id)") }
+            NavCommands.run(request, target: front) { ok, detail in
+                Feedback.play(ok ? .understood : .failed)
+                log("Navigation → \(front.id) : \(ok ? "faite" : "impossible") (\(detail)).")
             }
             return
         }

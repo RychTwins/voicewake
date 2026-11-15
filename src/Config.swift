@@ -76,6 +76,8 @@ struct Target: Codable {
     var newChatMenuItems: [String]?
     /// « Copie la réponse » : bouton de copie du dernier message (défaut "button:Copier|Copy").
     var copyResponseShortcut: Shortcut?
+    /// Commandes vocales de navigation (menus, boutons). Défaut : celles de l'app Claude (voir `NavCommands.claude`).
+    var voiceCommands: [VoiceCommand]?
 }
 
 /// Un assistant intégré à un éditeur (ex. extension Claude Code dans VS Code).
@@ -126,6 +128,9 @@ struct Config: Codable {
     var newChatPhrases: [String]?
     var copyResponsePhrases: [String]?
     var statusPhrases: [String]?
+    /// « Ouvre <projet ou session> » et « Nouvelle session dans <projet> » (défauts dans `NavCommands`).
+    var openPhrases: [String]?
+    var newSessionInPhrases: [String]?
     /// Navigation du lecteur intégré (« lis à partir de … ») : vitesse, phrase précédente ou suivante (défauts dans `ReaderNav`).
     var readFasterPhrases: [String]?
     var readSlowerPhrases: [String]?

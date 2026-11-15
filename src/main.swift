@@ -12,6 +12,8 @@ Usage : voicewake [commande] [--config chemin]
   route "texte"  montre quelle cible une phrase déclencherait
   sons           fait entendre chaque son de confirmation
   action <cible> <clearDraft|newChat|copyResponse>   exécute une commande de gestion dans 3 s (app au premier plan)
+  dis <cible> "phrase"   exécute une phrase de navigation dans 3 s (ex. "ouvre voxtv", "session précédente")
+  barre <cible>  liste les projets et sessions de la barre latérale
 """
 
 var args = Array(CommandLine.arguments.dropFirst())
@@ -185,7 +187,13 @@ case "route":
     let text = args.dropFirst().joined(separator: " ")
     let router = Router(config: config)
     print(router.route(text).map { "→ \($0.id)" } ?? "→ aucune cible")
-    if let command = AppCommand.match(text, router: router, config: config) { print("→ commande : \(command.rawValue)") }
+    if let nav = NavCommands.match(text, target: nil, config: config) {
+        switch nav {
+        case let .command(c): print("→ navigation : \(((c.menu ?? []) + (c.buttons ?? [])).first ?? "?")")
+        case let .open(q): print("→ ouvrir : \(q.joined(separator: " "))")
+        case let .newSessionIn(q): print("→ nouvelle session dans : \(q.joined(separator: " "))")
+        }
+    } else if let command = AppCommand.match(text, router: router, config: config) { print("→ commande : \(command.rawValue)") }
     if config.externalDictation == nil && router.isThoughtPause(text) {
         print("→ suspension de l'envoi automatique")
     } else if config.externalDictation == nil && router.isSendCommand(text) {
@@ -208,6 +216,27 @@ case "action":
         finished = true
     }
     while !finished { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
+
+case "dis", "say":
+    // voicewake dis claude "ouvre voxtv" : exécute une phrase de navigation dans 3 s, sans la voix.
+    let t = requireTarget(args)
+    let phrase = args.dropFirst(2).joined(separator: " ")
+    guard let request = NavCommands.match(phrase, target: t, config: config) else { print("→ pas une commande de navigation"); exit(1) }
+    print("Mets \(t.id) au premier plan : « \(phrase) » dans 3 s…")
+    RunLoop.main.run(until: Date().addingTimeInterval(3))
+    var navDone = false
+    NavCommands.run(request, target: t) { ok, detail in print(ok ? "✓ \(detail)" : "✗ \(detail)"); navDone = true }
+    while !navDone { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
+
+case "barre":
+    // voicewake barre claude : liste les projets et sessions de la barre latérale (ce que « ouvre … » peut viser).
+    let t = requireTarget(args)
+    guard let target = ShortcutTrigger.runningApp(for: t) else { print("\(t.id) n'est pas ouverte."); exit(1) }
+    AXButtonPresser.enableAccessibility(target)
+    usleep(500_000)
+    for e in AXButtonPresser.sidebarEntries(in: target) where e.kind != .newSession {
+        print(e.kind == .project ? "▸ \(e.title)" : "    \(e.title)")
+    }
 
 case "sons", "sounds":
     // Fait entendre les sons de confirmation, dans l'ordre, avec leur signification.

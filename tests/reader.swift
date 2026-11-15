@@ -1,4 +1,5 @@
 import Foundation
+import ApplicationServices
 
 // Tests sans micro du lecteur intégré : alignement ElevenLabs, fin de réponse.
 // swiftc -wmo -parse-as-library tests/reader.swift $(ls src/*.swift | grep -v main.swift) -framework AppKit -framework AVFoundation -framework Speech -framework CoreAudio -o /tmp/reader-tests && /tmp/reader-tests
@@ -63,6 +64,45 @@ struct ReaderTests {
         check(ReaderNav.match("répète", config: config) == .repeatSentence, "répète")
         check(ReaderNav.match("phrase suivante", config: config) == .nextSentence, "phrase suivante")
         check(ReaderNav.match("plus vite non moins vite", config: config) == .slower, "la commande la plus récente l'emporte")
+
+        // Navigation : phrases et noms de projets.
+        guard let claudeTarget = config.target(id: "claude") else { print("ÉCHEC : cible claude absente"); exit(1) }
+        func nav(_ t: String) -> String {
+            switch NavCommands.match(t, target: claudeTarget, config: config) {
+            case let .command(c)?: return "cmd:" + (((c.menu ?? []) + (c.buttons ?? [])).first ?? "")
+            case let .open(q)?: return "open:" + q.joined(separator: " ")
+            case let .newSessionIn(q)?: return "new:" + q.joined(separator: " ")
+            case nil: return "-"
+            }
+        }
+        check(nav("session précédente") == "cmd:Session précédente", "session précédente → menu")
+        check(nav("ouvre les paramètres") == "cmd:Paramètres…", "commande fixe avant « ouvre <nom> »")
+        check(nav("ouvre Equality Holding") == "open:equality holding", "ouvre <projet>")
+        check(nav("nouvelle session dans VoxTV") == "new:voxtv", "nouvelle session dans <projet>")
+        check(nav("je reviens à la page précédente demain") == "-", "phrase au milieu d'une autre : rien")
+        check(nav("nouvelle conversation") == "-", "nouvelle conversation reste la commande de gestion")
+
+        let dummy = AXUIElementCreateApplication(getpid())
+        typealias E = AXButtonPresser.SidebarEntry
+        let sidebar = [
+            E(title: "Artéfacts", element: dummy, kind: .session, project: "Navigation"),
+            E(title: "Equality ERP", element: dummy, kind: .project, project: "Equality ERP"),
+            E(title: "Audit du projet", element: dummy, kind: .session, project: "Equality ERP"),
+            E(title: "Equality Holding", element: dummy, kind: .project, project: "Equality Holding"),
+            E(title: "Nouvelle session dans Equality Holding", element: dummy, kind: .newSession, project: "Equality Holding"),
+            E(title: "VoxTV", element: dummy, kind: .project, project: "VoxTV"),
+            E(title: "Vue magazine et Vox mag", element: dummy, kind: .session, project: "VoxTV"),
+        ]
+        func best(_ q: String, _ kinds: Set<E.Kind> = [.project, .session]) -> String? {
+            NavCommands.bestEntry(q.split(separator: " ").map(String.init), in: sidebar, kinds: kinds)?.title
+        }
+        check(best("equality holding") == "Equality Holding", "projet exact")
+        check(best("le projet equality erp") == "Equality ERP", "mots vides ignorés")
+        check(best("vox tv") == "VoxTV", "nom dit en deux mots (« vox tv » ↔ VoxTV)")
+        check(best("vox mag") == "Vue magazine et Vox mag", "session par quelques mots")
+        check(best("equality") == "Equality ERP", "nom partiel : premier projet le plus proche")
+        check(best("inconnu") == nil, "aucun résultat")
+        check(best("equality holding", [.newSession]) == "Nouvelle session dans Equality Holding", "bouton nouvelle session du projet")
 
         // Voix de lecture contre voix de l'utilisateur.
         let pause = config.readPausePhrases ?? []

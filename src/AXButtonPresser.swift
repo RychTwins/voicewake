@@ -308,13 +308,18 @@ enum AXButtonPresser {
         let root = AXUIElementCreateApplication(app.processIdentifier)
         guard let bar: AXUIElement = value(root, kAXMenuBarAttribute) else { return nil }
         var items: [(title: String, element: AXUIElement)] = []
-        for top in (value(bar, kAXChildrenAttribute) as [AXUIElement]?) ?? [] {
-            for menu in (value(top, kAXChildrenAttribute) as [AXUIElement]?) ?? [] {
-                for item in (value(menu, kAXChildrenAttribute) as [AXUIElement]?) ?? []
-                where (value(item, kAXEnabledAttribute) as Bool?) != false {
-                    if let title: String = value(item, kAXTitleAttribute), !title.isEmpty { items.append((title, item)) }
-                }
+        // Menus et sous-menus (ex. Affichage > Vue divisée > …), options actives seulement.
+        func collectItems(_ menu: AXUIElement, _ depth: Int) {
+            guard depth < 4 else { return }
+            for item in (value(menu, kAXChildrenAttribute) as [AXUIElement]?) ?? []
+            where (value(item, kAXEnabledAttribute) as Bool?) != false {
+                if let title: String = value(item, kAXTitleAttribute), !title.isEmpty { items.append((title, item)) }
+                for sub in (value(item, kAXChildrenAttribute) as [AXUIElement]?) ?? [] { collectItems(sub, depth + 1) }
             }
+        }
+        for top in (value(bar, kAXChildrenAttribute) as [AXUIElement]?) ?? []
+        where (value(top, kAXTitleAttribute) as String?) != "Apple" {
+            for menu in (value(top, kAXChildrenAttribute) as [AXUIElement]?) ?? [] { collectItems(menu, 0) }
         }
         for label in labels {
             let wanted = label.lowercased().trimmingCharacters(in: .whitespaces)
@@ -322,6 +327,59 @@ enum AXButtonPresser {
                AXUIElementPerformAction(hit.element, kAXPressAction as CFString) == .success { return hit.title }
         }
         return nil
+    }
+
+    /// Entrée de la barre latérale de l'app (Claude : projets, sessions, navigation).
+    struct SidebarEntry {
+        enum Kind { case project, session, newSession }
+        let title: String
+        let element: AXUIElement
+        let kind: Kind
+        /// Projet (titre de section) sous lequel l'entrée apparaît, ou nil.
+        let project: String?
+    }
+
+    static let sidebarLabels = ["barre latérale", "sidebar"]
+    static let newSessionPrefixes = ["nouvelle session dans ", "new session in "]
+
+    /// Entrées de la barre latérale de la fenêtre active, dans l'ordre de l'écran (vide si l'app n'en expose pas).
+    static func sidebarEntries(in app: NSRunningApplication) -> [SidebarEntry] {
+        let root = AXUIElementCreateApplication(app.processIdentifier)
+        guard let window: AXUIElement = value(root, kAXFocusedWindowAttribute) ?? value(root, kAXMainWindowAttribute) else { return [] }
+        func label(_ e: AXUIElement) -> String? {
+            [value(e, kAXTitleAttribute), value(e, kAXDescriptionAttribute)].compactMap { $0 as String? }
+                .first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        }
+        func findSidebar(_ e: AXUIElement, _ depth: Int) -> AXUIElement? {
+            if depth > 40 { return nil }
+            if (value(e, kAXRoleAttribute) as String?) == "AXGroup",
+               let l = label(e)?.lowercased(), sidebarLabels.contains(l) { return e }
+            for child in (value(e, kAXChildrenAttribute) as [AXUIElement]?) ?? [] {
+                if let hit = findSidebar(child, depth + 1) { return hit }
+            }
+            return nil
+        }
+        guard let sidebar = findSidebar(window, 0) else { return [] }
+        var out: [SidebarEntry] = []
+        var section: String?
+        func walk(_ e: AXUIElement, _ depth: Int) {
+            if depth > 60 || out.count > 800 { return }
+            let role: String? = value(e, kAXRoleAttribute)
+            if role == "AXHeading", let l = label(e) { section = l }
+            else if role == "AXButton", let l = label(e) {
+                let lower = l.lowercased()
+                if newSessionPrefixes.contains(where: { lower.hasPrefix($0) }) {
+                    out.append(SidebarEntry(title: l, element: e, kind: .newSession, project: section))
+                } else if let section, l == section {
+                    out.append(SidebarEntry(title: l, element: e, kind: .project, project: section))
+                } else {
+                    out.append(SidebarEntry(title: l, element: e, kind: .session, project: section))
+                }
+            }
+            for child in (value(e, kAXChildrenAttribute) as [AXUIElement]?) ?? [] { walk(child, depth + 1) }
+        }
+        walk(sidebar, 0)
+        return out
     }
 
     /// Choisit l'option dès que le menu est ouvert (essai toutes les 20 ms) : le menu ne reste visible qu'un instant.

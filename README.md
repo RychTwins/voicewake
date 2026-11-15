@@ -117,6 +117,26 @@ En veille, l'assistant au premier plan :
 
 Pendant une lecture à voix haute, ces commandes sont ignorées (la voix pourrait les dire) : mettez d'abord en pause. « Où on en est ? » pendant l'attente de « OK envoie » garde le brouillon. Essai sans la voix : `voicewake action claude copyResponse`. Réglages : `newChatMenuItems` et `copyResponseShortcut` par cible ; `clearDraftPhrases`, `newChatPhrases`, `copyResponsePhrases`, `statusPhrases`.
 
+### Naviguer dans Claude à la voix
+
+Claude au premier plan, en veille. Chaque phrase se dit seule (une phrase qui les contient au milieu ne déclenche rien).
+
+| Phrase | Effet |
+| --- | --- |
+| « Ouvre Equality Holding », « Ouvre le projet VoxTV » | projet de la barre latérale : sa session la plus récente (sinon une nouvelle) |
+| « Ouvre la session vox mag » | session de la barre latérale, par quelques mots de son titre |
+| « Nouvelle session dans VoxTV » | nouvelle session dans ce projet |
+| « Session précédente », « Session suivante » (ou « conversation … ») | Aller > Session précédente / suivante |
+| « Page précédente », « Page suivante » | Aller > Retour / Avancer |
+| « Rouvre la session » | Fichier > Rouvrir la session fermée |
+| « Ouvre la recherche », « Ouvre les artéfacts », « Ouvre la personnalisation », « Ouvre créer » | boutons de la barre latérale |
+| « Mode code », « Mode discussion » | Aller > Code / Claude |
+| « Palette de commandes », « Ouvre les paramètres », « Raccourcis clavier » | menus correspondants |
+| « Masque / Affiche la barre latérale », « Affiche le terminal / les fichiers / les modifications / le navigateur », « Ferme le volet » | menu Affichage |
+| « Zoom avant », « Zoom arrière », « Taille normale », « Plein écran » | menu Affichage |
+
+Les noms tolèrent les petites différences (« vox tv » ↔ VoxTV, « le projet equality erp »). Voir ce que « ouvre … » peut viser : `voicewake barre claude`. Essayer sans parler : `voicewake dis claude "ouvre voxtv"`. Autres applications : ajoutez `voiceCommands` à la cible, par exemple `[{"phrases": ["nouveau projet"], "menu": ["Nouveau projet…"]}]` (libellés exacts des menus ou des boutons).
+
 ### Navigation du lecteur intégré
 
 Pendant « Lis à partir de … » (voix ElevenLabs ou voix du Mac) :
@@ -304,6 +324,8 @@ voicewake set codex "cmd+shift+d"  # change le raccourci d'une cible
 voicewake record claude            # enregistre un raccourci tapé au clavier
 voicewake sons                     # fait entendre les sons de confirmation
 voicewake action claude newChat    # commande de gestion dans 3 s (clearDraft, newChat, copyResponse)
+voicewake dis claude "ouvre voxtv" # phrase de navigation dans 3 s, sans la voix
+voicewake barre claude             # projets et sessions visibles dans la barre latérale
 tail -f ~/Library/Logs/voicewake.log   # archivé en voicewake.log.1 au-delà de 5 Mo
 ```
 
