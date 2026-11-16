@@ -371,6 +371,15 @@ struct ReaderTests {
         check(FinderCommands.script("return 1", ["-e"]).ok == false, "osascript : argument en « - » refusé")
         check(FinderCommands.perform(.rename("-x"), config: config).ok == false, "renommer : nom en « - » refusé")
 
+        // Musique.
+        check(MediaCommands.match("Cherche Aya Nakamura sur Spotify", front: nil) == .spotifySearch("aya nakamura"), "musique : recherche Spotify")
+        check(MediaCommands.match("mets du jazz sur YouTube", front: nil) == .youtubeSearch("jazz"), "musique : recherche YouTube (article retiré)")
+        check(MediaCommands.match("joue Thriller dans Musique", front: nil) == .musicPlay("thriller"), "musique : lecture dans Musique")
+        check(MediaCommands.match("cherche Daft Punk", front: MediaCommands.spotify) == .spotifySearch("daft punk"), "musique : « cherche … » avec Spotify devant")
+        check(MediaCommands.match("cherche Daft Punk", front: "com.microsoft.VSCode") == nil, "musique : « cherche … » ailleurs : rien")
+        check(MediaCommands.match("c'est quoi cette chanson", front: nil) == .nowPlaying, "musique : titre en cours")
+        check(MediaCommands.match("lecture aléatoire", front: nil) == .shuffle(true), "musique : aléatoire")
+
         // Rotation du journal (sortie standard redirigée vers un fichier temporaire).
         let tmp = NSTemporaryDirectory() + "voicewake-test-\(getpid()).log"
         FileManager.default.createFile(atPath: tmp, contents: Data(repeating: 65, count: 200))

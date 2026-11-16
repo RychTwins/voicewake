@@ -222,11 +222,14 @@ final class Coordinator {
 
     // MARK: Finder et Réglages Système
 
-    private enum MacCommand { case finder(FinderCommand), settings(SettingsCommand) }
+    private enum MacCommand { case finder(FinderCommand), settings(SettingsCommand), media(MediaCommand) }
 
     private func macCommand(_ text: String) -> MacCommand? {
         guard config.systemCommands ?? true else { return nil }
         if let s = SettingsCommands.match(text) { return .settings(s) }
+        // « Joue la musique », « musique suivante » : touches multimédia (commandes du Mac), pas une recherche.
+        if !SystemCommands.fixedPhrases.contains(normalize(text)),
+           let m = MediaCommands.match(text, front: Universal.frontApp()?.bundleIdentifier) { return .media(m) }
         guard let f = FinderCommands.match(text) else { return nil }
         // Sélection du Finder : seulement Finder au premier plan (« supprime » ailleurs ne vise jamais un fichier).
         if f.needsFinderFront, Universal.frontApp()?.bundleIdentifier != "com.apple.finder" { return nil }
@@ -238,21 +241,24 @@ final class Coordinator {
         switch mac {
         case let .finder(f): (title, dangerous) = (f.title, f.dangerous)
         case let .settings(c): (title, dangerous) = (c.title, c.dangerous)
+        case let .media(m): (title, dangerous) = (m.title, false)
         }
         if config.dryRun == true { return log("[essai] → \(title)") }
         let config = self.config
         let run = { [weak self] in
             DispatchQueue.global().async {
                 let result: (ok: Bool, detail: String)
+                var say: String?
                 switch mac {
                 case let .finder(f): result = FinderCommands.perform(f, config: config)
                 case let .settings(c): let ok = SettingsCommands.perform(c); result = (ok, ok ? "fait" : "impossible")
+                case let .media(m): let r = MediaCommands.perform(m); say = r.say; result = (r.ok, r.ok ? "fait" : "impossible")
                 }
                 DispatchQueue.main.async {
+                    if let say { self?.speak(say) } // titre en cours, ou raison de l'échec
                     Feedback.play(result.ok ? .understood : .failed)
                     if !result.ok { Bilan.record(.system, "\(title) \(result.detail)") }
-                    log("Mac : \(title) → \(result.detail).")
-                    _ = self
+                    log("Mac : \(title) → \(result.detail)\(config.debug && say != nil ? " (« \(say!) »)" : "").")
                 }
             }
         }

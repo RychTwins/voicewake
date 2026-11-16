@@ -164,6 +164,18 @@ Sans liste à tenir à jour : VoiceWake lit l'app au premier plan au moment où 
 
 **Réglages Système** : « Ouvre les réglages du son », « Paramètres Bluetooth », « Réglages du clavier »… (Wi-Fi, réseau, écran, notifications, batterie, souris, trackpad, confidentialité, accessibilité, fond d'écran, général, mises à jour, concentration, Dock, langue…), puis « clique sur … » dans le volet. « Active le Wi-Fi », « Coupe le Wi-Fi » (après « je confirme »), « Mode sombre », « Mode clair ». La première fois, macOS demande d'autoriser VoiceWake à piloter le Finder et « Événements système ».
 
+**Musique** :
+
+| Phrase | Effet |
+| --- | --- |
+| « Cherche Aya Nakamura sur Spotify » (ou « cherche … » avec Spotify devant) | ouvre la recherche dans Spotify |
+| « Mets du jazz sur YouTube » | ouvre les résultats YouTube dans le navigateur |
+| « Joue Thriller dans Musique » (ou « joue … » avec Musique devant) | joue le premier morceau de ta bibliothèque qui correspond (titre ou artiste) |
+| « C'est quoi cette chanson ? » | dit le titre et l'artiste en cours (Spotify ou Musique) |
+| « Lecture aléatoire », « Lecture dans l'ordre » | aléatoire de Spotify ou Musique |
+
+La première fois, macOS demande d'autoriser VoiceWake à piloter Spotify ou Musique.
+
 **Nom d'appel** : « Jarvis, ferme Claude ». En veille, « Jarvis » est facultatif. Pendant une dictée, « Jarvis, <commande> » coupe le micro et exécute la commande au lieu de l'écrire (les mots déjà transcrits par l'assistant restent dans le brouillon : « efface le brouillon »). Clé `wakeNames` (défaut `["jarvis"]`, liste vide : désactivé) ; `"systemCommands": false` désactive les commandes du Mac.
 
 ### Routines, « Écris … » et bilan
