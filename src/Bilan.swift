@@ -2,7 +2,7 @@ import Foundation
 
 /// Bilan local des commandes ratées (rien ne correspond, action impossible) : `voicewake bilan` montre les plus
 /// fréquentes avec un conseil. Fichier ~/.config/voicewake/bilan.json (lisible par toi seul), jamais envoyé ailleurs.
-/// Le texte dicté avec « écris … » n'y est jamais écrit. Désactivable : "failureReport": false.
+/// Hors mode debug, seul le type d'échec est gardé (jamais ce que tu as dit) ; le texte de « écris … » jamais. Désactivable : "failureReport": false.
 enum Bilan {
     enum Kind: String, Codable, CaseIterable {
         case universal, skill, nav, command, palette, write, routine, read
@@ -66,9 +66,16 @@ enum Bilan {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(entries) else { return }
         let url = URL(fileURLWithPath: path)
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        // Masque 077 pendant l'écriture : dossier et fichier naissent privés (pas de fenêtre en 0644).
+        let previous = umask(0o077)
+        defer { umask(previous) }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                                 attributes: [.posixPermissions: 0o700])
         guard (try? data.write(to: url, options: .atomic)) != nil else { return }
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
+        // Fichier déjà là avec d'autres droits : on le resserre, sinon on le supprime.
+        if (try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)) == nil {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     /// Ajoute un échec (même type et même phrase : le compteur augmente). Au-delà de 100, les plus anciens partent.

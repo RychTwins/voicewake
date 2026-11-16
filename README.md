@@ -153,7 +153,7 @@ Routine : une phrase **dite seule** (ou « routine <nom> »), puis les étapes u
 
 « Écris … » : seulement dans le champ qui a déjà le focus (cliquez d'abord dedans) ; la frappe s'arrête si le focus change. Le texte dicté n'est écrit dans le log qu'en mode debug, jamais dans le bilan.
 
-Bilan : chaque commande ratée (rien ne correspond, action impossible, passage introuvable, étape de routine) est comptée dans `~/.config/voicewake/bilan.json` (lisible par vous seul, 100 entrées au plus, jamais envoyé ailleurs). `voicewake bilan` montre les plus fréquentes avec un conseil ; `voicewake bilan efface` remet à zéro ; `"failureReport": false` désactive.
+Bilan : chaque commande ratée (rien ne correspond, action impossible, passage introuvable, étape de routine) est comptée dans `~/.config/voicewake/bilan.json` (type d'échec seulement ; vos mots seulement en mode debug ; lisible par vous seul, 100 entrées au plus, jamais envoyé ailleurs). `voicewake bilan` montre les plus fréquentes avec un conseil ; `voicewake bilan efface` remet à zéro ; `"failureReport": false` désactive.
 
 ### Naviguer dans Claude à la voix
 

@@ -145,7 +145,7 @@ final class Coordinator {
                 guard let self else { return }
                 guard let action else {
                     Feedback.play(.failed)
-                    Bilan.record(.universal, (kind == .menu ? "menu " : "clique sur ") + query.joined(separator: " "))
+                    Bilan.record(.universal, (kind == .menu ? "menu " : "clique sur ") + (self.config.debug ? query.joined(separator: " ") : "rien ne correspond"))
                     return log("Commande universelle → \(name) : rien ne correspond\(self.config.debug ? " à « \(query.joined(separator: " ")) »" : "").")
                 }
                 if self.config.dryRun == true { return log("[essai] → \(kind == .menu ? "menu" : "bouton")\(self.label(action.title)) dans \(name)") }
@@ -240,7 +240,7 @@ final class Coordinator {
                 guard let self else { return }
                 guard let hit else {
                     Feedback.play(.failed)
-                    Bilan.record(.skill, q.joined(separator: " "))
+                    Bilan.record(.skill, self.config.debug ? q.joined(separator: " ") : "aucun skill ne correspond")
                     return log("Skill → \(t.id) : aucun skill ne correspond (\(entries.count) connus)\(self.config.debug ? " à « \(q.joined(separator: " ")) »" : "").")
                 }
                 // Arguments : texte d'origine après la phrase et le nom du skill.
@@ -524,7 +524,7 @@ final class Coordinator {
               let app = ShortcutTrigger.runningApp(for: target) else { Feedback.play(.failed); return log("Lecture : aucun assistant ouvert.") }
         let tokens = PassageFinder.tokens(in: app, target: target)
         let start = PassageFinder.find(query, in: tokens)
-        guard let start else { Feedback.play(.failed); Bilan.record(.read, query.joined(separator: " ")); return log("Lecture : passage introuvable\(said(query.joined(separator: " "))).") }
+        guard let start else { Feedback.play(.failed); Bilan.record(.read, config.debug ? query.joined(separator: " ") : "passage introuvable"); return log("Lecture : passage introuvable\(said(query.joined(separator: " "))).") }
         if trigger.readingTarget() != nil { trigger.pauseReading(target) }
         readerTarget = target
         reader.voiceName = config.readerVoice
@@ -748,7 +748,7 @@ final class Coordinator {
             if config.dryRun == true { return log("[essai] → navigation sur \(front.id)\(config.debug ? " : \(request)" : "")") }
             NavCommands.run(request, target: front) { [weak self] ok, detail in
                 Feedback.play(ok ? .understood : .failed)
-                if !ok { Bilan.record(.nav, text) }
+                if !ok { Bilan.record(.nav, self?.config.debug == true ? text : "navigation impossible") }
                 log("Navigation → \(front.id) : \(ok ? "faite" : "impossible")\(self?.config.debug == true ? " (\(detail))" : "").")
             }
             return
