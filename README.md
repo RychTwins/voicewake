@@ -176,6 +176,17 @@ Sans liste à tenir à jour : VoiceWake lit l'app au premier plan au moment où 
 
 La première fois, macOS demande d'autoriser VoiceWake à piloter Spotify ou Musique.
 
+**Navigateurs** (Safari, Chrome, Comet, Arc, Brave, Edge, Firefox, Opera) :
+
+| Phrase | Effet |
+| --- | --- |
+| « Va sur github point com », « Va sur YouTube », « Ouvre le site anthropic.com » | ouvre la page (dans le navigateur au premier plan, sinon celui par défaut), depuis n'importe quelle app |
+| « Cherche météo Paris sur Google » | recherche Google, depuis n'importe quelle app ; navigateur devant : « cherche … » suffit |
+| « Nouvel onglet », « Ferme l'onglet », « Onglet suivant / précédent », « Onglet trois », « Rouvre l'onglet » | onglets |
+| « Recharge la page », « Page précédente / suivante », « Descends », « Remonte », « Tout en haut / en bas » | page |
+| « Zoom avant / arrière », « Taille normale », « Ajoute aux favoris », « Navigation privée » | divers |
+| « Cherche dans la page facture » | ouvre la recherche de la page et tape le mot |
+
 **Nom d'appel** : « Jarvis, ferme Claude ». En veille, « Jarvis » est facultatif. Pendant une dictée, « Jarvis, <commande> » coupe le micro et exécute la commande au lieu de l'écrire (les mots déjà transcrits par l'assistant restent dans le brouillon : « efface le brouillon »). Clé `wakeNames` (défaut `["jarvis"]`, liste vide : désactivé) ; `"systemCommands": false` désactive les commandes du Mac.
 
 ### Routines, « Écris … » et bilan

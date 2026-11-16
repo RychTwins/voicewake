@@ -196,6 +196,7 @@ case "route":
     if case let .copy(d)? = FinderCommands.match(text) { print("  dossier : \(FinderCommands.resolve(d, config: config, current: nil) ?? "introuvable")") }
     if case let .move(d)? = FinderCommands.match(text) { print("  dossier : \(FinderCommands.resolve(d, config: config, current: nil) ?? "introuvable")") }
     if let m = MediaCommands.match(text, front: NSWorkspace.shared.frontmostApplication?.bundleIdentifier) { print("→ musique : \(m)") }
+    if let b = BrowserCommands.match(text, front: NSWorkspace.shared.frontmostApplication?.bundleIdentifier) { print("→ navigateur : \(b)") }
     if let c = SettingsCommands.match(text) { print("→ Réglages : \(c)\(c.dangerous ? " — confirmation requise" : "")") }
     if let sys = SystemCommands.match(text, apps: SystemCommands.installedApps(), running: SystemCommands.runningApps() + SystemCommands.targetApps(config),
                                       front: NSWorkspace.shared.frontmostApplication?.bundleIdentifier) {

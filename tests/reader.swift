@@ -380,6 +380,18 @@ struct ReaderTests {
         check(MediaCommands.match("c'est quoi cette chanson", front: nil) == .nowPlaying, "musique : titre en cours")
         check(MediaCommands.match("lecture aléatoire", front: nil) == .shuffle(true), "musique : aléatoire")
 
+        // Navigateurs.
+        let safari = "com.apple.Safari"
+        check(BrowserCommands.match("va sur github point com", front: nil) == .open(URL(string: "https://github.com")!), "navigateur : « va sur github point com »")
+        check(BrowserCommands.match("va sur YouTube", front: nil) == .open(URL(string: "https://youtube.com")!), "navigateur : site connu")
+        check(BrowserCommands.match("va sur le bureau", front: nil) == nil, "navigateur : « va sur le bureau » laissé au Finder")
+        check(BrowserCommands.match("cherche météo Paris sur Google", front: nil) == .open(URL(string: "https://www.google.com/search?q=m%C3%A9t%C3%A9o%20Paris")!), "navigateur : recherche Google (accents gardés)")
+        check(BrowserCommands.match("nouvel onglet", front: safari) == .keys("cmd+t", "nouvel onglet"), "navigateur : nouvel onglet")
+        check(BrowserCommands.match("nouvel onglet", front: "com.microsoft.VSCode") == nil, "navigateur : raccourcis seulement navigateur devant")
+        check(BrowserCommands.match("onglet trois", front: safari) == .keys("cmd+3", "onglet 3"), "navigateur : onglet par numéro")
+        check(BrowserCommands.match("cherche dans la page Facture", front: safari) == .findInPage("Facture"), "navigateur : recherche dans la page")
+        check(BrowserCommands.url(fromSpoken: "rm -rf") == nil, "navigateur : adresse invalide refusée")
+
         // Rotation du journal (sortie standard redirigée vers un fichier temporaire).
         let tmp = NSTemporaryDirectory() + "voicewake-test-\(getpid()).log"
         FileManager.default.createFile(atPath: tmp, contents: Data(repeating: 65, count: 200))

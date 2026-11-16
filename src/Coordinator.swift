@@ -222,7 +222,7 @@ final class Coordinator {
 
     // MARK: Finder et Réglages Système
 
-    private enum MacCommand { case finder(FinderCommand), settings(SettingsCommand), media(MediaCommand) }
+    private enum MacCommand { case finder(FinderCommand), settings(SettingsCommand), media(MediaCommand), browser(BrowserCommand) }
 
     private func macCommand(_ text: String) -> MacCommand? {
         guard config.systemCommands ?? true else { return nil }
@@ -230,6 +230,7 @@ final class Coordinator {
         // « Joue la musique », « musique suivante » : touches multimédia (commandes du Mac), pas une recherche.
         if !SystemCommands.fixedPhrases.contains(normalize(text)),
            let m = MediaCommands.match(text, front: Universal.frontApp()?.bundleIdentifier) { return .media(m) }
+        if let b = BrowserCommands.match(text, front: Universal.frontApp()?.bundleIdentifier) { return .browser(b) }
         guard let f = FinderCommands.match(text) else { return nil }
         // Sélection du Finder : seulement Finder au premier plan (« supprime » ailleurs ne vise jamais un fichier).
         if f.needsFinderFront, Universal.frontApp()?.bundleIdentifier != "com.apple.finder" { return nil }
@@ -242,7 +243,9 @@ final class Coordinator {
         case let .finder(f): (title, dangerous) = (f.title, f.dangerous)
         case let .settings(c): (title, dangerous) = (c.title, c.dangerous)
         case let .media(m): (title, dangerous) = (m.title, false)
+        case let .browser(b): (title, dangerous) = (b.title, false)
         }
+        let front = Universal.frontApp()
         if config.dryRun == true { return log("[essai] → \(title)") }
         let config = self.config
         let run = { [weak self] in
@@ -253,6 +256,10 @@ final class Coordinator {
                 case let .finder(f): result = FinderCommands.perform(f, config: config)
                 case let .settings(c): let ok = SettingsCommands.perform(c); result = (ok, ok ? "fait" : "impossible")
                 case let .media(m): let r = MediaCommands.perform(m); say = r.say; result = (r.ok, r.ok ? "fait" : "impossible")
+                case let .browser(b):
+                    // Raccourcis : le même navigateur doit être encore devant.
+                    let ok = (!b.needsBrowserFront || front.map(AXButtonPresser.isFrontmost) == true) && BrowserCommands.perform(b, front: front)
+                    result = (ok, ok ? "fait" : "impossible")
                 }
                 DispatchQueue.main.async {
                     if let say { self?.speak(say) } // titre en cours, ou raison de l'échec
