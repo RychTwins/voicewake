@@ -829,10 +829,11 @@ final class Coordinator {
                 Feedback.play(.ignored)
                 return log("Réponse ignorée : lecture à voix haute de \(r.id) en cours.")
             }
-            guard Date().timeIntervalSince(lastWake) >= 1.5 else { return }
+            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
             lastWake = Date()
             if config.dryRun == true { return log("[essai] → réponse à la question : \(reply)") }
             let app = card.app
+            let answer = { [weak self] in
             DispatchQueue.global().async { [weak self] in
                 let ok = QuestionAnswer.perform(reply, expected: card.card, in: app)
                 DispatchQueue.main.async {
@@ -848,6 +849,13 @@ final class Coordinator {
                     self?.currentCard = nil
                 }
             }
+            }
+            // Option sensible (supprimer, publier, envoyer…) : « je confirme » d'abord, comme pour les boutons.
+            if case let .option(i) = reply, i < card.card.options.count, Universal.isDangerous(card.card.options[i], path: "") {
+                log("Confirmation demandée → réponse à la question.")
+                return askConfirmation(card.card.options[i], run: answer)
+            }
+            answer()
             return
         }
         // Touches et palettes de commandes, dans une app autorisée au premier plan.

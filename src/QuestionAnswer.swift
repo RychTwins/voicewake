@@ -7,6 +7,8 @@ struct QuestionCard {
     /// Titres des options (libellé suivi de sa description), dans l'ordre affiché.
     var options: [String]
     var hasOther: Bool
+    /// Cases des options lues à l'écran : la réponse n'agit que sur ces mêmes éléments.
+    var elements: [AXUIElement] = []
 }
 
 enum QuestionAnswer {
@@ -62,16 +64,19 @@ enum QuestionAnswer {
             [kAXTitleAttribute, kAXDescriptionAttribute].compactMap { attr(e, $0) as? String }.first { !$0.isEmpty } ?? ""
         }
         let buttons = AXButtonPresser.visibleButtons(in: app)
+        func element(_ v: CFTypeRef?) -> AXUIElement? {
+            guard let v, CFGetTypeID(v) == AXUIElementGetTypeID() else { return nil }
+            return (v as! AXUIElement)
+        }
         guard let other = buttons.last(where: { otherLabels.contains(normalize($0.title)) })?.element,
-              let p1 = attr(other, kAXParentAttribute), let p2 = attr(p1 as! AXUIElement, kAXParentAttribute) else { return nil }
-        let container = p2 as! AXUIElement
+              let p1 = element(attr(other, kAXParentAttribute)), let container = element(attr(p1, kAXParentAttribute)) else { return nil }
         let children = (attr(container, kAXChildrenAttribute) as? [AXUIElement]) ?? []
         let options = children.filter {
             (attr($0, kAXRoleAttribute) as? String) == "AXCheckBox" && !title($0).isEmpty && !otherLabels.contains(normalize(title($0)))
         }
         guard !options.isEmpty, options.count <= 8 else { return nil }
         let skip = buttons.last(where: { skipLabels.contains(normalize($0.title)) })?.element
-        return (QuestionCard(options: options.map(title), hasOther: true), options, other, skip)
+        return (QuestionCard(options: options.map(title), hasOther: true, elements: options), options, other, skip)
     }
 
     static let submitLabels = ["envoyer", "submit", "send", "valider"]
@@ -81,6 +86,7 @@ enum QuestionAnswer {
         guard let skip, AXButtonPresser.isFrontmost(app) else { return false }
         var parent: CFTypeRef?, kids: CFTypeRef?
         guard AXUIElementCopyAttributeValue(skip, kAXParentAttribute as CFString, &parent) == .success, let parent,
+              CFGetTypeID(parent) == AXUIElementGetTypeID(),
               AXUIElementCopyAttributeValue(parent as! AXUIElement, kAXChildrenAttribute as CFString, &kids) == .success,
               let children = kids as? [AXUIElement] else { return false }
         for c in children {
@@ -95,7 +101,9 @@ enum QuestionAnswer {
 
     /// Exécute la réponse ; la carte est relue juste avant (rien ne se passe si elle a changé ou disparu).
     static func perform(_ reply: Reply, expected: QuestionCard, in app: NSRunningApplication) -> Bool {
-        guard AXButtonPresser.isFrontmost(app), let now = card(in: app), now.card.options == expected.options else { return false }
+        guard AXButtonPresser.isFrontmost(app), let now = card(in: app), now.card.options == expected.options,
+              expected.elements.isEmpty || (expected.elements.count == now.buttons.count
+                  && zip(expected.elements, now.buttons).allSatisfy { CFEqual($0, $1) }) else { return false }
         func press(_ e: AXUIElement) -> Bool { AXUIElementPerformAction(e, kAXPressAction as CFString) == .success }
         switch reply {
         case let .option(i):
@@ -117,7 +125,7 @@ enum QuestionAnswer {
                       AXButtonPresser.isFrontmost(app) && AXButtonPresser.focusedTextField(in: app).map { CFEqual($0, field) } == true
                   }) else { return false }
             usleep(200_000)
-            return submit(near: now.skip, in: app) || Palette.pressKey("return", in: app)
+            return submit(near: now.skip, in: app) // jamais de touche Entrée « à l'aveugle »
         }
     }
 }
