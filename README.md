@@ -136,6 +136,25 @@ Sans liste à tenir à jour : VoiceWake lit l'app au premier plan au moment où 
 - Skills reconnus : skills personnels, anciennes commandes, commandes intégrées de Claude Code, skills des plugins installés (`/plugin:skill`), skills et commandes de Codex. Seuls des noms simples (lettres, chiffres, `- _ . :`) sont tapés, et seulement depuis des plugins installés sous `~/.claude/plugins`. Deux skills au même nom (deux plugins) : dites le nom du plugin. Le texte n'est tapé que si la zone de saisie a bien reçu le focus.
 - Essais sans rien cliquer ni taper : `voicewake trouve com.anthropic.claudefordesktop "menu palette de commandes"`, `voicewake skill claude "brainstorming sur mon idée"`.
 
+### Routines, « Écris … » et bilan
+
+| Phrase | Effet |
+| --- | --- |
+| « Prépare VoxTV », « Routine fin de journée » | lance une routine : plusieurs commandes vocales enchaînées (clé `routines`) |
+| « Écris rendez-vous demain à 10 h », « Tape le texte … » | tape le texte dans le champ qui a le focus (app autorisée), sans ouvrir le micro d'un assistant |
+
+Routine : une phrase **dite seule** (ou « routine <nom> »), puis les étapes une à une, comme si vous les disiez. Une étape est n'importe quelle commande vocale (« ouvre voxtv », « menu afficher le terminal », « lance le skill … », « où on en est »…), 10 au plus, une toutes les `delaySeconds` (1,5 s par défaut). La routine s'arrête si une étape n'est pas reconnue, si une confirmation est demandée, si une dictée s'ouvre ou si une lecture commence ; elle ne peut pas en lancer une autre.
+
+```json
+"routines": [
+  { "name": "voxtv", "phrases": ["prépare voxtv"], "steps": ["ouvre voxtv", "menu afficher le terminal"] }
+]
+```
+
+« Écris … » : seulement dans le champ qui a déjà le focus (cliquez d'abord dedans) ; la frappe s'arrête si le focus change. Le texte dicté n'est écrit dans le log qu'en mode debug, jamais dans le bilan.
+
+Bilan : chaque commande ratée (rien ne correspond, action impossible, passage introuvable, étape de routine) est comptée dans `~/.config/voicewake/bilan.json` (lisible par vous seul, 100 entrées au plus, jamais envoyé ailleurs). `voicewake bilan` montre les plus fréquentes avec un conseil ; `voicewake bilan efface` remet à zéro ; `"failureReport": false` désactive.
+
 ### Naviguer dans Claude à la voix
 
 Claude au premier plan, en veille. Chaque phrase se dit seule (une phrase qui les contient au milieu ne déclenche rien).
@@ -273,6 +292,9 @@ launchctl kickstart -k gui/$(id -u)/io.github.voicewake
 | `dryRun` | essai à blanc : journalise la cible reconnue sans rien ouvrir, pour régler les phrases | `false` |
 | `wakeMaxWaitSeconds` | attente maximale du résultat définitif avant d'agir | `1.8` |
 | `feedbackSounds`, `feedbackVolume`, `feedbackSoundNames` | sons de confirmation (voir plus haut) | `true`, `0.35` |
+| `routines` | routines vocales (`name`, `phrases`, `steps`, `delaySeconds`) | aucune |
+| `writePhrases` | phrases de « écris … » (liste vide : désactivé) | « écris », « écrit », « tape le texte » |
+| `failureReport` | bilan local des commandes ratées | `true` |
 | `echoCancellation` | annulation d'écho de macOS (expérimental : peut empêcher la reconnaissance de votre voix) | `false` |
 | `defaultTarget` | cible de « Salut assistant » hors application connue | `claude` |
 | `frontmostPhrases` | phrases visant l'application au premier plan | « salut assistant »… |
@@ -351,6 +373,8 @@ voicewake dis claude "ouvre voxtv" # phrase de navigation dans 3 s, sans la voix
 voicewake barre claude             # projets et sessions visibles dans la barre latérale
 voicewake trouve <bundle-id> "menu …"   # option ou bouton visé, sans cliquer
 voicewake skill claude "nom arguments"  # skill ou commande slash qui serait tapé
+voicewake routines                 # routines vocales et leurs étapes
+voicewake bilan                    # commandes ratées les plus fréquentes, avec un conseil
 tail -f ~/Library/Logs/voicewake.log   # archivé en voicewake.log.1 au-delà de 5 Mo
 ```
 
