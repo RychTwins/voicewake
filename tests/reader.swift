@@ -368,6 +368,9 @@ struct ReaderTests {
         check(SettingsCommands.match("mode sombre") == .darkMode(true), "réglages : mode sombre")
         check(SettingsCommands.match("ouvre les paramètres") == nil, "réglages : « paramètres » seul laissé à l'app")
 
+        check(FinderCommands.script("return 1", ["-e"]).ok == false, "osascript : argument en « - » refusé")
+        check(FinderCommands.perform(.rename("-x"), config: config).ok == false, "renommer : nom en « - » refusé")
+
         // Rotation du journal (sortie standard redirigée vers un fichier temporaire).
         let tmp = NSTemporaryDirectory() + "voicewake-test-\(getpid()).log"
         FileManager.default.createFile(atPath: tmp, contents: Data(repeating: 65, count: 200))

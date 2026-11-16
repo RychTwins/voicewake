@@ -117,6 +117,8 @@ enum FinderCommands {
 
     /// AppleScript lancé par osascript ; les noms passent en arguments (jamais collés dans le script).
     static func script(_ source: String, _ args: [String] = []) -> (ok: Bool, output: String) {
+        // Un argument qui commence par « - » serait lu comme une option d'osascript : refusé.
+        guard !args.contains(where: { $0.hasPrefix("-") }) else { return (false, "") }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         p.arguments = ["-e", source] + args
@@ -166,10 +168,10 @@ enum FinderCommands {
             let r = script("tell application \"Finder\" to empty trash")
             return (r.ok, r.ok ? "corbeille vidée" : "corbeille non vidée")
         case let .rename(name):
-            guard !name.isEmpty, !name.contains("/"), !name.contains(":") else { return (false, "nom invalide") }
+            guard !name.isEmpty, !name.hasPrefix("-"), !name.contains("/"), !name.contains(":") else { return (false, "nom invalide") }
             return onSelection("if (count of s) is not 1 then error \"un seul fichier\"\nset name of item 1 of s to (item 1 of argv)", [name])
         case let .newFolder(name):
-            if let name, name.isEmpty || name.contains("/") || name.contains(":") { return (false, "nom invalide") }
+            if let name, name.isEmpty || name.hasPrefix("-") || name.contains("/") || name.contains(":") { return (false, "nom invalide") }
             let body = """
             on run argv
               tell application "Finder"
