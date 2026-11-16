@@ -149,6 +149,8 @@ struct Config: Codable {
     var routines: [Routine]?
     /// « Écris … » : tape le texte dicté dans le champ qui a le focus (défauts dans `WriteCommand`, liste vide = désactivé).
     var writePhrases: [String]?
+    /// Bilan local des commandes ratées (`voicewake bilan`), défaut true.
+    var failureReport: Bool?
     var newSessionInPhrases: [String]?
     /// Navigation du lecteur intégré (« lis à partir de … ») : vitesse, phrase précédente ou suivante (défauts dans `ReaderNav`).
     var readFasterPhrases: [String]?

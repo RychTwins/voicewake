@@ -300,6 +300,27 @@ struct ReaderTests {
         check(WriteCommand.text("Écris : Rendez-vous demain à 10 h, l'équipe.", phraseWords: 1) == "Rendez-vous demain à 10 h, l'équipe.", "écris : texte d'origine conservé")
         check(WriteCommand.text("tape le texte J'arrive", phraseWords: 3) == "J'arrive", "écris : apostrophe conservée")
 
+        // Bilan des commandes ratées (fichier temporaire).
+        Bilan.path = NSTemporaryDirectory() + "voicewake-bilan-\(getpid()).json"
+        Bilan.enabled = true
+        let b0 = Date(timeIntervalSince1970: 1_000_000)
+        Bilan.record(.universal, "Menu Afficher", now: b0)
+        Bilan.record(.universal, "menu afficher", now: b0.addingTimeInterval(1))
+        Bilan.record(.skill, "un deux trois quatre cinq six sept huit neuf dix", now: b0.addingTimeInterval(2))
+        let bl = Bilan.load()
+        check(bl.count == 2 && Bilan.top(bl).first?.count == 2, "bilan : même phrase comptée deux fois")
+        check(bl.contains { $0.phrase.split(separator: " ").count == Bilan.maxWords }, "bilan : 8 mots au plus")
+        let perms = (try? FileManager.default.attributesOfItem(atPath: Bilan.path)[.posixPermissions] as? Int) ?? nil
+        check(perms == 0o600, "bilan : fichier lisible par toi seul")
+        for i in 0..<(Bilan.maxEntries + 5) { Bilan.record(.nav, "projet \(i)", now: b0.addingTimeInterval(Double(10 + i))) }
+        let capped = Bilan.load()
+        check(capped.count == Bilan.maxEntries && !capped.contains { $0.phrase == "projet 0" }, "bilan : 100 entrées au plus, les plus anciennes partent")
+        Bilan.enabled = false
+        Bilan.record(.nav, "désactivé")
+        check(!Bilan.load().contains { $0.phrase == "desactive" }, "bilan désactivé : rien n'est écrit")
+        Bilan.clear()
+        check(Bilan.load().isEmpty, "bilan effacé")
+
         // Rotation du journal (sortie standard redirigée vers un fichier temporaire).
         let tmp = NSTemporaryDirectory() + "voicewake-test-\(getpid()).log"
         FileManager.default.createFile(atPath: tmp, contents: Data(repeating: 65, count: 200))

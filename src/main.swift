@@ -17,6 +17,7 @@ Usage : voicewake [commande] [--config chemin]
   trouve <bundle-id> "menu …"   montre l'option ou le bouton visé, sans cliquer
   skill <cible> "nom arguments"  montre le skill ou la commande slash qui serait tapé
   routines       liste les routines vocales et leurs étapes
+  bilan [efface] commandes ratées les plus fréquentes, avec un conseil (efface : remet à zéro)
 """
 
 var args = Array(CommandLine.arguments.dropFirst())
@@ -283,6 +284,22 @@ case "skill":
         let args2 = SkillCatalog.originalTail(phrase, skippingWords: hit.consumed)
         print("→ « \(hit.entry.text)\(args2.isEmpty ? "" : " " + args2) » (\(entries.count) connus)")
     } else { print("→ aucun skill ne correspond (\(entries.count) connus)") }
+
+case "bilan":
+    if args.dropFirst().first == "efface" { Bilan.clear(); print("Bilan effacé."); exit(0) }
+    let all = Bilan.load()
+    guard !all.isEmpty else { print(config.failureReport == false ? "Bilan désactivé (\"failureReport\": false)." : "Aucune commande ratée enregistrée."); exit(0) }
+    let fmt = DateFormatter()
+    fmt.locale = Locale(identifier: "fr_FR")
+    fmt.dateFormat = "d MMM HH:mm"
+    print("Commandes ratées (\(all.reduce(0) { $0 + $1.count }) en tout) :")
+    for e in Bilan.top(all) {
+        print("  \(e.count)× [\(e.kind.title)] « \(e.phrase) » — dernière fois \(fmt.string(from: e.last))")
+    }
+    print("Conseils :")
+    for kind in Bilan.Kind.allCases where Bilan.top(all).contains(where: { $0.kind == kind }) {
+        print("  \(kind.title) : \(kind.advice)")
+    }
 
 case "routines":
     let routines = config.routines ?? []

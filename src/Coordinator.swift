@@ -15,6 +15,7 @@ final class Coordinator {
         self.detector = try WakeWordDetector(config: config, hints: router.hints)
         detector.onText = { [weak self] text, isFinal in self?.handle(text, isFinal: isFinal) }
         Feedback.configure(config)
+        Bilan.configure(config)
         trigger.onReadingFinished = { [weak self] target, window in
             self?.continueConversation(target, in: window)
         }
@@ -144,6 +145,7 @@ final class Coordinator {
                 guard let self else { return }
                 guard let action else {
                     Feedback.play(.failed)
+                    Bilan.record(.universal, (kind == .menu ? "menu " : "clique sur ") + query.joined(separator: " "))
                     return log("Commande universelle → \(name) : rien ne correspond\(self.config.debug ? " à « \(query.joined(separator: " ")) »" : "").")
                 }
                 if self.config.dryRun == true { return log("[essai] → \(kind == .menu ? "menu" : "bouton")\(self.label(action.title)) dans \(name)") }
@@ -163,6 +165,7 @@ final class Coordinator {
         guard !typed.isEmpty else { Feedback.play(.failed); return log("Écris : texte vide.") }
         guard let app = Universal.frontApp(), let bid = app.bundleIdentifier, Universal.allowedApps(config).contains(bid) else {
             Feedback.play(.failed)
+            Bilan.record(.write, "app non autorisée")
             return log("Écris : app au premier plan non autorisée (ajouter son identifiant à universalApps).")
         }
         let name = app.localizedName ?? bid
@@ -178,6 +181,7 @@ final class Coordinator {
             DispatchQueue.main.async {
                 guard let self else { return }
                 Feedback.play(ok ? .understood : .failed)
+                if !ok { Bilan.record(.write, "aucun champ de saisie actif") }
                 log("Écris → \(name) : \(ok ? "\(typed.count) caractères tapés" : "aucun champ de saisie actif")\(self.said(typed)).")
             }
         }
@@ -197,11 +201,13 @@ final class Coordinator {
         // VoiceWake parle (« où on en est ? ») : on attend la fin de l'annonce.
         if announcer.isSpeaking { return scheduleRoutine(r, step: i, after: 0.5) }
         if i > 0, active != nil || pendingConfirmation != nil || reader.isActive || currentReader() != nil {
+            Bilan.record(.routine, "routine \(name) étape \(i + 1)")
             return log("Routine « \(name) » arrêtée avant l'étape \(i + 1) : dictée, confirmation ou lecture en cours.")
         }
         let step = steps[i]
         guard Routines.match(step, config: config) == nil, wakeKey(step) != nil else {
             Feedback.play(.failed)
+            Bilan.record(.routine, "routine \(name) étape \(i + 1)")
             return log("Routine « \(name) » : étape \(i + 1) non reconnue, arrêt\(config.debug ? " (« \(step) »)" : "").")
         }
         if config.debug { log("Routine « \(name) » : étape \(i + 1) (« \(step) »).") }
@@ -222,7 +228,7 @@ final class Coordinator {
     /// (comme après « garde le brouillon »). « … et envoie » à la fin : envoi immédiat.
     private func runSkill(_ query: [String], said text: String) {
         guard let t = router.frontmostTarget(), let app = ShortcutTrigger.runningApp(for: t), AXButtonPresser.isFrontmost(app) else {
-            Feedback.play(.failed); return log("Skill : aucun assistant au premier plan.")
+            Feedback.play(.failed); Bilan.record(.skill, "aucun assistant au premier plan"); return log("Skill : aucun assistant au premier plan.")
         }
         var q = query
         let sendNow = q.count >= 2 && ["envoie", "envoyer"].contains(q.last!) && ["et", "puis"].contains(q[q.count - 2])
@@ -234,6 +240,7 @@ final class Coordinator {
                 guard let self else { return }
                 guard let hit else {
                     Feedback.play(.failed)
+                    Bilan.record(.skill, q.joined(separator: " "))
                     return log("Skill → \(t.id) : aucun skill ne correspond (\(entries.count) connus)\(self.config.debug ? " à « \(q.joined(separator: " ")) »" : "").")
                 }
                 // Arguments : texte d'origine après la phrase et le nom du skill.
@@ -257,6 +264,7 @@ final class Coordinator {
                 guard let self else { return }
                 guard ok else {
                     Feedback.play(.failed)
+                    Bilan.record(.skill, "zone de saisie introuvable")
                     return log("Skill → \(t.id) : zone de saisie introuvable ou app passée en arrière-plan.")
                 }
                 Feedback.play(.understood)
@@ -348,6 +356,7 @@ final class Coordinator {
             let ok = action.perform(confirmed: confirmed)
             DispatchQueue.main.async {
                 Feedback.play(ok ? .understood : .failed)
+                if !ok { Bilan.record(.universal, action.kind == .menu ? "menu non exécuté" : "bouton non exécuté") }
                 log("Commande universelle → \(name) : \(action.kind == .menu ? "menu" : "bouton")\(self?.label(action.title) ?? "") \(ok ? "exécuté" : "non exécuté").")
             }
         }
@@ -515,7 +524,7 @@ final class Coordinator {
               let app = ShortcutTrigger.runningApp(for: target) else { Feedback.play(.failed); return log("Lecture : aucun assistant ouvert.") }
         let tokens = PassageFinder.tokens(in: app, target: target)
         let start = PassageFinder.find(query, in: tokens)
-        guard let start else { Feedback.play(.failed); return log("Lecture : passage introuvable\(said(query.joined(separator: " "))).") }
+        guard let start else { Feedback.play(.failed); Bilan.record(.read, query.joined(separator: " ")); return log("Lecture : passage introuvable\(said(query.joined(separator: " "))).") }
         if trigger.readingTarget() != nil { trigger.pauseReading(target) }
         readerTarget = target
         reader.voiceName = config.readerVoice
@@ -655,7 +664,7 @@ final class Coordinator {
             guard Date().timeIntervalSince(lastWake) >= (repeatable ? 1.5 : config.cooldownSeconds) else { return }
             lastWake = Date()
             guard let app = Universal.frontApp(), let bid = app.bundleIdentifier, Universal.allowedApps(config).contains(bid) else {
-                Feedback.play(.failed); return log("Touche ou palette : app au premier plan non autorisée.")
+                Feedback.play(.failed); Bilan.record(.palette, "app non autorisée"); return log("Touche ou palette : app au premier plan non autorisée.")
             }
             let name = app.localizedName ?? bid
             if config.dryRun == true { return log("[essai] → \(keySpec.map { "touche \($0)" } ?? "palette") dans \(name)") }
@@ -663,12 +672,12 @@ final class Coordinator {
                 if keySpec == "return" { lastPaletteAt = .distantPast }
                 DispatchQueue.global().async {
                     let ok = Palette.pressKey(keySpec, in: app)
-                    DispatchQueue.main.async { Feedback.play(ok ? .understood : .failed); log("Touche \(keySpec) → \(name) : \(ok ? "envoyée" : "non envoyée").") }
+                    DispatchQueue.main.async { Feedback.play(ok ? .understood : .failed); if !ok { Bilan.record(.palette, "touche \(keySpec)") }; log("Touche \(keySpec) → \(name) : \(ok ? "envoyée" : "non envoyée").") }
                 }
                 return
             }
             guard let palette, let spec = Palette.shortcut(for: bid, config: config) else {
-                Feedback.play(.failed); return log("Palette : pas de palette connue pour \(name) (paletteShortcuts).")
+                Feedback.play(.failed); Bilan.record(.palette, "pas de palette pour \(bid)"); return log("Palette : pas de palette connue pour \(name) (paletteShortcuts).")
             }
             // Texte d'origine de la commande, découpé sur les mêmes mots que la phrase reconnue.
             let command = SkillCatalog.originalSlice(text, skippingWords: palette.phraseWords, droppingLastWords: palette.validate ? 2 : 0)
@@ -678,6 +687,7 @@ final class Coordinator {
                 let ok = Palette.run(command, validate: palette.validate, shortcut: spec, in: app)
                 DispatchQueue.main.async {
                     Feedback.play(ok ? .understood : .failed)
+                    if !ok { Bilan.record(.palette, "palette \(name)") }
                     log("Palette → \(name) : \(ok ? (palette.validate ? "commande lancée" : "commande tapée, « valide » pour l'exécuter") : "échec")\(self?.config.debug == true ? " (« \(command) »)" : "").")
                 }
             }
@@ -718,6 +728,7 @@ final class Coordinator {
             lastWake = Date()
             guard let app = Universal.frontApp(), let bid = app.bundleIdentifier, Universal.allowedApps(config).contains(bid) else {
                 Feedback.play(.failed)
+                Bilan.record(.universal, "app non autorisée")
                 return log("Commande universelle : app au premier plan non autorisée (ajouter son identifiant à universalApps).")
             }
             runUniversal(u.kind, u.query, in: app)
@@ -737,6 +748,7 @@ final class Coordinator {
             if config.dryRun == true { return log("[essai] → navigation sur \(front.id)\(config.debug ? " : \(request)" : "")") }
             NavCommands.run(request, target: front) { [weak self] ok, detail in
                 Feedback.play(ok ? .understood : .failed)
+                if !ok { Bilan.record(.nav, text) }
                 log("Navigation → \(front.id) : \(ok ? "faite" : "impossible")\(self?.config.debug == true ? " (\(detail))" : "").")
             }
             return
@@ -754,10 +766,11 @@ final class Coordinator {
             }
             guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
             lastWake = Date()
-            guard let t = router.frontmostTarget() else { Feedback.play(.failed); return log("Commande : aucun assistant ouvert.") }
+            guard let t = router.frontmostTarget() else { Feedback.play(.failed); Bilan.record(.command, command.rawValue); return log("Commande : aucun assistant ouvert.") }
             if config.dryRun == true { return log("[essai] → \(command.rawValue) sur \(t.id)") }
             AppActions.run(command, target: t) { ok, detail in
                 Feedback.play(ok ? .understood : .failed)
+                if !ok { Bilan.record(.command, command.rawValue) }
                 log("Commande \(command.rawValue) → \(t.id) : \(ok ? "faite" : "impossible") (\(detail)).")
             }
             return
