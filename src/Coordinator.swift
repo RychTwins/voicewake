@@ -220,6 +220,49 @@ final class Coordinator {
         run()
     }
 
+    // MARK: Finder et Réglages Système
+
+    private enum MacCommand { case finder(FinderCommand), settings(SettingsCommand) }
+
+    private func macCommand(_ text: String) -> MacCommand? {
+        guard config.systemCommands ?? true else { return nil }
+        if let s = SettingsCommands.match(text) { return .settings(s) }
+        guard let f = FinderCommands.match(text) else { return nil }
+        // Sélection du Finder : seulement Finder au premier plan (« supprime » ailleurs ne vise jamais un fichier).
+        if f.needsFinderFront, Universal.frontApp()?.bundleIdentifier != "com.apple.finder" { return nil }
+        return .finder(f)
+    }
+
+    private func runMac(_ mac: MacCommand) {
+        let title: String, dangerous: Bool
+        switch mac {
+        case let .finder(f): (title, dangerous) = (f.title, f.dangerous)
+        case let .settings(c): (title, dangerous) = (c.title, c.dangerous)
+        }
+        if config.dryRun == true { return log("[essai] → \(title)") }
+        let config = self.config
+        let run = { [weak self] in
+            DispatchQueue.global().async {
+                let result: (ok: Bool, detail: String)
+                switch mac {
+                case let .finder(f): result = FinderCommands.perform(f, config: config)
+                case let .settings(c): let ok = SettingsCommands.perform(c); result = (ok, ok ? "fait" : "impossible")
+                }
+                DispatchQueue.main.async {
+                    Feedback.play(result.ok ? .understood : .failed)
+                    if !result.ok { Bilan.record(.system, "\(title) \(result.detail)") }
+                    log("Mac : \(title) → \(result.detail).")
+                    _ = self
+                }
+            }
+        }
+        if dangerous {
+            log("Confirmation demandée → \(title).")
+            return askConfirmation(title, run: run)
+        }
+        run()
+    }
+
     // MARK: Nom d'appel
 
     private var pendingWakeName: DispatchWorkItem?
@@ -656,6 +699,7 @@ final class Coordinator {
         if SkillCatalog.request(text, config: config) != nil { return "#skill" }
         if WriteCommand.request(text, config: config) != nil { return "#write" }
         if Universal.match(text, config: config) != nil { return "#universal" }
+        if macCommand(text) != nil { return "#mac" }
         if systemCommand(text) != nil { return "#system" }
         if NavCommands.match(text, target: nil, config: config) != nil { return "#nav" }
         if let command = AppCommand.match(text, router: router, config: config) { return "#" + command.rawValue }
@@ -809,6 +853,18 @@ final class Coordinator {
                 return log("Commande universelle : app au premier plan non autorisée (ajouter son identifiant à universalApps).")
             }
             runUniversal(u.kind, u.query, in: app)
+            return
+        }
+        // Finder et Réglages Système.
+        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let mac = macCommand(text) {
+            detector.reset()
+            if let r = currentReader() {
+                Feedback.play(.ignored)
+                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
+            }
+            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
+            lastWake = Date()
+            runMac(mac)
             return
         }
         // Commandes du Mac : apps, fenêtres, son, musique, capture d'écran.

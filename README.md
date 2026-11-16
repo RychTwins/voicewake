@@ -150,6 +150,20 @@ Sans liste à tenir à jour : VoiceWake lit l'app au premier plan au moment où 
 | « Musique suivante », « Chanson précédente », « Pause la musique », « Remets la musique » | touches multimédia : Spotify, Musique, YouTube… |
 | « Capture d'écran » | image de l'écran sur le Bureau |
 
+**Finder** (actions sur la sélection : Finder au premier plan) :
+
+| Phrase | Effet |
+| --- | --- |
+| « Va dans mes téléchargements », « Ouvre le dossier voxtv » | ouvre le dossier (connu, nommé dans `folders`, ou sous-dossier du dossier courant, du dossier personnel, du Bureau, des Documents, de Developer) |
+| « Copie le fichier et envoie-le dans Documents », « Envoie-le dans voxtv » | copie la sélection |
+| « Déplace le fichier dans le dossier clients » | déplace la sélection |
+| « Supprime le fichier », « Mets-le à la corbeille » | corbeille, après « je confirme » |
+| « Vide la corbeille » | définitif : après « je confirme » |
+| « Renomme le fichier en Facture 2026 », « Nouveau dossier nommé Clients » | renommer (un seul fichier), créer un dossier |
+| « Ouvre le fichier », « Affiche en liste / icônes / colonnes / galerie » | ouvrir, présentation |
+
+**Réglages Système** : « Ouvre les réglages du son », « Paramètres Bluetooth », « Réglages du clavier »… (Wi-Fi, réseau, écran, notifications, batterie, souris, trackpad, confidentialité, accessibilité, fond d'écran, général, mises à jour, concentration, Dock, langue…), puis « clique sur … » dans le volet. « Active le Wi-Fi », « Coupe le Wi-Fi » (après « je confirme »), « Mode sombre », « Mode clair ». La première fois, macOS demande d'autoriser VoiceWake à piloter le Finder et « Événements système ».
+
 **Nom d'appel** : « Jarvis, ferme Claude ». En veille, « Jarvis » est facultatif. Pendant une dictée, « Jarvis, <commande> » coupe le micro et exécute la commande au lieu de l'écrire (les mots déjà transcrits par l'assistant restent dans le brouillon : « efface le brouillon »). Clé `wakeNames` (défaut `["jarvis"]`, liste vide : désactivé) ; `"systemCommands": false` désactive les commandes du Mac.
 
 ### Routines, « Écris … » et bilan
@@ -313,6 +327,7 @@ launchctl kickstart -k gui/$(id -u)/io.github.voicewake
 | `failureReport` | bilan local des commandes ratées | `true` |
 | `wakeNames` | nom d'appel qui force une commande, même en pleine dictée | `["jarvis"]` |
 | `systemCommands` | commandes du Mac (apps, fenêtres, son, musique, capture) | `true` |
+| `folders` | dossiers nommés pour le Finder, ex. `{"voxtv": "~/Developer/voxtv"}` | aucun |
 | `echoCancellation` | annulation d'écho de macOS (expérimental : peut empêcher la reconnaissance de votre voix) | `false` |
 | `defaultTarget` | cible de « Salut assistant » hors application connue | `claude` |
 | `frontmostPhrases` | phrases visant l'application au premier plan | « salut assistant »… |

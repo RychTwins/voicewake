@@ -156,6 +156,8 @@ struct Config: Codable {
     var wakeNames: [String]?
     /// Commandes du Mac (lancer, quitter, fenêtres, son, musique…), défaut true.
     var systemCommands: Bool?
+    /// Dossiers nommés pour le Finder (« copie le fichier dans voxtv ») : {"voxtv": "~/Developer/voxtv"}.
+    var folders: [String: String]?
     var newSessionInPhrases: [String]?
     /// Navigation du lecteur intégré (« lis à partir de … ») : vitesse, phrase précédente ou suivante (défauts dans `ReaderNav`).
     var readFasterPhrases: [String]?

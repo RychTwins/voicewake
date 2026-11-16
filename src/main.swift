@@ -191,6 +191,11 @@ case "route":
     let text = args.dropFirst().joined(separator: " ")
     let router = Router(config: config)
     print(router.route(text).map { "→ \($0.id)" } ?? "→ aucune cible")
+    if let f = FinderCommands.match(text) { print("→ Finder : \(f)\(f.dangerous ? " — confirmation requise" : "")\(f.needsFinderFront ? " (Finder au premier plan)" : "")") }
+    if case let .goTo(d)? = FinderCommands.match(text) { print("  dossier : \(FinderCommands.resolve(d, config: config, current: nil) ?? "introuvable")") }
+    if case let .copy(d)? = FinderCommands.match(text) { print("  dossier : \(FinderCommands.resolve(d, config: config, current: nil) ?? "introuvable")") }
+    if case let .move(d)? = FinderCommands.match(text) { print("  dossier : \(FinderCommands.resolve(d, config: config, current: nil) ?? "introuvable")") }
+    if let c = SettingsCommands.match(text) { print("→ Réglages : \(c)\(c.dangerous ? " — confirmation requise" : "")") }
     if let sys = SystemCommands.match(text, apps: SystemCommands.installedApps(), running: SystemCommands.runningApps() + SystemCommands.targetApps(config),
                                       front: NSWorkspace.shared.frontmostApplication?.bundleIdentifier) {
         print("→ Mac : \(sys)\(sys.dangerous ? " — confirmation requise" : "")")

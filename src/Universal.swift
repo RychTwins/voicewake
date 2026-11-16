@@ -145,7 +145,8 @@ enum Universal {
 
     /// Éditeurs de code acceptés en plus des cibles et éditeurs de la configuration.
     static let defaultApps = ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "dev.zed.Zed", "dev.zed.Zed-Preview",
-                              "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf"]
+                              "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf",
+                              "com.apple.finder", "com.apple.systempreferences"]
 
     /// Applications pilotables par les commandes universelles : cibles, éditeurs configurés, éditeurs connus,
     /// et `universalApps` (liste blanche) : jamais une app quelconque.

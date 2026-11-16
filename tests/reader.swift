@@ -175,8 +175,8 @@ struct ReaderTests {
         check(Universal.best(["afficher"], in: vague) == nil, "phrase vague : rien")
         check(Universal.best(["tout", "afficher"], in: vague)?.value == 1, "libellé exact : choisi")
         check(Universal.best(["terminal"], in: vague)?.value == 2, "seul candidat : choisi")
-        check(Universal.allowedApps(config).contains("dev.zed.Zed") && !Universal.allowedApps(config).contains("com.apple.finder"),
-              "liste blanche : éditeurs oui, app quelconque non")
+        check(Universal.allowedApps(config).contains("dev.zed.Zed") && !Universal.allowedApps(config).contains("com.apple.Safari") && Universal.allowedApps(config).contains("com.apple.finder"),
+              "liste blanche : éditeurs et Finder oui, app quelconque non")
 
         // Confirmation vocale.
         check(Universal.answer("Je confirme", config: config) == .confirm, "je confirme : confirme")
@@ -345,6 +345,28 @@ struct ReaderTests {
         check(WakeName.command(after: "Jarvis, ferme Claude", names: ["jarvis"]) == "ferme claude", "nom d'appel retiré")
         check(WakeName.command(after: "bon alors jarvis monte le son", names: ["jarvis"]) == "monte le son", "nom d'appel en pleine dictée")
         check(WakeName.command(after: "ferme claude", names: ["jarvis"]) == nil, "sans nom d'appel : nil")
+
+        // Finder et Réglages Système.
+        check(FinderCommands.match("Copie le fichier et envoie-le dans Téléchargements") == .copy(to: "telechargements"), "finder : copie dans un dossier")
+        check(FinderCommands.match("déplace-le dans le dossier voxtv") == .move(to: "voxtv"), "finder : déplace")
+        check(FinderCommands.match("mets-le à la corbeille") == .trash && FinderCommand.trash.dangerous, "finder : corbeille avec confirmation")
+        check(FinderCommands.match("supprime le fichier") == .trash, "finder : supprime")
+        check(FinderCommands.match("efface le brouillon") == nil, "finder : « efface le brouillon » laissé à l'assistant")
+        check(FinderCommands.match("vide la corbeille") == .emptyTrash && !FinderCommand.emptyTrash.needsFinderFront, "finder : vider la corbeille")
+        check(FinderCommands.match("renomme le fichier en Facture Été 2026") == .rename("Facture Été 2026"), "finder : renommer (accents gardés)")
+        check(FinderCommands.match("nouveau dossier nommé Clients") == .newFolder("Clients"), "finder : nouveau dossier nommé")
+        check(FinderCommands.match("va dans mes documents") == .goTo("documents"), "finder : aller dans un dossier")
+        check(FinderCommands.match("affiche en colonnes") == .view("column"), "finder : présentation")
+        check(FinderCommands.match("je copie le code dans le chat") == nil, "finder : phrase ordinaire ignorée")
+        var fcfg = config
+        fcfg.folders = ["Clients VIP": "/tmp"]
+        check(FinderCommands.resolve("clients vip", config: fcfg, current: nil) == "/tmp", "finder : dossier nommé dans la config")
+        check(FinderCommands.resolve("téléchargements", config: fcfg, current: nil) == NSHomeDirectory() + "/Downloads", "finder : dossier connu")
+        check(SettingsCommands.match("ouvre les réglages du son") == .pane("com.apple.Sound-Settings.extension"), "réglages : volet du son")
+        check(SettingsCommands.match("paramètres bluetooth") == .pane("com.apple.BluetoothSettings"), "réglages : volet bluetooth")
+        check(SettingsCommands.match("coupe le wifi") == .wifi(false) && SettingsCommand.wifi(false).dangerous, "réglages : couper le wifi demande confirmation")
+        check(SettingsCommands.match("mode sombre") == .darkMode(true), "réglages : mode sombre")
+        check(SettingsCommands.match("ouvre les paramètres") == nil, "réglages : « paramètres » seul laissé à l'app")
 
         // Rotation du journal (sortie standard redirigée vers un fichier temporaire).
         let tmp = NSTemporaryDirectory() + "voicewake-test-\(getpid()).log"
