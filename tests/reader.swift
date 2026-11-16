@@ -282,6 +282,15 @@ struct ReaderTests {
         check(!again.accept("arrete la lecture", spokenNow: twice, now: t0.addingTimeInterval(1)), "texte qui la répète : 2e fois encore ignorée")
         check(again.accept("arrete la lecture", spokenNow: twice, now: t0.addingTimeInterval(2)), "3e fois : toujours acceptée")
 
+        // Routines : phrase dite seule, « routine <nom> », validation.
+        check(Routines.match("Prépare VoxTV !", config: config)?.name == "voxtv", "routine : phrase dite seule")
+        check(Routines.match("routine fin de journée", config: config)?.name == "fin de journée", "routine : « routine <nom> »")
+        check(Routines.match("je prépare voxtv demain", config: config) == nil, "routine : phrase au milieu d'un texte ignorée")
+        check(Routines.delay(Routine(name: "x", phrases: nil, steps: ["a"], delaySeconds: 60)) == 10, "routine : délai plafonné")
+        check(Routines.problems([Routine(name: nil, phrases: [], steps: ["a"], delaySeconds: nil)]).count == 1, "routine sans phrase ni nom refusée")
+        check(Routines.problems([Routine(name: "x", phrases: nil, steps: Array(repeating: "a", count: 11), delaySeconds: nil)]).count == 1, "routine trop longue refusée")
+        check(Routines.problems(config.routines ?? []).isEmpty, "routines d'exemple valides")
+
         // Rotation du journal (sortie standard redirigée vers un fichier temporaire).
         let tmp = NSTemporaryDirectory() + "voicewake-test-\(getpid()).log"
         FileManager.default.createFile(atPath: tmp, contents: Data(repeating: 65, count: 200))

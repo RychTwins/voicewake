@@ -16,6 +16,7 @@ Usage : voicewake [commande] [--config chemin]
   barre <cible>  liste les projets et sessions de la barre latérale
   trouve <bundle-id> "menu …"   montre l'option ou le bouton visé, sans cliquer
   skill <cible> "nom arguments"  montre le skill ou la commande slash qui serait tapé
+  routines       liste les routines vocales et leurs étapes
 """
 
 var args = Array(CommandLine.arguments.dropFirst())
@@ -189,6 +190,9 @@ case "route":
     let text = args.dropFirst().joined(separator: " ")
     let router = Router(config: config)
     print(router.route(text).map { "→ \($0.id)" } ?? "→ aucune cible")
+    if let r = Routines.match(text, config: config) {
+        print("→ routine « \(Routines.label(r)) » : \(r.steps.prefix(Routines.maxSteps).joined(separator: " → "))")
+    }
     if let nav = NavCommands.match(text, target: nil, config: config) {
         switch nav {
         case let .command(c): print("→ navigation : \(((c.menu ?? []) + (c.buttons ?? [])).first ?? "?")")
@@ -278,6 +282,15 @@ case "skill":
         let args2 = SkillCatalog.originalTail(phrase, skippingWords: hit.consumed)
         print("→ « \(hit.entry.text)\(args2.isEmpty ? "" : " " + args2) » (\(entries.count) connus)")
     } else { print("→ aucun skill ne correspond (\(entries.count) connus)") }
+
+case "routines":
+    let routines = config.routines ?? []
+    if routines.isEmpty { print("Aucune routine (clé \"routines\" de la config).") }
+    for r in routines {
+        let phrases = (r.phrases ?? []) + (r.name.map { ["routine \($0)"] } ?? [])
+        print("▸ \(Routines.label(r)) — « \(phrases.joined(separator: " », « ")) » (toutes les \(Routines.delay(r)) s)")
+        for (i, step) in r.steps.prefix(Routines.maxSteps).enumerated() { print("    \(i + 1). \(step)") }
+    }
 
 case "sons", "sounds":
     // Fait entendre les sons de confirmation, dans l'ordre, avec leur signification.

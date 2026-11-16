@@ -157,6 +157,39 @@ final class Coordinator {
     private var lastPaletteAt = Date.distantPast
     private var paletteOpen: Bool { Date().timeIntervalSince(lastPaletteAt) < Palette.paletteWindow }
 
+    // MARK: Routines
+
+    private var routineWork: DispatchWorkItem?
+
+    /// Exécute l'étape `i` comme une phrase dite, puis la suivante après le délai de la routine. Arrêt si une
+    /// dictée s'ouvre, une confirmation est demandée, une lecture commence ou une étape n'est pas reconnue.
+    private func runRoutine(_ r: Routine, step i: Int) {
+        routineWork = nil
+        let steps = Array(r.steps.prefix(Routines.maxSteps))
+        let name = Routines.label(r)
+        guard i < steps.count else { return log("Routine « \(name) » terminée.") }
+        // VoiceWake parle (« où on en est ? ») : on attend la fin de l'annonce.
+        if announcer.isSpeaking { return scheduleRoutine(r, step: i, after: 0.5) }
+        if i > 0, active != nil || pendingConfirmation != nil || reader.isActive || currentReader() != nil {
+            return log("Routine « \(name) » arrêtée avant l'étape \(i + 1) : dictée, confirmation ou lecture en cours.")
+        }
+        let step = steps[i]
+        guard Routines.match(step, config: config) == nil, wakeKey(step) != nil else {
+            Feedback.play(.failed)
+            return log("Routine « \(name) » : étape \(i + 1) non reconnue, arrêt\(config.debug ? " (« \(step) »)" : "").")
+        }
+        if config.debug { log("Routine « \(name) » : étape \(i + 1) (« \(step) »).") }
+        lastWake = .distantPast // pas de délai entre deux commandes pour les étapes d'une routine
+        handleWake(step)
+        scheduleRoutine(r, step: i + 1, after: Routines.delay(r))
+    }
+
+    private func scheduleRoutine(_ r: Routine, step i: Int, after delay: Double) {
+        let work = DispatchWorkItem { [weak self] in self?.runRoutine(r, step: i) }
+        routineWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
     // MARK: Skills
 
     /// Tape « /skill arguments » dans la zone de saisie de l'assistant au premier plan, puis attend « ok envoie »
@@ -342,7 +375,7 @@ final class Coordinator {
         let commands = target.map(NavCommands.commands(for:)) ?? []
         (commands.flatMap(\.phrases) + AppCommand.allCases.flatMap { $0.phrases(config) }
             + (config.readPausePhrases ?? []) + (config.readResumePhrases ?? []) + (config.readFromPhrases ?? [])
-            + (config.sendPhrases ?? [])).forEach(add)
+            + (config.sendPhrases ?? []) + (config.routines ?? []).flatMap { $0.phrases ?? [] }).forEach(add)
         return out
     }
 
@@ -506,6 +539,7 @@ final class Coordinator {
         if router.containsAny(text, config.readResumePhrases) { return "#resume" }
         if router.containsReadAloudPhrase(text) { return "#readaloud" }
         if reader.isActive, let nav = ReaderNav.match(text, config: config) { return "#" + nav.rawValue }
+        if Routines.match(text, config: config) != nil { return "#routine" }
         if Palette.key(text, paletteOpen: paletteOpen) != nil { return "#key" }
         if Palette.request(text, config: config) != nil { return "#palette" }
         if SkillCatalog.request(text, config: config) != nil { return "#skill" }
@@ -563,6 +597,21 @@ final class Coordinator {
                 }
                 Feedback.play(ok ? .understood : .failed)
             }
+            return
+        }
+        // Routines : une phrase dite seule enchaîne plusieurs commandes.
+        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let routine = Routines.match(text, config: config) {
+            detector.reset()
+            if let r = currentReader() {
+                Feedback.play(.ignored)
+                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
+            }
+            guard routineWork == nil else { return log("Routine déjà en cours.") }
+            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
+            lastWake = Date()
+            Feedback.play(.understood)
+            log("Routine « \(Routines.label(routine)) » : \(min(routine.steps.count, Routines.maxSteps)) étapes.")
+            runRoutine(routine, step: 0)
             return
         }
         // Touches et palettes de commandes, dans une app autorisée au premier plan.

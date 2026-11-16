@@ -319,5 +319,19 @@
     "model": "eleven_flash_v2_5"
   },
   "feedbackSounds": true,
-  "feedbackVolume": 0.35
+  "feedbackVolume": 0.35,
+  "_noteRoutines": "Routines : une phrase dite seule (ou « routine <nom> ») enchaîne des commandes vocales, une toutes les delaySeconds (défaut 1,5 s). 10 étapes au plus.",
+  "routines": [
+    {
+      "name": "voxtv",
+      "phrases": ["prépare voxtv"],
+      "steps": ["ouvre voxtv", "menu afficher le terminal"]
+    },
+    {
+      "name": "fin de journée",
+      "phrases": ["fin de journée"],
+      "steps": ["copie la réponse", "où on en est"],
+      "delaySeconds": 2
+    }
+  ]
 }

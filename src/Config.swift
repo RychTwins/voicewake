@@ -145,6 +145,8 @@ struct Config: Codable {
     var palettePhrases: [String]?
     var paletteShortcuts: [String: String]?
     var cancelPhrases: [String]?
+    /// Routines vocales : une phrase dite seule enchaîne plusieurs commandes vocales (voir `Routines`).
+    var routines: [Routine]?
     var newSessionInPhrases: [String]?
     /// Navigation du lecteur intégré (« lis à partir de … ») : vitesse, phrase précédente ou suivante (défauts dans `ReaderNav`).
     var readFasterPhrases: [String]?
@@ -239,6 +241,7 @@ struct Config: Codable {
             }
             guard !t.phrases.isEmpty else { throw ConfigError("\(t.id) : aucune phrase.") }
         }
+        if let problem = Routines.problems(routines ?? []).first { throw ConfigError(problem) }
         if let d = defaultTarget, !ids.contains(d) {
             throw ConfigError("defaultTarget inconnue : \(d)")
         }
