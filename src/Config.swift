@@ -147,6 +147,8 @@ struct Config: Codable {
     var cancelPhrases: [String]?
     /// Routines vocales : une phrase dite seule enchaîne plusieurs commandes vocales (voir `Routines`).
     var routines: [Routine]?
+    /// « Écris … » : tape le texte dicté dans le champ qui a le focus (défauts dans `WriteCommand`, liste vide = désactivé).
+    var writePhrases: [String]?
     var newSessionInPhrases: [String]?
     /// Navigation du lecteur intégré (« lis à partir de … ») : vitesse, phrase précédente ou suivante (défauts dans `ReaderNav`).
     var readFasterPhrases: [String]?

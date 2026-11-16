@@ -291,6 +291,15 @@ struct ReaderTests {
         check(Routines.problems([Routine(name: "x", phrases: nil, steps: Array(repeating: "a", count: 11), delaySeconds: nil)]).count == 1, "routine trop longue refusée")
         check(Routines.problems(config.routines ?? []).isEmpty, "routines d'exemple valides")
 
+        // « Écris … »
+        check(WriteCommand.request("Écris rendez-vous demain", config: config) == 1, "écris : phrase reconnue")
+        check(WriteCommand.request("écrit bonjour", config: config) == 1, "écris : variante « écrit »")
+        check(WriteCommand.request("tape le texte bonjour", config: config) == 3, "écris : « tape le texte »")
+        check(WriteCommand.request("écris", config: config) == nil, "écris : sans texte, rien")
+        check(WriteCommand.request("j'écris un mail", config: config) == nil, "écris : au milieu d'une phrase, rien")
+        check(WriteCommand.text("Écris : Rendez-vous demain à 10 h, l'équipe.", phraseWords: 1) == "Rendez-vous demain à 10 h, l'équipe.", "écris : texte d'origine conservé")
+        check(WriteCommand.text("tape le texte J'arrive", phraseWords: 3) == "J'arrive", "écris : apostrophe conservée")
+
         // Rotation du journal (sortie standard redirigée vers un fichier temporaire).
         let tmp = NSTemporaryDirectory() + "voicewake-test-\(getpid()).log"
         FileManager.default.createFile(atPath: tmp, contents: Data(repeating: 65, count: 200))

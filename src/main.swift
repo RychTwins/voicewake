@@ -190,6 +190,7 @@ case "route":
     let text = args.dropFirst().joined(separator: " ")
     let router = Router(config: config)
     print(router.route(text).map { "→ \($0.id)" } ?? "→ aucune cible")
+    if let n = WriteCommand.request(text, config: config) { print("→ écris : « \(WriteCommand.text(text, phraseWords: n)) »") }
     if let r = Routines.match(text, config: config) {
         print("→ routine « \(Routines.label(r)) » : \(r.steps.prefix(Routines.maxSteps).joined(separator: " → "))")
     }

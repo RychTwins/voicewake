@@ -123,7 +123,7 @@ final class Coordinator {
         // « Lis à partir de … » : laisser le temps de dire la citation.
         // « Ouvre … » / « Nouvelle session dans … » : laisser le temps de dire le nom.
         var wait = config.wakeMaxWaitSeconds ?? 1.8
-        if router.containsAny(text, config.readFromPhrases) { wait = 6 }
+        if router.containsAny(text, config.readFromPhrases) || WriteCommand.request(text, config: config) != nil { wait = 6 }
         else if Universal.match(text, config: config) != nil || SkillCatalog.request(text, config: config) != nil
                     || Palette.request(text, config: config) != nil { wait = 3 }
         else if case .open? = NavCommands.match(text, target: nil, config: config) { wait = 3 }
@@ -156,6 +156,32 @@ final class Coordinator {
     /// Dernière commande tapée dans une palette sans être validée : « valide » seul est accepté pendant 20 s.
     private var lastPaletteAt = Date.distantPast
     private var paletteOpen: Bool { Date().timeIntervalSince(lastPaletteAt) < Palette.paletteWindow }
+
+    // MARK: « Écris … »
+
+    private func writeText(_ typed: String) {
+        guard !typed.isEmpty else { Feedback.play(.failed); return log("Écris : texte vide.") }
+        guard let app = Universal.frontApp(), let bid = app.bundleIdentifier, Universal.allowedApps(config).contains(bid) else {
+            Feedback.play(.failed)
+            return log("Écris : app au premier plan non autorisée (ajouter son identifiant à universalApps).")
+        }
+        let name = app.localizedName ?? bid
+        if config.dryRun == true { return log("[essai] → écris dans \(name)\(said(typed))") }
+        DispatchQueue.global().async { [weak self] in
+            // Seulement le champ qui a déjà le focus : le texte ne part jamais dans un autre champ.
+            var ok = false
+            if let field = AXButtonPresser.focusedTextField(in: app) {
+                ok = TextTyper.type(typed, to: app.processIdentifier, while: {
+                    AXButtonPresser.isFrontmost(app) && AXButtonPresser.focusedTextField(in: app).map { CFEqual($0, field) } == true
+                })
+            }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                Feedback.play(ok ? .understood : .failed)
+                log("Écris → \(name) : \(ok ? "\(typed.count) caractères tapés" : "aucun champ de saisie actif")\(self.said(typed)).")
+            }
+        }
+    }
 
     // MARK: Routines
 
@@ -543,6 +569,7 @@ final class Coordinator {
         if Palette.key(text, paletteOpen: paletteOpen) != nil { return "#key" }
         if Palette.request(text, config: config) != nil { return "#palette" }
         if SkillCatalog.request(text, config: config) != nil { return "#skill" }
+        if WriteCommand.request(text, config: config) != nil { return "#write" }
         if Universal.match(text, config: config) != nil { return "#universal" }
         if NavCommands.match(text, target: nil, config: config) != nil { return "#nav" }
         if let command = AppCommand.match(text, router: router, config: config) { return "#" + command.rawValue }
@@ -666,6 +693,18 @@ final class Coordinator {
             guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
             lastWake = Date()
             runSkill(q, said: text)
+            return
+        }
+        // « Écris … » : texte tapé dans le champ qui a le focus.
+        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let n = WriteCommand.request(text, config: config) {
+            detector.reset()
+            if let r = currentReader() {
+                Feedback.play(.ignored)
+                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
+            }
+            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
+            lastWake = Date()
+            writeText(WriteCommand.text(text, phraseWords: n))
             return
         }
         // Commandes universelles : « menu <libellé> », « clique sur <libellé> », dans l'app au premier plan.
