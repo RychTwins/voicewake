@@ -189,6 +189,19 @@ La première fois, macOS demande d'autoriser VoiceWake à piloter Spotify ou Mus
 
 **Nom d'appel** : « Jarvis, ferme Claude ». En veille, « Jarvis » est facultatif. Pendant une dictée, « Jarvis, <commande> » coupe le micro et exécute la commande au lieu de l'écrire (les mots déjà transcrits par l'assistant restent dans le brouillon : « efface le brouillon »). Clé `wakeNames` (défaut `["jarvis"]`, liste vide : désactivé) ; `"systemCommands": false` désactive les commandes du Mac.
 
+### Répondre aux questions de l'assistant
+
+Quand Claude affiche une question à options (un petit son le signale), répondez à voix haute, sans cliquer :
+
+| Phrase | Effet |
+| --- | --- |
+| le libellé d'une option (« Envoyer tout de suite », « Fusionne et pousse ») | coche l'option et l'envoie |
+| « La première », « La deuxième », « Option trois » | option par son rang |
+| « Réponds non, ne fusionne pas », « Ma réponse est … » | réponse libre : tapée dans « Autre » puis envoyée |
+| « Passe » | passe la question |
+
+La carte est relue juste avant d'agir : si elle a changé ou disparu, rien n'est fait. Jamais pendant une lecture à voix haute. `"answerQuestions": false` désactive. Diagnostic : `voicewake question com.anthropic.claudefordesktop "la deuxième"`.
+
 ### Routines, « Écris … » et bilan
 
 | Phrase | Effet |
@@ -350,6 +363,7 @@ launchctl kickstart -k gui/$(id -u)/io.github.voicewake
 | `failureReport` | bilan local des commandes ratées | `true` |
 | `wakeNames` | nom d'appel qui force une commande, même en pleine dictée | `["jarvis"]` |
 | `systemCommands` | commandes du Mac (apps, fenêtres, son, musique, capture) | `true` |
+| `answerQuestions` | répondre à la voix aux questions de l'assistant | `true` |
 | `folders` | dossiers nommés pour le Finder, ex. `{"voxtv": "~/Developer/voxtv"}` | aucun |
 | `echoCancellation` | annulation d'écho de macOS (expérimental : peut empêcher la reconnaissance de votre voix) | `false` |
 | `defaultTarget` | cible de « Salut assistant » hors application connue | `claude` |
@@ -431,6 +445,8 @@ voicewake trouve <bundle-id> "menu …"   # option ou bouton visé, sans cliquer
 voicewake skill claude "nom arguments"  # skill ou commande slash qui serait tapé
 voicewake routines                 # routines vocales et leurs étapes
 voicewake bilan                    # commandes ratées les plus fréquentes, avec un conseil
+voicewake boutons <bundle-id>      # boutons visibles (ce que « clique sur … » peut viser)
+voicewake question <bundle-id> "la deuxième"   # question affichée et réponse reconnue, sans cliquer
 tail -f ~/Library/Logs/voicewake.log   # archivé en voicewake.log.1 au-delà de 5 Mo
 ```
 

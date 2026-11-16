@@ -17,6 +17,7 @@ Usage : voicewake [commande] [--config chemin]
   trouve <bundle-id> "menu …"   montre l'option ou le bouton visé, sans cliquer
   skill <cible> "nom arguments"  montre le skill ou la commande slash qui serait tapé
   routines       liste les routines vocales et leurs étapes
+  boutons <bundle-id>   liste les boutons visibles de la fenêtre (ce que « clique sur … » peut viser)
   bilan [efface] commandes ratées les plus fréquentes, avec un conseil (efface : remet à zéro)
 """
 
@@ -311,6 +312,27 @@ case "bilan":
     for kind in Bilan.Kind.allCases where Bilan.top(all).contains(where: { $0.kind == kind }) {
         print("  \(kind.title) : \(kind.advice)")
     }
+
+case "boutons":
+    guard args.count >= 2, let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == args[1] }) else {
+        print("Usage : voicewake boutons <bundle-id>"); exit(1)
+    }
+    AXButtonPresser.enableAccessibility(app)
+    usleep(300_000)
+    for b in AXButtonPresser.visibleButtons(in: app) { print(b.title) }
+
+case "question":
+    // voicewake question <bundle-id> "phrase" : carte de question visible et réponse reconnue (sans cliquer).
+    guard args.count >= 2, let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == args[1] }) else {
+        print("Usage : voicewake question <bundle-id> \"phrase\""); exit(1)
+    }
+    AXButtonPresser.enableAccessibility(app)
+    usleep(300_000)
+    guard let found = QuestionAnswer.card(in: app) else { print("→ aucune question affichée"); exit(0) }
+    for (i, o) in found.card.options.enumerated() { print("  \(i + 1). \(o)") }
+    print("  « Autre » : \(found.card.hasOther ? "oui" : "non")")
+    let phrase = args.dropFirst(2).joined(separator: " ")
+    if !phrase.isEmpty { print("→ \(QuestionAnswer.match(phrase, card: found.card).map { "\($0)" } ?? "pas une réponse")") }
 
 case "routines":
     let routines = config.routines ?? []

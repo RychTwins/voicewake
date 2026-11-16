@@ -392,6 +392,21 @@ struct ReaderTests {
         check(BrowserCommands.match("cherche dans la page Facture", front: safari) == .findInPage("Facture"), "navigateur : recherche dans la page")
         check(BrowserCommands.url(fromSpoken: "rm -rf") == nil, "navigateur : adresse invalide refusée")
 
+        // Réponses aux questions de l'assistant.
+        let qcard = QuestionCard(options: ["Attendre « ok envoie » (Recommended) Texte tapé, tu peux relire.",
+                                           "Envoyer tout de suite Plus rapide, mais risqué."], hasOther: true)
+        check(QuestionAnswer.match("envoyer tout de suite", card: qcard) == .option(1), "question : libellé dit")
+        check(QuestionAnswer.match("Attendre ok envoie", card: qcard) == .option(0), "question : libellé sans (Recommended)")
+        check(QuestionAnswer.match("la deuxième", card: qcard) == .option(1), "question : rang")
+        check(QuestionAnswer.match("option un", card: qcard) == .option(0), "question : « option un »")
+        check(QuestionAnswer.match("la quatrième", card: qcard) == nil, "question : rang absent refusé")
+        check(QuestionAnswer.match("deux", card: qcard) == nil, "question : nombre seul ignoré")
+        check(QuestionAnswer.match("passe", card: qcard) == .skip, "question : passer")
+        check(QuestionAnswer.match("Réponds : non, ne fusionne pas", card: qcard) == .free("non, ne fusionne pas"), "question : réponse libre")
+        check(QuestionAnswer.match("envoyer", card: qcard) == nil || QuestionAnswer.match("envoyer", card: qcard) == .option(1), "question : début unique seulement")
+        check(QuestionAnswer.match("bonjour tout le monde", card: qcard) == nil, "question : phrase ordinaire ignorée")
+        check(QuestionAnswer.match("réponds oui", card: QuestionCard(options: ["A", "B"], hasOther: false)) == nil, "question : réponse libre sans « Autre » refusée")
+
         // Rotation du journal (sortie standard redirigée vers un fichier temporaire).
         let tmp = NSTemporaryDirectory() + "voicewake-test-\(getpid()).log"
         FileManager.default.createFile(atPath: tmp, contents: Data(repeating: 65, count: 200))

@@ -52,6 +52,7 @@ final class Coordinator {
             guard granted, let self else { exit(1) }
             self.detector.start()
             self.startHintRefresh()
+            self.startQuestionWatch()
             let names = self.config.targets.map(\.id).joined(separator: ", ")
             log("VoiceWake prêt. Cibles : \(names).")
         }
@@ -310,6 +311,41 @@ final class Coordinator {
         pendingWakeName = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
         return true
+    }
+
+    // MARK: Questions de l'assistant
+
+    /// Carte de question visible dans l'assistant au premier plan (relue toutes les 2 s, hors dictée et lecture).
+    private var currentCard: (card: QuestionCard, app: NSRunningApplication)?
+    private var questionTimer: Timer?
+    private var scanningCard = false
+
+    private func startQuestionWatch() {
+        guard config.answerQuestions ?? true else { return }
+        let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in self?.scanQuestion() }
+        RunLoop.main.add(timer, forMode: .common)
+        questionTimer = timer
+    }
+
+    private func scanQuestion() {
+        guard !scanningCard else { return }
+        guard active == nil, !reader.isActive, let t = router.frontmostTarget(),
+              let app = ShortcutTrigger.runningApp(for: t), AXButtonPresser.isFrontmost(app) else { currentCard = nil; return }
+        scanningCard = true
+        DispatchQueue.global().async { [weak self] in
+            let found = QuestionAnswer.card(in: app)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.scanningCard = false
+                let had = self.currentCard != nil
+                self.currentCard = found.map { ($0.card, app) }
+                // Une question vient de s'afficher : petit son, tu peux répondre à la voix.
+                if !had, found != nil { Feedback.play(.micOpen) }
+                if self.config.debug, had != (found != nil) {
+                    log(found.map { "Question affichée : \($0.card.options.count) options." } ?? "Question fermée.")
+                }
+            }
+        }
     }
 
     // MARK: Routines
@@ -707,6 +743,7 @@ final class Coordinator {
         if router.containsReadAloudPhrase(text) { return "#readaloud" }
         if reader.isActive, let nav = ReaderNav.match(text, config: config) { return "#" + nav.rawValue }
         if Routines.match(text, config: config) != nil { return "#routine" }
+        if let card = currentCard, QuestionAnswer.match(text, card: card.card) != nil { return "#answer" }
         if Palette.key(text, paletteOpen: paletteOpen) != nil { return "#key" }
         if Palette.request(text, config: config) != nil { return "#palette" }
         if SkillCatalog.request(text, config: config) != nil { return "#skill" }
@@ -782,6 +819,35 @@ final class Coordinator {
             Feedback.play(.understood)
             log("Routine « \(Routines.label(routine)) » : \(min(routine.steps.count, Routines.maxSteps)) étapes.")
             runRoutine(routine, step: 0)
+            return
+        }
+        // Question affichée par l'assistant : option, rang, « passe », « réponds … ».
+        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil,
+           let card = currentCard, let reply = QuestionAnswer.match(text, card: card.card) {
+            detector.reset()
+            if let r = currentReader() {
+                Feedback.play(.ignored)
+                return log("Réponse ignorée : lecture à voix haute de \(r.id) en cours.")
+            }
+            guard Date().timeIntervalSince(lastWake) >= 1.5 else { return }
+            lastWake = Date()
+            if config.dryRun == true { return log("[essai] → réponse à la question : \(reply)") }
+            let app = card.app
+            DispatchQueue.global().async { [weak self] in
+                let ok = QuestionAnswer.perform(reply, expected: card.card, in: app)
+                DispatchQueue.main.async {
+                    Feedback.play(ok ? .understood : .failed)
+                    if !ok { Bilan.record(.command, "reponse a une question") }
+                    let what: String
+                    switch reply {
+                    case let .option(i): what = "option \(i + 1)"
+                    case .skip: what = "passer"
+                    case .free: what = "réponse libre envoyée"
+                    }
+                    log("Question → \(what) : \(ok ? "fait" : "carte changée ou introuvable").")
+                    self?.currentCard = nil
+                }
+            }
             return
         }
         // Touches et palettes de commandes, dans une app autorisée au premier plan.

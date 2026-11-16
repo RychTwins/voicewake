@@ -158,6 +158,8 @@ struct Config: Codable {
     var systemCommands: Bool?
     /// Dossiers nommés pour le Finder (« copie le fichier dans voxtv ») : {"voxtv": "~/Developer/voxtv"}.
     var folders: [String: String]?
+    /// Répondre à la voix aux questions de l'assistant (options, « passe », « réponds … »), défaut true.
+    var answerQuestions: Bool?
     var newSessionInPhrases: [String]?
     /// Navigation du lecteur intégré (« lis à partir de … ») : vitesse, phrase précédente ou suivante (défauts dans `ReaderNav`).
     var readFasterPhrases: [String]?
