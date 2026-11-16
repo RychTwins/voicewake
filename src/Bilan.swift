@@ -5,7 +5,7 @@ import Foundation
 /// Hors mode debug, seul le type d'échec est gardé (jamais ce que tu as dit) ; le texte de « écris … » jamais. Désactivable : "failureReport": false.
 enum Bilan {
     enum Kind: String, Codable, CaseIterable {
-        case universal, skill, nav, command, palette, write, routine, read
+        case universal, skill, nav, command, palette, write, routine, read, system
 
         var title: String {
             switch self {
@@ -17,6 +17,7 @@ enum Bilan {
             case .write: return "écris"
             case .routine: return "routine"
             case .read: return "lis à partir de"
+            case .system: return "Mac"
             }
         }
 
@@ -30,6 +31,7 @@ enum Bilan {
             case .write: return "cliquer d'abord dans un champ de saisie ; app dans universalApps"
             case .routine: return "tester l'étape avec voicewake route \"…\""
             case .read: return "dire 3 ou 4 mots exacts d'un passage visible de la dernière réponse"
+            case .system: return "nom d'app exact (voicewake route \"lance …\") ; fenêtre : accessibilité accordée à VoiceWake"
             }
         }
     }

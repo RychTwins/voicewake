@@ -87,6 +87,9 @@ final class Coordinator {
             endPause()
             // Pas de return : la même phrase est traitée tout de suite par la veille, ci-dessous.
         }
+        if let t = active, checkWakeNameDuringDictation(text, t) { return }
+        // En veille, le nom d'appel est facultatif : « Jarvis, monte le son » = « monte le son ».
+        let text = active == nil ? (afterWakeName(text).flatMap { $0.isEmpty ? nil : $0 } ?? text) : text
         if let t = active {
             if !router.endsWithStopPhrase(text), let other = switchTarget(text, from: t) {
                 switchDictation(from: t, to: other)
@@ -185,6 +188,72 @@ final class Coordinator {
                 log("Écris → \(name) : \(ok ? "\(typed.count) caractères tapés" : "aucun champ de saisie actif")\(self.said(typed)).")
             }
         }
+    }
+
+    // MARK: Commandes du Mac
+
+    private func systemCommand(_ text: String) -> SystemCommand? {
+        guard config.systemCommands ?? true else { return nil }
+        return SystemCommands.match(text, apps: SystemCommands.installedApps(), running: SystemCommands.runningApps() + SystemCommands.targetApps(config),
+                                    front: Universal.frontApp()?.bundleIdentifier)
+    }
+
+    private func runSystem(_ sys: SystemCommand) {
+        let what: String
+        switch sys {
+        case let .launch(p), let .activate(p): what = "ouvrir \(SystemCommands.appName(p))"
+        case let .quit(id): what = "quitter \(SystemCommands.appName(id))"
+        case let .hide(id): what = "cacher \(SystemCommands.appName(id))"
+        default: what = "\(sys)"
+        }
+        if config.dryRun == true { return log("[essai] → Mac : \(what)") }
+        let run = {
+            let ok = SystemCommands.perform(sys)
+            Feedback.play(ok ? .understood : .failed)
+            if !ok { Bilan.record(.system, "\(sys)".split(separator: "(").first.map(String.init) ?? "mac") }
+            log("Mac : \(what) \(ok ? "fait" : "impossible").")
+        }
+        if sys.dangerous {
+            log("Confirmation demandée → Mac : \(what).")
+            return askConfirmation(what, run: run)
+        }
+        run()
+    }
+
+    // MARK: Nom d'appel
+
+    private var pendingWakeName: DispatchWorkItem?
+
+    private func afterWakeName(_ text: String) -> String? {
+        WakeName.command(after: text, names: config.wakeNames ?? WakeName.defaults)
+    }
+
+    /// Pendant une dictée : « Jarvis, <commande> » coupe le micro puis exécute la commande (stable 1,5 s).
+    private func checkWakeNameDuringDictation(_ text: String, _ t: Target) -> Bool {
+        guard recording, !stopping, let command = afterWakeName(text), wakeKey(command) != nil else {
+            pendingWakeName?.cancel() // la phrase a continué : ce n'était pas (ou plus) une commande
+            pendingWakeName = nil
+            return false
+        }
+        pendingWakeName?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.active?.id == t.id, self.recording, !self.stopping else { return }
+            self.pendingWakeName = nil
+            self.pendingSend?.cancel()
+            self.stopping = true
+            log("Nom d'appel pendant la dictée → \(t.id) : micro coupé, commande exécutée.")
+            self.trigger.stopDictation(t, in: self.dictationWindow, external: self.externalDictation(for: t)) { [weak self] _ in
+                guard let self else { return }
+                self.stopping = false
+                self.endPause()
+                self.detector.reset()
+                self.lastWake = .distantPast
+                self.handleWake(command)
+            }
+        }
+        pendingWakeName = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
+        return true
     }
 
     // MARK: Routines
@@ -300,14 +369,19 @@ final class Coordinator {
 
     // MARK: Confirmation vocale
 
-    private var pendingConfirmation: (action: Universal.Action, app: String, expires: Date)?
+    private var pendingConfirmation: (title: String, run: () -> Void, expires: Date)?
     private var confirmWork: DispatchWorkItem?
 
     /// Action sensible : « Confirmer … ? », puis « oui » ou « non » dit seul dans les 8 s.
     private func askConfirmation(_ action: Universal.Action, in name: String) {
-        pendingConfirmation = (action, name, Date().addingTimeInterval(Universal.confirmSeconds + 3))
         log("Confirmation demandée → \(name)\(label(action.title)).")
-        speak(Universal.confirmationPrompt(action.title, config: config)) { [weak self] in
+        askConfirmation(action.title) { [weak self] in self?.performUniversal(action, in: name, confirmed: true) }
+    }
+
+    /// Demande « Confirmer … ? » et n'exécute `run` que sur « je confirme » dit seul.
+    private func askConfirmation(_ title: String, run: @escaping () -> Void) {
+        pendingConfirmation = (title, run, Date().addingTimeInterval(Universal.confirmSeconds + 3))
+        speak(Universal.confirmationPrompt(title, config: config)) { [weak self] in
             self?.pendingConfirmation?.expires = Date().addingTimeInterval(Universal.confirmSeconds)
         }
     }
@@ -340,7 +414,7 @@ final class Coordinator {
             switch answer {
             case .confirm:
                 log("Confirmé.")
-                self.performUniversal(p.action, in: p.app, confirmed: true)
+                p.run()
             case .cancel:
                 Feedback.play(.micClosed)
                 log("Annulé : rien n'a été fait.")
@@ -371,6 +445,7 @@ final class Coordinator {
     /// Met à jour les indices toutes les 60 s : noms de projets et de conversations de l'app au premier plan
     /// (« ouvre VoxTV » est alors bien mieux compris), puis phrases d'activation et commandes.
     private func startHintRefresh() {
+        _ = SystemCommands.installedApps() // liste des apps prête avant la première commande
         refreshHints()
         let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in self?.refreshHints() }
         RunLoop.main.add(timer, forMode: .common)
@@ -406,6 +481,7 @@ final class Coordinator {
             out.append(s)
         }
         base.forEach(add)
+        (config.wakeNames ?? WakeName.defaults).forEach(add)
         for n in names.prefix(30) where n.count <= 60 { add("ouvre \(n)"); add(n) }
         let commands = target.map(NavCommands.commands(for:)) ?? []
         (commands.flatMap(\.phrases) + AppCommand.allCases.flatMap { $0.phrases(config) }
@@ -580,6 +656,7 @@ final class Coordinator {
         if SkillCatalog.request(text, config: config) != nil { return "#skill" }
         if WriteCommand.request(text, config: config) != nil { return "#write" }
         if Universal.match(text, config: config) != nil { return "#universal" }
+        if systemCommand(text) != nil { return "#system" }
         if NavCommands.match(text, target: nil, config: config) != nil { return "#nav" }
         if let command = AppCommand.match(text, router: router, config: config) { return "#" + command.rawValue }
         return router.route(text)?.id
@@ -732,6 +809,20 @@ final class Coordinator {
                 return log("Commande universelle : app au premier plan non autorisée (ajouter son identifiant à universalApps).")
             }
             runUniversal(u.kind, u.query, in: app)
+            return
+        }
+        // Commandes du Mac : apps, fenêtres, son, musique, capture d'écran.
+        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let sys = systemCommand(text) {
+            detector.reset()
+            if let r = currentReader() {
+                Feedback.play(.ignored)
+                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
+            }
+            // Son, luminosité, musique : répétables vite (1,5 s).
+            let repeatable = [.volumeUp, .volumeDown, .brightnessUp, .brightnessDown, .nextTrack, .previousTrack].contains(sys)
+            guard Date().timeIntervalSince(lastWake) >= (repeatable ? 1.5 : config.cooldownSeconds) else { return }
+            lastWake = Date()
+            runSystem(sys)
             return
         }
         // Navigation dans l'app au premier plan : menus, barre latérale, « ouvre <projet> ».

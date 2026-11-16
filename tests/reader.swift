@@ -321,6 +321,31 @@ struct ReaderTests {
         Bilan.clear()
         check(Bilan.load().isEmpty, "bilan effacé")
 
+        // Commandes du Mac (apps fictives).
+        let notes = InstalledApp(name: "Notes", path: "/A/Notes.app", bundleID: "com.apple.Notes")
+        let vsc = InstalledApp(name: "Visual Studio Code", path: "/A/VSC.app", bundleID: "com.microsoft.VSCode")
+        let sysSettings = InstalledApp(name: "System Settings", path: "/A/SS.app", bundleID: "com.apple.systempreferences")
+        let claudeApp = InstalledApp(name: "Claude", path: "/A/Claude.app", bundleID: "com.anthropic.claudefordesktop")
+        let installed = [notes, vsc, sysSettings, claudeApp]
+        func sys(_ t: String) -> SystemCommand? { SystemCommands.match(t, apps: installed, running: [claudeApp], front: "com.microsoft.VSCode") }
+        check(sys("Lance Notes") == .launch("/A/Notes.app"), "mac : lance une app")
+        check(sys("ouvre notes") == .launch("/A/Notes.app"), "mac : « ouvre <app> » exact")
+        check(sys("ouvre visual") == nil, "mac : « ouvre » + nom partiel laissé aux projets")
+        check(sys("lance visual") == .launch("/A/VSC.app"), "mac : « lance » + début de nom unique")
+        check(sys("ouvre les paramètres système") == .launch("/A/SS.app"), "mac : paramètres système (nom anglais)")
+        check(sys("ouvre les paramètres") == nil, "mac : « paramètres » seul laissé à l'app")
+        check(sys("ferme Claude") == .quit("com.anthropic.claudefordesktop") && sys("ferme Claude")!.dangerous, "mac : quitter demande confirmation")
+        check(sys("ferme notes") == nil, "mac : quitter une app fermée : rien")
+        check(sys("ferme la palette") == nil, "mac : « ferme la palette » laissé aux touches")
+        check(sys("cache cette app") == .hide("com.microsoft.VSCode"), "mac : cacher l'app au premier plan")
+        check(sys("bascule sur claude") == .activate("/A/Claude.app"), "mac : basculer sur une app ouverte")
+        check(sys("musique suivante") == .nextTrack && sys("monte le son") == .volumeUp, "mac : musique et son")
+        check(sys("volume 40") == .volume(40) && sys("volume 400") == nil, "mac : volume à un niveau")
+        check(sys("je monte le son demain") == nil, "mac : phrase au milieu d'un texte ignorée")
+        check(WakeName.command(after: "Jarvis, ferme Claude", names: ["jarvis"]) == "ferme claude", "nom d'appel retiré")
+        check(WakeName.command(after: "bon alors jarvis monte le son", names: ["jarvis"]) == "monte le son", "nom d'appel en pleine dictée")
+        check(WakeName.command(after: "ferme claude", names: ["jarvis"]) == nil, "sans nom d'appel : nil")
+
         // Rotation du journal (sortie standard redirigée vers un fichier temporaire).
         let tmp = NSTemporaryDirectory() + "voicewake-test-\(getpid()).log"
         FileManager.default.createFile(atPath: tmp, contents: Data(repeating: 65, count: 200))

@@ -151,6 +151,11 @@ struct Config: Codable {
     var writePhrases: [String]?
     /// Bilan local des commandes ratées (`voicewake bilan`), défaut true.
     var failureReport: Bool?
+    /// Nom d'appel (« Jarvis, ferme Claude ») : en veille il est ignoré ; pendant une dictée, il coupe le micro
+    /// et exécute la commande au lieu de l'écrire. Défaut ["jarvis"], liste vide = désactivé.
+    var wakeNames: [String]?
+    /// Commandes du Mac (lancer, quitter, fenêtres, son, musique…), défaut true.
+    var systemCommands: Bool?
     var newSessionInPhrases: [String]?
     /// Navigation du lecteur intégré (« lis à partir de … ») : vitesse, phrase précédente ou suivante (défauts dans `ReaderNav`).
     var readFasterPhrases: [String]?

@@ -136,6 +136,22 @@ Sans liste à tenir à jour : VoiceWake lit l'app au premier plan au moment où 
 - Skills reconnus : skills personnels, anciennes commandes, commandes intégrées de Claude Code, skills des plugins installés (`/plugin:skill`), skills et commandes de Codex. Seuls des noms simples (lettres, chiffres, `- _ . :`) sont tapés, et seulement depuis des plugins installés sous `~/.claude/plugins`. Deux skills au même nom (deux plugins) : dites le nom du plugin. Le texte n'est tapé que si la zone de saisie a bien reçu le focus.
 - Essais sans rien cliquer ni taper : `voicewake trouve com.anthropic.claudefordesktop "menu palette de commandes"`, `voicewake skill claude "brainstorming sur mon idée"`.
 
+### Commandes du Mac (toutes les apps)
+
+| Phrase | Effet |
+| --- | --- |
+| « Lance Spotify », « Ouvre Notes », « Ouvre les paramètres système » | ouvre une app installée (« ouvre » : nom exact ; « paramètres » seul vise les réglages de l'app au premier plan) |
+| « Bascule sur Codex », « Montre Gemini » | met une app au premier plan (l'ouvre si besoin) |
+| « Ferme Claude », « Quitte cette app » | quitte l'app, après « je confirme » ; l'app propose elle-même d'enregistrer |
+| « Cache Zed », « Cache cette app » | masque l'app |
+| « Minimise la fenêtre », « Plein écran », « Ferme la fenêtre » | fenêtre au premier plan |
+| « Monte le son », « Baisse le son », « Coupe le son », « Remets le son », « Volume 40 » | son |
+| « Augmente la luminosité », « Baisse la luminosité » | écran |
+| « Musique suivante », « Chanson précédente », « Pause la musique », « Remets la musique » | touches multimédia : Spotify, Musique, YouTube… |
+| « Capture d'écran » | image de l'écran sur le Bureau |
+
+**Nom d'appel** : « Jarvis, ferme Claude ». En veille, « Jarvis » est facultatif. Pendant une dictée, « Jarvis, <commande> » coupe le micro et exécute la commande au lieu de l'écrire (les mots déjà transcrits par l'assistant restent dans le brouillon : « efface le brouillon »). Clé `wakeNames` (défaut `["jarvis"]`, liste vide : désactivé) ; `"systemCommands": false` désactive les commandes du Mac.
+
 ### Routines, « Écris … » et bilan
 
 | Phrase | Effet |
@@ -295,6 +311,8 @@ launchctl kickstart -k gui/$(id -u)/io.github.voicewake
 | `routines` | routines vocales (`name`, `phrases`, `steps`, `delaySeconds`) | aucune |
 | `writePhrases` | phrases de « écris … » (liste vide : désactivé) | « écris », « écrit », « tape le texte » |
 | `failureReport` | bilan local des commandes ratées | `true` |
+| `wakeNames` | nom d'appel qui force une commande, même en pleine dictée | `["jarvis"]` |
+| `systemCommands` | commandes du Mac (apps, fenêtres, son, musique, capture) | `true` |
 | `echoCancellation` | annulation d'écho de macOS (expérimental : peut empêcher la reconnaissance de votre voix) | `false` |
 | `defaultTarget` | cible de « Salut assistant » hors application connue | `claude` |
 | `frontmostPhrases` | phrases visant l'application au premier plan | « salut assistant »… |
