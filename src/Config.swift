@@ -234,6 +234,8 @@ struct Config: Codable {
     var strongInterruptPhrases: [String]?
     /// Fin de tour naturelle (défaut true) : question → envoi plus rapide, phrase en suspens → attente plus longue.
     var naturalTurnEnd: Bool?
+    /// Au démarrage, dire à voix haute s'il y a un problème (autorisation, app, modèle). Défaut true.
+    var announceProblems: Bool?
     /// Filtre « ma voix uniquement » (optionnel ; empreinte créée par `voicewake voix apprends`).
     var voiceFilter: VoiceFilterSettings?
     var targets: [Target]

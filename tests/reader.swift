@@ -475,6 +475,16 @@ struct ReaderTests {
               && SpeechFixes.apply("Dit codex, c'est quoi") == "dis codex, c'est quoi"
               && SpeechFixes.apply("le ski c'est bien") == "le ski c'est bien", "corrections de reconnaissance")
 
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "Europe/Paris")!
+        let monday9 = cal.date(from: DateComponents(year: 2026, month: 11, day: 16, hour: 9, minute: 0))!
+        let saturday9 = cal.date(from: DateComponents(year: 2026, month: 11, day: 21, hour: 9, minute: 0))!
+        let morning = Routine(name: "matin", phrases: nil, steps: ["où on en est"], delaySeconds: nil, at: "09:00", days: nil)
+        check(Routines.due([morning], at: monday9, calendar: cal).count == 1 && Routines.due([morning], at: saturday9, calendar: cal).isEmpty
+              && Routines.problems([Routine(name: "x", phrases: nil, steps: ["a"], delaySeconds: nil, at: "25:00", days: [8])]).count == 2,
+              "routines à heure fixe : lundi 9 h oui, samedi non, heure invalide signalée")
+        check(Diagnostic.spokenSummary([Diagnostic.Check(name: "Micro", ok: false, fix: "")]) != nil
+              && Diagnostic.spokenSummary([Diagnostic.Check(name: "Micro", ok: true, fix: "")]) == nil, "diagnostic : annonce seulement s'il y a un problème")
+
         print("Tous les tests passent.")
     }
 }

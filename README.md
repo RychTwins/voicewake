@@ -317,6 +317,15 @@ Aucun son n'est enregistré ni envoyé : les 8 dernières secondes restent en m�
 
 Modèle : WeSpeaker ResNet34 ([pyannote/wespeaker-voxceleb-resnet34-LM](https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM)), converti en Core ML par Fluid Inference, licence [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) ; fichiers modifiés (conversion Core ML, poids 8 bits), non inclus dans ce dépôt.
 
+### Automatismes
+
+- **Diagnostic au démarrage** : 15 s après son lancement, VoiceWake vérifie autorisations, apps, modèle vocal, Apple Intelligence et filtre de voix. S'il manque quelque chose, il le dit à voix haute une fois et écrit la correction dans le journal (`"announceProblems": false` pour ne rien dire). Vue complète : `voicewake diagnostic`.
+- **Routines à heure fixe** : ajoutez `"at": "09:00"` (et `"days": [1, 2, 3, 4, 5]`, 1 = lundi, défaut du lundi au vendredi) à une routine ; elle se lance seule à cette heure si VoiceWake est en veille.
+
+```json
+{ "name": "matin", "at": "09:00", "steps": ["salut claude"] }
+```
+
 ### Erreurs de reconnaissance corrigées
 
 En veille, VoiceWake corrige les erreurs fréquentes du moteur vocal avant de chercher la commande : « Ouvrez … » → « ouvre … », « lance le ski … » → « lance le skill … », « nouvelle session de … » → « nouvelle session dans … », « dit Codex » → « dis Codex ». Une dictée n'est jamais modifiée. (Comparatif fait avec le nouveau moteur de macOS 26 : pas meilleur sur les commandes, le moteur actuel est conservé.)
@@ -489,6 +498,7 @@ voicewake bilan                    # commandes ratées les plus fréquentes, ave
 voicewake boutons <bundle-id>      # boutons visibles (ce que « clique sur … » peut viser)
 voicewake question <bundle-id> "la deuxième"   # question affichée et réponse reconnue, sans cliquer
 voicewake voix apprends | test | efface        # empreinte du filtre « ma voix uniquement »
+voicewake diagnostic                           # autorisations, apps, modèles
 voicewake ia "phrase"                          # commande que l'interpréteur local tirerait de la phrase
 tail -f ~/Library/Logs/voicewake.log   # archivé en voicewake.log.1 au-delà de 5 Mo
 ```

@@ -11,6 +11,10 @@ struct Routine: Codable {
     var steps: [String]
     /// Attente entre deux étapes (défaut 1,5 s, entre 0,5 et 10 s).
     var delaySeconds: Double?
+    /// Heure de lancement automatique, « HH:mm » (ex. « 09:00 ») ; sans heure, seulement à la voix.
+    var at: String?
+    /// Jours de lancement automatique : 1 = lundi … 7 = dimanche (défaut : du lundi au vendredi).
+    var days: [Int]?
 }
 
 enum Routines {
@@ -34,10 +38,29 @@ enum Routines {
     }
 
     /// Erreurs de configuration (vérifiées au chargement).
+    /// « HH:mm » valide → (heure, minute).
+    static func time(_ at: String) -> (Int, Int)? {
+        let p = at.split(separator: ":").compactMap { Int($0) }
+        guard p.count == 2, (0...23).contains(p[0]), (0...59).contains(p[1]) else { return nil }
+        return (p[0], p[1])
+    }
+
+    /// Routines prévues à cette minute-là.
+    static func due(_ routines: [Routine], at date: Date, calendar: Calendar = .current) -> [Routine] {
+        let c = calendar.dateComponents([.hour, .minute, .weekday], from: date)
+        let isoDay = ((c.weekday ?? 1) + 5) % 7 + 1 // dimanche = 1 → 7, lundi = 2 → 1
+        return routines.filter { r in
+            guard let at = r.at, let (h, m) = time(at), h == c.hour, m == c.minute else { return false }
+            return (r.days ?? [1, 2, 3, 4, 5]).contains(isoDay)
+        }
+    }
+
     static func problems(_ routines: [Routine]) -> [String] {
         var out: [String] = []
         for r in routines {
             let name = label(r)
+            if let at = r.at, time(at) == nil { out.append("routine \(name) : heure « \(at) » invalide (HH:mm).") }
+            if let d = r.days, d.isEmpty || d.contains(where: { !(1...7).contains($0) }) { out.append("routine \(name) : jours de 1 (lundi) à 7.") }
             if (r.phrases ?? []).allSatisfy({ normalize($0).isEmpty }) && r.name.map({ normalize($0).isEmpty }) ?? true {
                 out.append("routine \(name) : ni phrase ni nom.")
             }

@@ -78,6 +78,9 @@ final class Coordinator {
             self.startHintRefresh()
             self.startQuestionWatch()
             self.startBargeInWatch()
+            self.startRoutineClock()
+            // Diagnostic 15 s après le démarrage (le modèle vocal peut mettre un moment à se charger).
+            DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in self?.startupDiagnostic() }
             let names = self.config.targets.map(\.id).joined(separator: ", ")
             log("VoiceWake prêt. Cibles : \(names).")
         }
@@ -402,6 +405,43 @@ final class Coordinator {
         pendingWakeName = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
         return true
+    }
+
+    // MARK: Diagnostic et routines à heure fixe
+
+    private func startupDiagnostic() {
+        let checks = Diagnostic.run(config)
+        for c in checks where !c.ok { log("Diagnostic : \(c.name) — \(c.fix)") }
+        guard config.announceProblems ?? true, let summary = Diagnostic.spokenSummary(checks),
+              active == nil, !reader.isActive, currentReader() == nil else { return }
+        speak(summary)
+    }
+
+    private var routineClock: Timer?
+    private var lastRoutineMinute = ""
+
+    /// Routines avec une heure (`"at": "09:00"`) : lancées à cette heure, si VoiceWake est en veille.
+    private func startRoutineClock() {
+        guard (config.routines ?? []).contains(where: { $0.at != nil }) else { return }
+        let timer = Timer(timeInterval: 20, repeats: true) { [weak self] _ in self?.checkRoutineClock() }
+        RunLoop.main.add(timer, forMode: .common)
+        routineClock = timer
+    }
+
+    private func checkRoutineClock(now: Date = Date()) {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm"
+        let minute = f.string(from: now)
+        guard minute != lastRoutineMinute else { return }
+        lastRoutineMinute = minute
+        for r in Routines.due(config.routines ?? [], at: now) {
+            guard active == nil, pendingConfirmation == nil, !reader.isActive, currentReader() == nil else {
+                log("Routine « \(Routines.label(r)) » de \(r.at ?? "") non lancée : dictée, confirmation ou lecture en cours.")
+                continue
+            }
+            log("Routine « \(Routines.label(r)) » : heure prévue (\(r.at ?? "")).")
+            runRoutine(r, step: 0)
+            break // une à la fois
+        }
     }
 
     // MARK: Couper la parole

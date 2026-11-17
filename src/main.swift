@@ -299,6 +299,13 @@ case "skill":
         print("→ « \(hit.entry.text)\(args2.isEmpty ? "" : " " + args2) » (\(entries.count) connus)")
     } else { print("→ aucun skill ne correspond (\(entries.count) connus)") }
 
+case "diagnostic":
+    // voicewake diagnostic : autorisations, apps, modèles.
+    let checks = Diagnostic.run(config)
+    for c in checks { print("\(c.ok ? "✓" : "✗") \(c.name)\(c.ok ? "" : " — " + c.fix)") }
+    print(checks.allSatisfy(\.ok) ? "Tout est prêt." : "\(checks.filter { !$0.ok }.count) problème(s).")
+    print("(Les autorisations du terminal peuvent différer de celles du service : le service écrit son propre diagnostic dans le journal 15 s après son démarrage.)")
+
 case "bilan":
     if args.dropFirst().first == "efface" { Bilan.clear(); print("Bilan effacé."); exit(0) }
     let all = Bilan.load()
