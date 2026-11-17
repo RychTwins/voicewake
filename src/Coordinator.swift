@@ -1380,6 +1380,7 @@ final class Coordinator {
     }
 
     private func checkSend(_ text: String, _ t: Target, isFinal: Bool) {
+        lastDictationText = text
         guard !stopping else { return }
         let normalized = normalize(text)
         if history.last?.text == normalized, !isFinal { return }
@@ -1448,8 +1449,12 @@ final class Coordinator {
         }
     }
 
+    /// Dernière transcription entendue pendant la dictée (pour juger si la phrase est finie).
+    private var lastDictationText = ""
+
     private func sendAfterSilence(_ target: Target, startedAt: TimeInterval) -> Bool {
-        let delay = config.autoSendSilenceSeconds ?? 5
+        let base = config.autoSendSilenceSeconds ?? 5
+        let delay = (config.naturalTurnEnd ?? true) ? TurnEnd.delay(for: lastDictationText, base: base) : base
         guard pendingSend == nil, recording, let audio = detector.audioActivity else { return false }
         let now = ProcessInfo.processInfo.systemUptime
         guard dictatedContent.shouldSend(now: now, startedAt: max(startedAt, lastAutoSendPause), lastBuffer: audio.lastBuffer,
@@ -1457,7 +1462,7 @@ final class Coordinator {
         guard dictationWindow?.isSameConversation == true, let shortcut = target.automaticSubmitShortcut else { return false }
         var submission = target
         submission.submitShortcut = shortcut
-        log("Silence de \(delay) s : envoi → \(target.id).")
+        log("Silence de \(String(format: "%.1f", delay)) s : envoi → \(target.id).")
         submitNow(submission, automatic: true)
         return true
     }
@@ -1484,6 +1489,7 @@ final class Coordinator {
 
     private func endPause() {
         history.removeAll()
+        lastDictationText = ""
         dictatedContent = .empty
         lastAutoSendPause = 0
         pauseTimer?.invalidate()

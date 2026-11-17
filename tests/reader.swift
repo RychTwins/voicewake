@@ -462,6 +462,13 @@ struct ReaderTests {
               && !router.isStrongInterrupt("Stop Claude", notIn: "Dites « Stop Claude » pendant la lecture"),
               "interruption nommée : « stop Claude » reconnue, sauf si la réponse la contient ; « écoute » seul reste vérifié")
 
+        check(TurnEnd.kind(of: "Tu peux corriger le bug ?") == .question && TurnEnd.kind(of: "est-ce que ça marche") == .question
+              && TurnEnd.kind(of: "corrige le fichier de config et") == .unfinished && TurnEnd.kind(of: "il faut que euh") == .unfinished
+              && TurnEnd.kind(of: "Corrige le fichier de config.") == .complete && TurnEnd.kind(of: "") == .unfinished,
+              "fin de tour : question, phrase finie, phrase en suspens")
+        check(TurnEnd.delay(for: "Tu peux regarder ?", base: 1.5) < 1.5 && TurnEnd.delay(for: "je pense que", base: 1.5) >= 3.5
+              && TurnEnd.delay(for: "Ajoute un test", base: 1.5) == 1.5, "fin de tour : délais adaptés")
+
         print("Tous les tests passent.")
     }
 }

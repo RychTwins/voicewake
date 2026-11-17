@@ -79,6 +79,8 @@ Pendant une dictée, une phrase d'activation dite seule (« Salut Gemini ») arr
 | « OK arrête », « OK stop », « Annule », « Laisse tomber » | coupe seulement le micro, sans envoyer ; dites ensuite « OK envoie » pour envoyer quand même (3 min max) |
 | 5 s de silence après avoir parlé | envoie, si `"autoSendSilenceSeconds": 5` est réglé (désactivé par défaut) |
 
+**Fin de tour naturelle** (avec `autoSendSilenceSeconds`, ici 1,5 s) : VoiceWake regarde comment votre phrase se termine. Une question (« tu peux corriger ça ? ») part après environ 0,9 s ; une phrase finie après le délai réglé ; une phrase en suspens (« … et », « euh », « parce que ») attend au moins 3,5 s, le temps de réfléchir. `"naturalTurnEnd": false` revient à un délai fixe.
+
 Gardez l'application au premier plan jusqu'à l'envoi : si une autre application passe devant, l'envoi est annulé.
 
 ### Pendant la lecture à voix haute

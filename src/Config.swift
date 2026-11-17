@@ -232,6 +232,8 @@ struct Config: Codable {
     var interpreter: InterpreterSettings?
     /// Interruptions qui passent du premier coup pendant une lecture (défaut : « stop Claude », « Claude écoute »…).
     var strongInterruptPhrases: [String]?
+    /// Fin de tour naturelle (défaut true) : question → envoi plus rapide, phrase en suspens → attente plus longue.
+    var naturalTurnEnd: Bool?
     /// Filtre « ma voix uniquement » (optionnel ; empreinte créée par `voicewake voix apprends`).
     var voiceFilter: VoiceFilterSettings?
     var targets: [Target]
