@@ -138,6 +138,8 @@ Sans liste à tenir à jour : VoiceWake lit l'app au premier plan au moment où 
 
 ### Commandes du Mac (toutes les apps)
 
+> **En pause par défaut.** Le nom d'appel « Jarvis », les commandes du Mac, le Finder, les Réglages, la musique, les navigateurs et l'interpréteur IA ne s'exécutent que si `"jarvis": true` est dans la configuration. Sans cela, VoiceWake ne pilote que les assistants IA et les éditeurs.
+
 | Phrase | Effet |
 | --- | --- |
 | « Lance Spotify », « Ouvre Notes », « Ouvre les paramètres système » | ouvre une app installée (« ouvre » : nom exact ; « paramètres » seul vise les réglages de l'app au premier plan) |
@@ -285,7 +287,7 @@ Sans casque, la voix de lecture peut laisser un écho : la reprise attend 3 s de
 
 ### Voix ElevenLabs (optionnel)
 
-Par défaut, VoiceWake n'appelle aucun service en ligne. Si vous avez un compte ElevenLabs, vous pouvez remplacer la voix du Mac pour « lis à partir de… » :
+Par défaut, VoiceWake n'appelle aucun service en ligne (voir aussi l'interpréteur IA ci-dessous). Si vous avez un compte ElevenLabs, vous pouvez remplacer la voix du Mac pour « lis à partir de… » :
 
 ```json
 "elevenLabs": { "enabled": true, "voiceID": "JBFqnCBsd6RMkjVDRZzb", "model": "eleven_flash_v2_5" }
@@ -294,6 +296,30 @@ Par défaut, VoiceWake n'appelle aucun service en ligne. Si vous avez un compte 
 La lecture démarre en une seconde environ : une première phrase courte est synthétisée seule, le reste pendant qu'elle est lue. Les derniers extraits restent en mémoire (relire un passage ne consomme pas de quota). Essai : `voicewake lecteur "un texte"`. VoiceWake demande à ElevenLabs l'instant où chaque caractère est prononcé : la voix ne déclenche donc pas ses propres commandes. La lecture s'arrête à la fin de la réponse citée, sans lire les boutons de l'application.
 
 Placez la clé dans `~/.config/voicewake/elevenlabs.env` (une ligne `ELEVENLABS_API_KEY=…`, droits `600`), jamais dans la configuration ni dans le dépôt. Le texte à dire est alors envoyé à ElevenLabs et compte dans votre quota. En cas d'erreur, la voix du Mac prend le relais. Claude, Gemini et Codex gardent leur propre voix.
+
+### Filtre « ma voix uniquement » (optionnel)
+
+VoiceWake peut n'obéir qu'à votre voix : ni la voix de lecture, ni une autre personne ne déclenchent de commande. Un modèle de reconnaissance du locuteur, sur le Mac, transforme environ 2 s de parole en une empreinte de 256 nombres, comparée à la vôtre (1 = même voix, 0 = voix différente).
+
+1. Modèle (≈ 8 Mo) : `wespeaker_int8.mlmodelc` de [FluidInference/speaker-diarization-coreml](https://huggingface.co/FluidInference/speaker-diarization-coreml), dans `~/.config/voicewake/models/`.
+2. `voicewake voix apprends` : lisez le texte affiché pendant 30 s (empreinte `~/.config/voicewake/voix.json`, droits `600`).
+3. `voicewake voix test 60` : un score par seconde. Parlez, faites parler quelqu'un, lancez une lecture.
+4. **Observation** : `"voiceFilter": { "enabled": true }`. Rien n'est bloqué ; le journal note le score de chaque commande. Réglez `threshold` (défaut 0,45) d'après ces scores.
+5. **Blocage** : `"voiceFilter": { "enabled": true, "block": true }`. Une commande dite par votre voix passe même pendant une lecture, sans devoir la répéter.
+
+Aucun son n'est enregistré ni envoyé : les 8 dernières secondes restent en mémoire, le temps de décider. Filtre, pas authentification : une voix très proche peut passer ; un rhume ou un autre micro peuvent demander de refaire l'empreinte.
+
+Modèle : WeSpeaker ResNet34 ([pyannote/wespeaker-voxceleb-resnet34-LM](https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM)), converti en Core ML par Fluid Inference, licence [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) ; fichiers modifiés (conversion Core ML, poids 8 bits), non inclus dans ce dépôt.
+
+### Interpréteur IA (optionnel)
+
+Quand vous dites le nom d'appel suivi d'une phrase libre que VoiceWake ne reconnaît pas (« Jarvis, mets-moi un peu de jazz sur Spotify », « Jarvis, j'entends rien »), Claude la reformule en **une** commande VoiceWake connue (« cherche jazz sur spotify », « monte le son »). Cette commande passe ensuite par le traitement habituel : mêmes vérifications, et « je confirme » toujours demandé pour les actions sensibles. Une réponse que VoiceWake ne reconnaît pas n'est jamais exécutée.
+
+```json
+"interpreter": { "enabled": true, "model": "claude-haiku-5-5" }
+```
+
+Placez la clé dans `~/.config/voicewake/anthropic.env` (une ligne `ANTHROPIC_API_KEY=…`, droits `600`), jamais dans la configuration ni dans le dépôt. Seule la phrase dite après le nom d'appel, et le nom de l'app au premier plan, sont envoyés à Anthropic ; sans le nom d'appel, rien ne part. Chaque demande est facturée sur votre compte Anthropic (quelques dixièmes de centime avec Haiku). Essai sans rien exécuter : `voicewake ia "mets un peu de jazz"`.
 
 ## Applications prises en charge
 
@@ -447,6 +473,8 @@ voicewake routines                 # routines vocales et leurs étapes
 voicewake bilan                    # commandes ratées les plus fréquentes, avec un conseil
 voicewake boutons <bundle-id>      # boutons visibles (ce que « clique sur … » peut viser)
 voicewake question <bundle-id> "la deuxième"   # question affichée et réponse reconnue, sans cliquer
+voicewake voix apprends | test | efface        # empreinte du filtre « ma voix uniquement »
+voicewake ia "phrase"                          # commande que l'interpréteur IA tirerait de la phrase
 tail -f ~/Library/Logs/voicewake.log   # archivé en voicewake.log.1 au-delà de 5 Mo
 ```
 

@@ -154,8 +154,12 @@ struct Config: Codable {
     /// Nom d'appel (« Jarvis, ferme Claude ») : en veille il est ignoré ; pendant une dictée, il coupe le micro
     /// et exécute la commande au lieu de l'écrire. Défaut ["jarvis"], liste vide = désactivé.
     var wakeNames: [String]?
-    /// Commandes du Mac (lancer, quitter, fenêtres, son, musique…), défaut true.
+    /// Commandes du Mac (lancer, quitter, fenêtres, son, musique…), défaut true (si `jarvis` est activé).
     var systemCommands: Bool?
+    /// Mode « Jarvis » (en pause, défaut false) : nom d'appel, commandes du Mac, Finder, Réglages, musique,
+    /// navigateurs et interpréteur IA. Désactivé, VoiceWake ne pilote que les assistants IA et les éditeurs.
+    var jarvis: Bool?
+    var jarvisEnabled: Bool { jarvis ?? false }
     /// Dossiers nommés pour le Finder (« copie le fichier dans voxtv ») : {"voxtv": "~/Developer/voxtv"}.
     var folders: [String: String]?
     /// Répondre à la voix aux questions de l'assistant (options, « passe », « réponds … »), défaut true.
@@ -217,6 +221,10 @@ struct Config: Codable {
     var continueSilenceSeconds: Double?
     /// Voix ElevenLabs pour le lecteur intégré (optionnel, désactivé par défaut).
     var elevenLabs: ElevenLabsSettings?
+    /// Interpréteur IA : « Jarvis, <phrase libre> » reformulée en commande par Claude (optionnel, désactivé par défaut).
+    var interpreter: InterpreterSettings?
+    /// Filtre « ma voix uniquement » (optionnel ; empreinte créée par `voicewake voix apprends`).
+    var voiceFilter: VoiceFilterSettings?
     var targets: [Target]
     /// Éditeurs de code avec assistants intégrés (prioritaires quand ils sont au premier plan).
     var editors: [Editor]?

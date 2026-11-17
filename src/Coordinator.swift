@@ -16,6 +16,19 @@ final class Coordinator {
         detector.onText = { [weak self] text, isFinal in self?.handle(text, isFinal: isFinal) }
         Feedback.configure(config)
         Bilan.configure(config)
+        if config.voiceFilter?.enabled == true {
+            let path = VoicePrint.defaultPath(config.voiceFilter)
+            let modelPath = VoicePrint.defaultModelPath(config.voiceFilter)
+            if !FileManager.default.fileExists(atPath: modelPath) {
+                log("Filtre de voix : modèle introuvable (\(modelPath)).")
+            } else if let profile = VoicePrint.loadProfile(path) {
+                VoicePrint.profileToUse = profile
+                DispatchQueue.main.async { VoicePrint.loadModel(modelPath) } // premier calcul ~3 s, au démarrage
+                log("Filtre de voix actif (\(config.voiceFilter?.block == true ? "blocage" : "observation")).")
+            } else {
+                log("Filtre de voix : aucune empreinte (voicewake voix apprends).")
+            }
+        }
         trigger.onReadingFinished = { [weak self] target, window in
             self?.continueConversation(target, in: window)
         }
@@ -90,7 +103,8 @@ final class Coordinator {
         }
         if let t = active, checkWakeNameDuringDictation(text, t) { return }
         // En veille, le nom d'appel est facultatif : « Jarvis, monte le son » = « monte le son ».
-        let text = active == nil ? (afterWakeName(text).flatMap { $0.isEmpty ? nil : $0 } ?? text) : text
+        let named = active == nil ? afterWakeName(text).flatMap { $0.isEmpty ? nil : $0 } : nil
+        let text = named ?? text
         if let t = active {
             if !router.endsWithStopPhrase(text), let other = switchTarget(text, from: t) {
                 switchDictation(from: t, to: other)
@@ -113,6 +127,12 @@ final class Coordinator {
         // on agit sur son résultat définitif, ou au plus tard `wakeMaxWaitSeconds` après la première
         // détection (un flux continu, comme la voix de lecture, ne bloque donc pas les commandes).
         latestWakeText = text
+        // « Jarvis, <phrase libre> » sans commande reconnue : interpréteur IA (si activé).
+        if named != nil, pendingWake == nil, wakeKey(text) == nil, config.jarvisEnabled, config.interpreter?.enabled == true {
+            return scheduleInterpret(text, isFinal: isFinal)
+        }
+        pendingInterpret?.cancel()
+        pendingInterpret = nil
         guard wakeKey(text) != nil || pendingWake != nil else { return }
         let fire = { [weak self] in
             guard let self else { return }
@@ -194,7 +214,7 @@ final class Coordinator {
     // MARK: Commandes du Mac
 
     private func systemCommand(_ text: String) -> SystemCommand? {
-        guard config.systemCommands ?? true else { return nil }
+        guard config.jarvisEnabled, config.systemCommands ?? true else { return nil }
         return SystemCommands.match(text, apps: SystemCommands.installedApps(), running: SystemCommands.runningApps() + SystemCommands.targetApps(config),
                                     front: Universal.frontApp()?.bundleIdentifier)
     }
@@ -226,7 +246,7 @@ final class Coordinator {
     private enum MacCommand { case finder(FinderCommand), settings(SettingsCommand), media(MediaCommand), browser(BrowserCommand) }
 
     private func macCommand(_ text: String) -> MacCommand? {
-        guard config.systemCommands ?? true else { return nil }
+        guard config.jarvisEnabled, config.systemCommands ?? true else { return nil }
         if let s = SettingsCommands.match(text) { return .settings(s) }
         // « Joue la musique », « musique suivante » : touches multimédia (commandes du Mac), pas une recherche.
         if !SystemCommands.fixedPhrases.contains(normalize(text)),
@@ -280,9 +300,51 @@ final class Coordinator {
     // MARK: Nom d'appel
 
     private var pendingWakeName: DispatchWorkItem?
+    private var pendingInterpret: DispatchWorkItem?
+    private var interpreting = false
+
+    /// Phrase libre après le nom d'appel : attendre qu'elle soit finie (2 s stable ou résultat définitif),
+    /// puis demander à Claude la commande correspondante et la traiter comme si elle avait été dite.
+    private func scheduleInterpret(_ text: String, isFinal: Bool) {
+        pendingInterpret?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let settings = self.config.interpreter else { return }
+            self.pendingInterpret = nil
+            guard self.active == nil, !self.interpreting, self.currentReader() == nil, !self.reader.isActive,
+                  Date().timeIntervalSince(self.lastWake) >= self.config.cooldownSeconds else { return }
+            self.detector.reset()
+            if self.config.dryRun == true { return log("[essai] → interpréteur IA\(said(text))") }
+            self.interpreting = true
+            self.lastWake = Date()
+            let extra = AppCommand.allCases.flatMap { $0.phrases(self.config) }
+                + (self.config.routines ?? []).flatMap { $0.phrases ?? [] }
+            log("Interpréteur IA : demande envoyée\(self.config.debug ? said(text) : "").")
+            Interpreter.interpret(text, settings: settings, front: Universal.frontApp()?.localizedName, extra: extra) { [weak self] command, detail in
+                guard let self else { return }
+                self.interpreting = false
+                guard let command, !command.isEmpty else {
+                    Feedback.play(.failed)
+                    Bilan.record(.command, command == nil ? "interpréteur : \(detail)" : "interpréteur : rien compris")
+                    return log("Interpréteur IA : \(command == nil ? detail : "aucune commande ne correspond").")
+                }
+                // Seules les commandes que VoiceWake reconnaît sont exécutées, par le chemin habituel.
+                guard self.wakeKey(command) != nil, self.active == nil else {
+                    Feedback.play(.failed)
+                    Bilan.record(.command, "interpréteur : commande inconnue")
+                    return log("Interpréteur IA : réponse non reconnue\(self.config.debug ? said(command) : "").")
+                }
+                log("Interpréteur IA → \(self.wakeKey(command) ?? "")\(self.config.debug ? said(command) : "").")
+                self.lastWake = .distantPast
+                self.handleWake(command, fromVoice: false)
+            }
+        }
+        pendingInterpret = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + (isFinal ? 0.1 : 2), execute: work)
+    }
 
     private func afterWakeName(_ text: String) -> String? {
-        WakeName.command(after: text, names: config.wakeNames ?? WakeName.defaults)
+        guard config.jarvisEnabled else { return nil }
+        return WakeName.command(after: text, names: config.wakeNames ?? WakeName.defaults)
     }
 
     /// Pendant une dictée : « Jarvis, <commande> » coupe le micro puis exécute la commande (stable 1,5 s).
@@ -305,7 +367,7 @@ final class Coordinator {
                 self.endPause()
                 self.detector.reset()
                 self.lastWake = .distantPast
-                self.handleWake(command)
+                self.handleWake(command, fromVoice: false)
             }
         }
         pendingWakeName = work
@@ -373,7 +435,7 @@ final class Coordinator {
         }
         if config.debug { log("Routine « \(name) » : étape \(i + 1) (« \(step) »).") }
         lastWake = .distantPast // pas de délai entre deux commandes pour les étapes d'une routine
-        handleWake(step)
+        handleWake(step, fromVoice: false)
         scheduleRoutine(r, step: i + 1, after: Routines.delay(r))
     }
 
@@ -573,7 +635,7 @@ final class Coordinator {
             out.append(s)
         }
         base.forEach(add)
-        (config.wakeNames ?? WakeName.defaults).forEach(add)
+        if config.jarvisEnabled { (config.wakeNames ?? WakeName.defaults).forEach(add) }
         for n in names.prefix(30) where n.count <= 60 { add("ouvre \(n)"); add(n) }
         let commands = target.map(NavCommands.commands(for:)) ?? []
         (commands.flatMap(\.phrases) + AppCommand.allCases.flatMap { $0.phrases(config) }
@@ -707,6 +769,7 @@ final class Coordinator {
 
     /// Le micro entend aussi le lecteur intégré : une commande présente dans ce qu'il lit en ce moment est ignorée.
     private func spokenByOwnReader(_ text: String) -> Bool {
+        if voiceVerified { return false } // voix reconnue par le filtre : c'est l'utilisateur
         let phrases = (config.readPausePhrases ?? []) + (config.interruptPhrases ?? []) + (config.readResumePhrases ?? [])
             + ReaderNav.allPhrases(config)
         return VoiceFilter.spokenByReader(text, phrases: phrases, spokenNow: reader.spokenNow, router: router)
@@ -723,6 +786,7 @@ final class Coordinator {
     private var readCommandPhrases: [String] { (config.readPausePhrases ?? []) + (config.interruptPhrases ?? []) }
 
     private func spokenByReader(_ text: String, _ reader: Target) -> Bool {
+        if voiceVerified { return false } // voix reconnue par le filtre : c'est l'utilisateur
         let phrases = (config.readPausePhrases ?? []) + (config.interruptPhrases ?? [])
         guard let hit = router.lastMatch(text, phrases), let app = ShortcutTrigger.runningApp(for: reader) else { return false }
         let shown = " " + normalize(AXButtonPresser.windowTexts(in: app).joined(separator: " ")) + " "
@@ -732,6 +796,30 @@ final class Coordinator {
     }
 
     private var pendingWake: DispatchWorkItem?
+
+    // MARK: Filtre « ma voix uniquement »
+
+    /// La commande en cours vient d'une voix reconnue par le filtre (mode blocage) : les protections contre la voix
+    /// de lecture, fondées sur le texte affiché, ne s'appliquent pas.
+    private var voiceVerified = false
+
+    /// nil : filtre inactif ou en observation (rien ne change) ; true : voix reconnue ; false : commande bloquée.
+    private func voiceDecision(_ text: String) -> Bool? {
+        guard let settings = config.voiceFilter, settings.enabled == true, let print = VoicePrint.shared,
+              print.profile != nil, wakeKey(text) != nil else { return nil }
+        let threshold = Float(settings.threshold ?? 0.45)
+        let score = print.score(lastSeconds: settings.windowSeconds ?? 4)
+        let ok = score.map { $0 >= threshold } ?? false
+        let shown = score.map { String(format: "%.2f", $0) } ?? "aucune parole"
+        guard settings.block == true else {
+            log("Filtre de voix (observation) : score \(shown), seuil \(String(format: "%.2f", threshold)) → \(ok ? "ta voix" : "aurait été bloquée").")
+            return nil
+        }
+        if ok { if config.debug { log("Filtre de voix : score \(shown) → ta voix.") }; return true }
+        Feedback.play(.ignored)
+        log("Commande ignorée : voix non reconnue (score \(shown)).")
+        return false
+    }
     private var latestWakeText = ""
 
     /// Ce que la phrase déclencherait (cible ou commande de lecture), ou nil.
@@ -756,7 +844,12 @@ final class Coordinator {
         return router.route(text)?.id
     }
 
-    private func handleWake(_ text: String) {
+    private func handleWake(_ text: String, fromVoice: Bool = true) {
+        voiceVerified = false
+        if fromVoice, let accepted = voiceDecision(text) {
+            guard accepted else { detector.reset(); return }
+            voiceVerified = true
+        }
         let interrupt = router.containsInterruptPhrase(text)
         let pauseRead = router.containsAny(text, config.readPausePhrases)
         let resumeRead = router.containsAny(text, config.readResumePhrases)
@@ -809,7 +902,7 @@ final class Coordinator {
         // Routines : une phrase dite seule enchaîne plusieurs commandes.
         if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let routine = Routines.match(text, config: config) {
             detector.reset()
-            if let r = currentReader() {
+            if !voiceVerified, let r = currentReader() {
                 Feedback.play(.ignored)
                 return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
             }
@@ -825,7 +918,7 @@ final class Coordinator {
         if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil,
            let card = currentCard, let reply = QuestionAnswer.match(text, card: card.card) {
             detector.reset()
-            if let r = currentReader() {
+            if !voiceVerified, let r = currentReader() {
                 Feedback.play(.ignored)
                 return log("Réponse ignorée : lecture à voix haute de \(r.id) en cours.")
             }
@@ -863,7 +956,7 @@ final class Coordinator {
         let palette = keySpec == nil ? Palette.request(text, config: config) : nil
         if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, keySpec != nil || palette != nil {
             detector.reset()
-            if let r = currentReader() {
+            if !voiceVerified, let r = currentReader() {
                 Feedback.play(.ignored)
                 return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
             }
@@ -904,7 +997,7 @@ final class Coordinator {
         // Skills et commandes slash : « lance le skill code review sur ce fichier ».
         if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let q = SkillCatalog.request(text, config: config) {
             detector.reset()
-            if let r = currentReader() {
+            if !voiceVerified, let r = currentReader() {
                 Feedback.play(.ignored)
                 return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
             }
@@ -916,7 +1009,7 @@ final class Coordinator {
         // « Écris … » : texte tapé dans le champ qui a le focus.
         if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let n = WriteCommand.request(text, config: config) {
             detector.reset()
-            if let r = currentReader() {
+            if !voiceVerified, let r = currentReader() {
                 Feedback.play(.ignored)
                 return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
             }
@@ -928,7 +1021,7 @@ final class Coordinator {
         // Commandes universelles : « menu <libellé> », « clique sur <libellé> », dans l'app au premier plan.
         if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let u = Universal.match(text, config: config) {
             detector.reset()
-            if let r = currentReader() {
+            if !voiceVerified, let r = currentReader() {
                 Feedback.play(.ignored)
                 return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
             }
@@ -945,7 +1038,7 @@ final class Coordinator {
         // Finder et Réglages Système.
         if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let mac = macCommand(text) {
             detector.reset()
-            if let r = currentReader() {
+            if !voiceVerified, let r = currentReader() {
                 Feedback.play(.ignored)
                 return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
             }
@@ -957,7 +1050,7 @@ final class Coordinator {
         // Commandes du Mac : apps, fenêtres, son, musique, capture d'écran.
         if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let sys = systemCommand(text) {
             detector.reset()
-            if let r = currentReader() {
+            if !voiceVerified, let r = currentReader() {
                 Feedback.play(.ignored)
                 return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
             }
@@ -972,7 +1065,7 @@ final class Coordinator {
         if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil,
            let front = router.frontmostTarget(), let request = NavCommands.match(text, target: front, config: config) {
             detector.reset()
-            if let r = currentReader() {
+            if !voiceVerified, let r = currentReader() {
                 Feedback.play(.ignored)
                 return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
             }
@@ -994,7 +1087,7 @@ final class Coordinator {
             if command == .status { return announceStatus() }
             if command == .help { return announceHelp() }
             // Pendant une lecture à voix haute, la voix pourrait dire la phrase : on n'agit pas.
-            if let r = currentReader() {
+            if !voiceVerified, let r = currentReader() {
                 Feedback.play(.ignored)
                 return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
             }

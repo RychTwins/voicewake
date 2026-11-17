@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 
 setvbuf(stdout, nil, _IOLBF, 0)
 
@@ -192,6 +193,7 @@ case "route":
     let text = args.dropFirst().joined(separator: " ")
     let router = Router(config: config)
     print(router.route(text).map { "→ \($0.id)" } ?? "→ aucune cible")
+    if !config.jarvisEnabled { print("(mode Jarvis en pause : les lignes Mac, Finder, musique, navigateur et Réglages ci-dessous ne s'exécutent pas — \"jarvis\": true pour les réactiver)") }
     if let f = FinderCommands.match(text) { print("→ Finder : \(f)\(f.dangerous ? " — confirmation requise" : "")\(f.needsFinderFront ? " (Finder au premier plan)" : "")") }
     if case let .goTo(d)? = FinderCommands.match(text) { print("  dossier : \(FinderCommands.resolve(d, config: config, current: nil) ?? "introuvable")") }
     if case let .copy(d)? = FinderCommands.match(text) { print("  dossier : \(FinderCommands.resolve(d, config: config, current: nil) ?? "introuvable")") }
@@ -320,6 +322,85 @@ case "boutons":
     AXButtonPresser.enableAccessibility(app)
     usleep(300_000)
     for b in AXButtonPresser.visibleButtons(in: app) { print(b.title) }
+
+case "voix":
+    // voicewake voix apprends | test [secondes] | efface : empreinte du filtre « ma voix uniquement ».
+    let path = VoicePrint.defaultPath(config.voiceFilter)
+    let sub = args.count > 1 ? args[1] : ""
+    if sub == "efface" {
+        try? FileManager.default.removeItem(atPath: path)
+        print("Empreinte effacée."); exit(0)
+    }
+    guard sub == "apprends" || sub == "test" else {
+        print(VoicePrint.loadProfile(path).map { "Empreinte : \(path) (créée le \($0.createdAt), cohérence \(String(format: "%.2f", $0.selfScore)))." } ?? "Aucune empreinte.")
+        print("Usage : voicewake voix apprends | test [secondes] | efface"); exit(0)
+    }
+    let modelPath = VoicePrint.defaultModelPath(config.voiceFilter)
+    guard VoicePrint.loadModel(modelPath) else { print("Modèle introuvable : \(modelPath)"); exit(1) }
+    let engine = AVAudioEngine()
+    let format = engine.inputNode.outputFormat(forBus: 0)
+    guard format.sampleRate > 0 else { print("Aucun micro disponible."); exit(1) }
+    let vp = VoicePrint(sampleRate: format.sampleRate)
+    if sub == "test" {
+        guard let p = VoicePrint.loadProfile(path) else { print("Aucune empreinte : voicewake voix apprends"); exit(1) }
+        vp.profile = p
+    }
+    engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in vp.feed(buffer) }
+    do { try engine.start() } catch { print("Micro indisponible : \(error.localizedDescription)"); exit(1) }
+    if sub == "apprends" {
+        print("""
+        Lis ce texte à voix haute, normalement, avec ta voix de tous les jours (30 s).
+        Il ne contient aucune commande : VoiceWake ne réagira pas pendant l'enregistrement.
+
+          Ce matin, le soleil s'est levé tôt sur la ville et les rues étaient encore calmes.
+          J'ai pris un café, puis j'ai relu mes notes de la semaine dernière.
+          Il reste plusieurs tâches importantes : préparer la présentation, répondre aux clients
+          et vérifier les chiffres du mois. Après le déjeuner, je ferai une longue marche
+          pour réfléchir aux prochaines étapes du projet, avant de reprendre le travail.
+        """)
+        var speech: [Float] = []
+        for left in stride(from: 30, to: 0, by: -5) {
+            print("  … \(left) s"); fflush(stdout)
+            RunLoop.main.run(until: Date().addingTimeInterval(5))
+            speech += Array(vp.speechRuns(lastSeconds: 5).joined())   // 5 s de mémoire à chaque fois
+        }
+        engine.stop()
+        guard let profile = VoicePrint.makeProfile(from: speech) else {
+            print("Pas assez de parole entendue (\(speech.count / 16_000) s, 12 s minimum). Recommence plus près du micro."); exit(1)
+        }
+        do {
+            try VoicePrint.saveProfile(profile, to: path)
+            print("Empreinte enregistrée (\(speech.count / 16_000) s de parole, cohérence \(String(format: "%.2f", profile.selfScore))) : \(path)")
+            print("Ensuite : voicewake voix test")
+        } catch { print("Enregistrement impossible : \(error.localizedDescription)"); exit(1) }
+    } else {
+        let seconds = args.count > 2 ? max(5, min(600, Int(args[2]) ?? 20)) : 20
+        print("Score toutes les secondes (\(seconds) s) : 1 = même voix, 0 = voix différente. Seuil : \(config.voiceFilter?.threshold ?? 0.45)")
+        let start = Date()
+        for _ in 0..<seconds {
+            RunLoop.main.run(until: Date().addingTimeInterval(1))
+            let t = Int(Date().timeIntervalSince(start))
+            print(String(format: "%4d s ", t) + (vp.score(lastSeconds: 2).map { String(format: "score %5.2f", $0) } ?? "(silence)"))
+            fflush(stdout)
+        }
+        engine.stop()
+    }
+
+case "ia":
+    // voicewake ia "phrase" : commande que l'interpréteur IA tirerait de la phrase (n'exécute rien).
+    let phrase = args.dropFirst().joined(separator: " ")
+    guard !phrase.isEmpty else { print("Usage : voicewake ia \"phrase\""); exit(1) }
+    let settings = config.interpreter ?? InterpreterSettings()
+    let done = DispatchSemaphore(value: 0)
+    let extra = AppCommand.allCases.flatMap { $0.phrases(config) } + (config.routines ?? []).flatMap { $0.phrases ?? [] }
+    DispatchQueue.global().async {
+        Interpreter.interpret(phrase, settings: settings, front: nil, extra: extra) { c, d in
+            print(c.map { $0.isEmpty ? "→ aucune commande" : "→ « \($0) »" } ?? "→ échec : \(d)")
+            if config.interpreter?.enabled != true { print("(interpréteur désactivé dans la config : \"interpreter\": {\"enabled\": true})") }
+            done.signal()
+        }
+    }
+    while done.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
 
 case "question":
     // voicewake question <bundle-id> "phrase" : carte de question visible et réponse reconnue (sans cliquer).

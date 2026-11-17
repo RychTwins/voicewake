@@ -113,6 +113,8 @@ struct Router {
         return (phrases ?? []).map(normalize).filter { !$0.isEmpty && n.hasSuffix(" " + $0) }.max { $0.count < $1.count }
     }
 
+    private static var closedPanels = Set<String>()
+
     /// Éditeur au premier plan qui intègre cet assistant → cible « dans l'éditeur ».
     /// nil si aucun éditeur n'est au premier plan, s'il n'intègre pas l'assistant,
     /// ou si le panneau de l'assistant n'est pas ouvert (bouton introuvable) : l'app de bureau prend le relais.
@@ -121,9 +123,12 @@ struct Router {
               let editor = config.editors?.first(where: { $0.bundleIDs.contains(bid) }),
               let a = editor.assistants[t.id] else { return nil }
         if !a.shortcut.buttons.isEmpty, AXButtonPresser.all(a.shortcut.buttons, in: front).isEmpty {
-            log("\(editor.id) au premier plan, mais panneau \(t.id) fermé : app de bureau.")
+            // Appelé souvent (surveillance des questions) : n'écrire qu'une fois par situation.
+            let key = "\(editor.id)/\(t.id)"
+            if Self.closedPanels.insert(key).inserted { log("\(editor.id) au premier plan, mais panneau \(t.id) fermé : app de bureau.") }
             return nil
         }
+        Self.closedPanels.remove("\(editor.id)/\(t.id)")
         var e = t
         e.id = "\(t.id)@\(editor.id)"
         e.bundleID = bid

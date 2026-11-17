@@ -422,6 +422,40 @@ struct ReaderTests {
         check(fresh.contains("Journal précédent archivé"), "journal neuf ouvert")
         try? FileManager.default.removeItem(atPath: tmp); try? FileManager.default.removeItem(atPath: tmp + ".1")
 
+        // Interpréteur IA : réponse structurée lue, réponses invalides refusées.
+        func apiReply(_ inner: String, stop: String = "end_turn") -> Data {
+            let o: [String: Any] = ["stop_reason": stop, "content": [["type": "thinking", "thinking": ""], ["type": "text", "text": inner]]]
+            return try! JSONSerialization.data(withJSONObject: o)
+        }
+        check(Interpreter.parse(apiReply("{\"command\": \"monte le son\"}")) == "monte le son", "IA : commande lue")
+        check(Interpreter.parse(apiReply("{\"command\": \"\"}")) == "", "IA : commande vide")
+        check(Interpreter.parse(apiReply("{\"command\": \"x\"}", stop: "refusal")) == nil, "IA : refus ignoré")
+        check(Interpreter.parse(apiReply("pas du json")) == nil, "IA : réponse invalide")
+        let iaBody = Interpreter.body(text: "mets un peu de jazz", model: Interpreter.defaultModel, front: "Spotify", extra: ["où on en est"])
+        check((iaBody["model"] as? String) == "claude-haiku-5-5" && (iaBody["system"] as? String)?.contains("Spotify") == true
+              && (iaBody["system"] as? String)?.contains("où on en est") == true, "IA : requête construite")
+        check(try! JSONSerialization.data(withJSONObject: iaBody).count > 0, "IA : requête sérialisable")
+
+        // Filtre de voix : rééchantillonnage, détection de parole, empreinte (modèle seulement s'il est installé).
+        let vpTest = VoicePrint(sampleRate: 48_000)
+        let tone = (0..<48_000).map { i -> Float in Float(sin(Double(i) * 2 * .pi * 220 / 48_000)) * 0.2 }
+        let quiet = [Float](repeating: 0.00005, count: 48_000)
+        quiet.withUnsafeBufferPointer { vpTest.feed($0) }
+        tone.withUnsafeBufferPointer { vpTest.feed($0) }
+        let runs = vpTest.speechRuns(lastSeconds: 2)
+        let speechLen = runs.reduce(0) { $0 + $1.count }
+        check(speechLen >= 15_000 && speechLen <= 17_000, "voix : 1 s de son à 48 kHz → 1 s de parole à 16 kHz (\(speechLen))")
+        check(abs(VoicePrint.cosine(VoicePrint.normalized([3, 4]), [0.6, 0.8]) - 1) < 1e-5, "voix : similarité cosinus")
+        let tmpVoice = NSTemporaryDirectory() + "voix-test.json"
+        try? VoicePrint.saveProfile(VoicePrint.Profile(embedding: VoicePrint.normalized([1, 2, 3]), selfScore: 0.8, createdAt: Date()), to: tmpVoice)
+        let voicePerms = (try? FileManager.default.attributesOfItem(atPath: tmpVoice)[.posixPermissions] as? Int) ?? 0
+        check(VoicePrint.loadProfile(tmpVoice)?.selfScore == 0.8 && voicePerms == 0o600, "voix : empreinte enregistrée en 600")
+        try? FileManager.default.removeItem(atPath: tmpVoice)
+        if VoicePrint.loadModel(VoicePrint.defaultModelPath(nil)) {
+            let e = VoicePrint.embed([Array(tone.prefix(32_000)), quiet])
+            check(e?.count == 2 && e?.first?.count == 256, "voix : modèle → empreintes de 256 nombres")
+        }
+
         print("Tous les tests passent.")
     }
 }

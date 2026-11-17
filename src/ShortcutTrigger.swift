@@ -36,6 +36,19 @@ final class ShortcutTrigger {
         return DictationWindow(app: app, element: window, conversation: identity.map(ConversationGuard.init))
     }
 
+    /// Attend qu'une app tout juste lancée affiche sa fenêtre (essais toutes les 0,5 s). Les apps Electron
+    /// n'exposent leur arbre d'accessibilité qu'une fois l'option activée : on la réactive à chaque essai.
+    static func waitForWindow(_ app: NSRunningApplication, activate: Bool, remaining: Int, _ done: @escaping (Bool) -> Void) {
+        AXButtonPresser.enableAccessibility(app)
+        if app.isTerminated { return done(false) }
+        if app.isFinishedLaunching, AXButtonPresser.currentWindow(in: app) != nil, !activate || AXButtonPresser.isFrontmost(app) {
+            return done(true)
+        }
+        if activate, app.isFinishedLaunching, !AXButtonPresser.isFrontmost(app) { app.activate() }
+        guard remaining > 0 else { return done(false) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { waitForWindow(app, activate: activate, remaining: remaining - 1, done) }
+    }
+
     static func checkAccessibility(prompt: Bool) -> Bool {
         let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
         let ok = AXIsProcessTrustedWithOptions([key: prompt] as CFDictionary)
@@ -128,15 +141,22 @@ final class ShortcutTrigger {
         let cfg = NSWorkspace.OpenConfiguration()
         cfg.activates = activate
         NSWorkspace.shared.openApplication(at: url, configuration: cfg) { app, error in
-            DispatchQueue.main.asyncAfter(deadline: .now() + (t.launchDelaySeconds ?? 3)) {
+            DispatchQueue.main.async {
                 guard let app else {
                     log("\(t.id) : lancement impossible : \(error?.localizedDescription ?? "application indisponible")")
                     completion?(false)
                     return
                 }
-                if let external { self.startExternalDictation(external, for: t, in: app, completion) }
-                else if activate { self.startNativeDictation(t, in: app, patience: 20, completion) }
-                else { self.send(t, patience: 20, completion) }
+                // Premier lancement après un redémarrage : l'app peut mettre bien plus de 20 s à afficher
+                // sa fenêtre. On attend la fenêtre (60 s max), puis le délai de mise en place.
+                Self.waitForWindow(app, activate: activate, remaining: 120) { ready in
+                    if !ready { log("\(t.id) : fenêtre toujours absente après 60 s, dernier essai.") }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + (t.launchDelaySeconds ?? 3)) {
+                        if let external { self.startExternalDictation(external, for: t, in: app, completion) }
+                        else if activate { self.startNativeDictation(t, in: app, patience: 30, completion) }
+                        else { self.send(t, patience: 30, completion) }
+                    }
+                }
             }
         }
     }

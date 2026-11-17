@@ -27,6 +27,14 @@ final class AudioListener {
         }
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0 else { throw ConfigError("Aucun micro disponible") }
+        // Filtre « ma voix uniquement » : analyse du timbre au même rythme que la reconnaissance.
+        if let p = VoicePrint.profileToUse {
+            if VoicePrint.shared?.sampleRate != format.sampleRate { VoicePrint.shared = VoicePrint(sampleRate: format.sampleRate) }
+            VoicePrint.shared?.profile = p
+        } else {
+            VoicePrint.shared = nil
+        }
+        let print = VoicePrint.shared
         var peak: Float = 0, lastReport = Date()
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             if self?.debugLevels == true, let data = buffer.floatChannelData?[0] {
@@ -36,6 +44,7 @@ final class AudioListener {
                     peak = 0; lastReport = Date()
                 }
             }
+            print?.feed(buffer)
             self?.onBuffer?(buffer)
         }
         engine.prepare()
