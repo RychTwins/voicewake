@@ -309,6 +309,7 @@ VoiceWake peut n'obéir qu'à votre voix : ni la voix de lecture, ni une autre p
 3. `voicewake voix test 60` : un score par seconde. Parlez, faites parler quelqu'un, lancez une lecture.
 4. **Observation** : `"voiceFilter": { "enabled": true }`. Rien n'est bloqué ; le journal note le score de chaque commande. Réglez `threshold` (défaut 0,45) d'après ces scores.
 5. **Blocage** : `"voiceFilter": { "enabled": true, "block": true }`. Une commande dite par votre voix passe même pendant une lecture, sans devoir la répéter.
+6. **Couper la parole** (avec le blocage) : pendant une lecture à voix haute, il suffit de parler. Dès que votre voix est reconnue (environ une demi-seconde de parole), la lecture s'arrête et le micro s'ouvre, sans dire « écoute ». La voix de lecture et les autres personnes ne coupent rien. En observation, le journal note « aurait coupé la lecture ». Réglages : `bargeIn` (défaut true), `bargeInThreshold` (défaut : seuil + 0,1).
 
 Aucun son n'est enregistré ni envoyé : les 8 dernières secondes restent en mémoire, le temps de décider. Filtre, pas authentification : une voix très proche peut passer ; un rhume ou un autre micro peuvent demander de refaire l'empreinte.
 

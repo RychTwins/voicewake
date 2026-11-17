@@ -20,6 +20,11 @@ struct VoiceFilterSettings: Codable {
     var profilePath: String?
     /// Modèle Core ML (défaut ~/.config/voicewake/models/wespeaker_int8.mlmodelc).
     var modelPath: String?
+    /// Couper la parole : ta voix pendant une lecture l'arrête et rouvre le micro, sans mot-clé (défaut true ;
+    /// en mode observation, seulement noté dans le journal).
+    var bargeIn: Bool?
+    /// Similarité minimale pour couper la lecture (défaut : seuil + 0,1, la voix de lecture se mêlant à la tienne).
+    var bargeInThreshold: Double?
 }
 
 final class VoicePrint {
@@ -161,17 +166,22 @@ final class VoicePrint {
     /// Meilleure similarité avec l'empreinte parmi trois extraits des dernières secondes (toute la parole, la
     /// première moitié, la seconde) : une commande dite par-dessus la voix de lecture ressort dans l'un d'eux.
     /// nil : pas d'empreinte, pas de modèle ou moins de 0,4 s de parole.
-    func score(lastSeconds seconds: Double) -> Float? {
+    func score(lastSeconds seconds: Double, split: Bool = true) -> Float? {
         guard let user = profile?.embedding else { return nil }
         let speech = Array(speechRuns(lastSeconds: seconds).joined())
         guard speech.count >= 6_400 else { return nil }
         var chunks = [speech]
-        if speech.count >= 16_000 {
+        if split, speech.count >= 16_000 {
             chunks.append(Array(speech.prefix(speech.count / 2)))
             chunks.append(Array(speech.suffix(speech.count / 2)))
         }
         guard let embeddings = Self.embed(chunks.map { Array($0.suffix(Self.modelSamples)) }) else { return nil }
         return embeddings.map { Self.cosine($0, user) }.max()
+    }
+
+    /// Durée de parole (s) entendue dans les dernières secondes.
+    func speechSeconds(last seconds: Double) -> Double {
+        Double(speechRuns(lastSeconds: seconds).reduce(0) { $0 + $1.count }) / Self.rate
     }
 
     // MARK: Empreinte

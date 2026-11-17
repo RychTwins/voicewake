@@ -77,6 +77,7 @@ final class Coordinator {
             self.detector.start()
             self.startHintRefresh()
             self.startQuestionWatch()
+            self.startBargeInWatch()
             let names = self.config.targets.map(\.id).joined(separator: ", ")
             log("VoiceWake prêt. Cibles : \(names).")
         }
@@ -399,6 +400,49 @@ final class Coordinator {
         pendingWakeName = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
         return true
+    }
+
+    // MARK: Couper la parole
+
+    /// Pendant une lecture à voix haute, ta voix (reconnue par le filtre de voix) coupe la lecture et rouvre le
+    /// micro, comme on interrompt quelqu'un : pas besoin de dire « écoute ». La voix de lecture et les autres
+    /// personnes ne déclenchent rien. Vérifié toutes les 0,5 s, hors fil principal.
+    private var bargeTimer: Timer?
+    private var bargeChecking = false
+    private var lastBargeIn = Date.distantPast
+    private let bargeQueue = DispatchQueue(label: "voicewake.barge-in")
+
+    private func startBargeInWatch() {
+        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.checkBargeIn() }
+        RunLoop.main.add(timer, forMode: .common)
+        bargeTimer = timer
+    }
+
+    private func checkBargeIn() {
+        guard let settings = config.voiceFilter, settings.enabled == true, settings.bargeIn ?? true,
+              let print = VoicePrint.shared, print.profile != nil, !bargeChecking, active == nil,
+              currentReader() != nil || (reader.isActive && !reader.isPaused),
+              Date().timeIntervalSince(lastBargeIn) > 3 else { return }
+        let threshold = Float(settings.bargeInThreshold ?? (settings.threshold ?? 0.45) + 0.1)
+        bargeChecking = true
+        bargeQueue.async { [weak self] in
+            // Au moins 0,5 s de parole dans la dernière 1,2 s, puis une seule empreinte (~35 ms).
+            let score = print.speechSeconds(last: 1.2) >= 0.5 ? print.score(lastSeconds: 1.2, split: false) : nil
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.bargeChecking = false
+                guard let score, score >= threshold, self.active == nil,
+                      self.currentReader() != nil || (self.reader.isActive && !self.reader.isPaused) else { return }
+                self.lastBargeIn = Date()
+                let shown = String(format: "%.2f", score)
+                guard settings.block == true else {
+                    return log("Filtre de voix (observation) : ta voix pendant la lecture (score \(shown)) → aurait coupé la lecture.")
+                }
+                log("Ta voix pendant la lecture (score \(shown)) : lecture coupée, micro ouvert.")
+                self.lastWake = .distantPast
+                self.handleWake(self.config.interruptPhrases?.first ?? "écoute", fromVoice: false, verified: true)
+            }
+        }
     }
 
     // MARK: Questions de l'assistant
