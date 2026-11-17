@@ -102,8 +102,18 @@ struct Router {
     /// Vrai si la transcription contient une phrase d'interruption de la lecture.
     func containsInterruptPhrase(_ text: String) -> Bool {
         let n = " " + normalize(text) + " "
-        return (config.interruptPhrases ?? []).map(normalize).contains { !$0.isEmpty && n.contains(" " + $0 + " ") }
+        return ((config.interruptPhrases ?? []) + strongInterruptPhrases).map(normalize).contains { !$0.isEmpty && n.contains(" " + $0 + " ") }
     }
+
+    /// Interruptions « nommées » (« stop Claude », « Claude écoute ») : elles n'apparaissent presque jamais dans une
+    /// réponse lue, donc elles passent du premier coup, sans vérifier si la voix de lecture vient de les dire.
+    var strongInterruptPhrases: [String] {
+        if let custom = config.strongInterruptPhrases { return custom }
+        let names = Set(config.targets.map { normalize($0.id) } + ["claude", "codex", "gemini", "chatgpt", "assistant"])
+        return names.flatMap { ["stop \($0)", "\($0) stop", "écoute \($0)", "\($0) écoute", "écoute moi \($0)", "attends \($0)"] }
+    }
+
+    func isStrongInterrupt(_ text: String) -> Bool { containsAny(text, strongInterruptPhrases) }
 
     private func endsWith(_ text: String, _ phrases: [String]?) -> Bool { suffix(text, phrases) != nil }
 

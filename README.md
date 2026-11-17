@@ -90,6 +90,7 @@ Après un envoi vocal, VoiceWake attend la fin de la réponse puis lance la lect
 | « Arrête la lecture », « Stop la lecture » | pause |
 | « Reprends la lecture », « Continue la lecture » | reprise là où elle s'était arrêtée (10 min max) ; sans lecture en pause, lit la dernière réponse |
 | « Écoute » | pause et micro rouvert pour une nouvelle demande |
+| « Stop Claude », « Claude, écoute », « Écoute-moi Codex » | comme « Écoute », mais passe du premier coup : une réponse lue ne contient presque jamais ces phrases (`strongInterruptPhrases`) |
 | « Fais la lecture », « Lis la réponse », « Relis la réponse » | en veille : lit la dernière réponse de l'assistant au premier plan, même ancienne (bouton de lecture de l'application) |
 
 | « Lis à partir de … » suivi de quelques mots du passage | le lecteur intégré reprend la lecture à cet endroit |

@@ -486,6 +486,25 @@ final class ShortcutTrigger {
         completion: @escaping (Bool) -> Void
     ) {
         guard let window, window.allowsAction else {
+            // La fenêtre de dictée n'est plus devant (autre app, autre fenêtre) : si le micro de l'app est
+            // réellement ouvert, on la remet au premier plan et on coupe ce micro-là. Sans micro ouvert, rien :
+            // le raccourci risquerait d'ouvrir une nouvelle dictée au lieu d'en fermer une.
+            if external == nil, let app = Self.runningApp(for: t),
+               MicMonitor.isInputRunning(pid: app.processIdentifier, bundle: t.bundleID) == true {
+                log("\(t.id) : fenêtre de dictée changée, micro encore ouvert : remise au premier plan pour l'arrêter.")
+                Self.bringToFront(app, target: t) { active in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        guard active, var fresh = Self.dictationWindow(for: t) else {
+                            log("\(t.id) : arrêt annulé, fenêtre de dictée indisponible.")
+                            return completion(false)
+                        }
+                        fresh.conversation = nil // nouvelle référence : seule la fenêtre au premier plan compte
+                        guard fresh.isFocused else { return completion(false) } // jamais de deuxième tentative
+                        self.stopDictation(t, in: fresh, external: nil, completion: completion)
+                    }
+                }
+                return
+            }
             log("\(t.id) : arrêt annulé, fenêtre de dictée indisponible.")
             completion(false)
             return

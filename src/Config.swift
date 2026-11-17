@@ -223,6 +223,8 @@ struct Config: Codable {
     var elevenLabs: ElevenLabsSettings?
     /// Interpréteur IA : « Jarvis, <phrase libre> » reformulée en commande par Claude (optionnel, désactivé par défaut).
     var interpreter: InterpreterSettings?
+    /// Interruptions qui passent du premier coup pendant une lecture (défaut : « stop Claude », « Claude écoute »…).
+    var strongInterruptPhrases: [String]?
     /// Filtre « ma voix uniquement » (optionnel ; empreinte créée par `voicewake voix apprends`).
     var voiceFilter: VoiceFilterSettings?
     var targets: [Target]

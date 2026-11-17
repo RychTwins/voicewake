@@ -873,7 +873,7 @@ final class Coordinator {
         // Lecteur intégré en cours : pause, reprise, écoute.
         if reader.isActive {
             defer { detector.reset() }
-            if spokenByOwnReader(text), !insisted(text, phrases: readCommandPhrases + (config.readResumePhrases ?? []) + ReaderNav.allPhrases(config), spokenNow: reader.spokenNow) { Feedback.play(.ignored); return log("Commande ignorée : prononcée par le lecteur intégré.") }
+            if !router.isStrongInterrupt(text), spokenByOwnReader(text), !insisted(text, phrases: readCommandPhrases + (config.readResumePhrases ?? []) + ReaderNav.allPhrases(config), spokenNow: reader.spokenNow) { Feedback.play(.ignored); return log("Commande ignorée : prononcée par le lecteur intégré.") }
             if interrupt, let t = readerTarget {
                 reader.stop()
                 lastWake = Date()
@@ -1126,7 +1126,7 @@ final class Coordinator {
         // (Une app peut garder sa sortie audio ouverte sans rien lire : on ne bloque que nos lectures.)
         // La lecture reste « en cours » jusqu'à 3 s de silence continu (voir startReading).
         if let reader = currentReader() {
-            if (pauseRead || interrupt), spokenByReader(text, reader),
+            if (pauseRead || interrupt), !router.isStrongInterrupt(text), spokenByReader(text, reader),
                !insisted(text, phrases: readCommandPhrases, spokenNow: "") {
                 Feedback.play(.ignored)
                 log("Commande ignorée : prononcée par la voix de lecture de \(reader.id).")
