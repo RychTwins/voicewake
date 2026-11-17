@@ -2,12 +2,12 @@ import AppKit
 
 /// Veille -> déclenchement -> pause pendant la conversation -> veille.
 final class Coordinator {
-    private let config: Config
-    private let router: Router
-    private let detector: WakeWordDetector
-    private let trigger = ShortcutTrigger()
-    private var lastWake = Date.distantPast
-    private var pauseTimer: Timer?
+    let config: Config
+    let router: Router
+    let detector: WakeWordDetector
+    let trigger = ShortcutTrigger()
+    var lastWake = Date.distantPast
+    var pauseTimer: Timer?
 
     init(config: Config) throws {
         self.config = config
@@ -46,13 +46,13 @@ final class Coordinator {
     }
 
     /// Bundle IDs des apps et éditeurs pilotés.
-    private var managedBundleIDs: Set<String> {
+    var managedBundleIDs: Set<String> {
         Set(config.targets.compactMap(\.bundleID) + (config.editors ?? []).flatMap(\.bundleIDs))
     }
 
     /// Prépare l'arbre d'accessibilité des apps pilotées dès qu'elles tournent : sinon, juste après
     /// un redémarrage du Mac ou de l'app, le premier « Dis Claude » ne trouve pas le bouton micro.
-    private func warmUpAccessibility() {
+    func warmUpAccessibility() {
         let ids = managedBundleIDs
         for app in NSWorkspace.shared.runningApplications where app.bundleIdentifier.map(ids.contains) == true {
             AXButtonPresser.enableAccessibility(app)
@@ -87,18 +87,18 @@ final class Coordinator {
     }
 
     /// Cible en cours de dictée, quand l'envoi vocal est actif.
-    private var active: Target?
-    private var pendingSend: DispatchWorkItem?
-    private var sendEnabled: Bool { !(config.sendPhrases ?? []).isEmpty }
+    var active: Target?
+    var pendingSend: DispatchWorkItem?
+    var sendEnabled: Bool { !(config.sendPhrases ?? []).isEmpty }
 
-    private func externalDictation(for target: Target) -> ExternalDictation? {
+    func externalDictation(for target: Target) -> ExternalDictation? {
         target.id.contains("@") ? nil : config.externalDictation
     }
 
     /// Le texte transcrit (tes paroles) n'est écrit dans le log qu'en mode debug.
-    private func said(_ text: String) -> String { config.debug ? " (« \(text) »)" : "" }
+    func said(_ text: String) -> String { config.debug ? " (« \(text) »)" : "" }
 
-    private func handle(_ heard: String, isFinal: Bool = false) {
+    func handle(_ heard: String, isFinal: Bool = false) {
         // En veille, erreurs de reconnaissance fréquentes corrigées (« lance le ski » → « lance le skill »).
         let fixed = active == nil ? SpeechFixes.apply(heard) : heard
         if pendingConfirmation != nil, handleConfirmation(fixed, isFinal: isFinal) { return }
@@ -178,539 +178,55 @@ final class Coordinator {
 
     // MARK: Commandes universelles
 
-    /// Libellé lu dans l'app : journalisé seulement en mode debug (un bouton peut porter un titre de conversation).
-    private func label(_ title: String) -> String { config.debug ? " « \(title) »" : "" }
-
-    private func runUniversal(_ kind: Universal.Kind, _ query: [String], in app: NSRunningApplication) {
-        let name = app.localizedName ?? "app"
-        DispatchQueue.global().async { [weak self] in
-            let action = Universal.find(kind, query, in: app)
-            DispatchQueue.main.async {
-                guard let self else { return }
-                guard let action else {
-                    Feedback.play(.failed)
-                    Bilan.record(.universal, (kind == .menu ? "menu " : "clique sur ") + (self.config.debug ? query.joined(separator: " ") : "rien ne correspond"))
-                    return log("Commande universelle → \(name) : rien ne correspond\(self.config.debug ? " à « \(query.joined(separator: " ")) »" : "").")
-                }
-                if self.config.dryRun == true { return log("[essai] → \(kind == .menu ? "menu" : "bouton")\(self.label(action.title)) dans \(name)") }
-                if action.dangerous { return self.askConfirmation(action, in: name) }
-                self.performUniversal(action, in: name)
-            }
-        }
-    }
-
     /// Dernière commande tapée dans une palette sans être validée : « valide » seul est accepté pendant 20 s.
-    private var lastPaletteAt = Date.distantPast
-    private var paletteOpen: Bool { Date().timeIntervalSince(lastPaletteAt) < Palette.paletteWindow }
-
+    var lastPaletteAt = Date.distantPast
+    var paletteOpen: Bool { Date().timeIntervalSince(lastPaletteAt) < Palette.paletteWindow }
     // MARK: « Écris … »
-
-    private func writeText(_ typed: String) {
-        guard !typed.isEmpty else { Feedback.play(.failed); return log("Écris : texte vide.") }
-        guard let app = Universal.frontApp(), let bid = app.bundleIdentifier, Universal.allowedApps(config).contains(bid) else {
-            Feedback.play(.failed)
-            Bilan.record(.write, "app non autorisée")
-            return log("Écris : app au premier plan non autorisée (ajouter son identifiant à universalApps).")
-        }
-        let name = app.localizedName ?? bid
-        if config.dryRun == true { return log("[essai] → écris dans \(name)\(said(typed))") }
-        DispatchQueue.global().async { [weak self] in
-            // Seulement le champ qui a déjà le focus : le texte ne part jamais dans un autre champ.
-            var ok = false
-            if let field = AXButtonPresser.focusedTextField(in: app) {
-                ok = TextTyper.type(typed, to: app.processIdentifier, while: {
-                    AXButtonPresser.isFrontmost(app) && AXButtonPresser.focusedTextField(in: app).map { CFEqual($0, field) } == true
-                })
-            }
-            DispatchQueue.main.async {
-                guard let self else { return }
-                Feedback.play(ok ? .understood : .failed)
-                if !ok { Bilan.record(.write, "aucun champ de saisie actif") }
-                log("Écris → \(name) : \(ok ? "\(typed.count) caractères tapés" : "aucun champ de saisie actif")\(self.said(typed)).")
-            }
-        }
-    }
-
     // MARK: Commandes du Mac
-
-    private func systemCommand(_ text: String) -> SystemCommand? {
-        guard config.jarvisEnabled, config.systemCommands ?? true else { return nil }
-        return SystemCommands.match(text, apps: SystemCommands.installedApps(), running: SystemCommands.runningApps() + SystemCommands.targetApps(config),
-                                    front: Universal.frontApp()?.bundleIdentifier)
-    }
-
-    private func runSystem(_ sys: SystemCommand) {
-        let what: String
-        switch sys {
-        case let .launch(p), let .activate(p): what = "ouvrir \(SystemCommands.appName(p))"
-        case let .quit(id): what = "quitter \(SystemCommands.appName(id))"
-        case let .hide(id): what = "cacher \(SystemCommands.appName(id))"
-        default: what = "\(sys)"
-        }
-        if config.dryRun == true { return log("[essai] → Mac : \(what)") }
-        let run = {
-            let ok = SystemCommands.perform(sys)
-            Feedback.play(ok ? .understood : .failed)
-            if !ok { Bilan.record(.system, "\(sys)".split(separator: "(").first.map(String.init) ?? "mac") }
-            log("Mac : \(what) \(ok ? "fait" : "impossible").")
-        }
-        if sys.dangerous {
-            log("Confirmation demandée → Mac : \(what).")
-            return askConfirmation(what, run: run)
-        }
-        run()
-    }
-
     // MARK: Finder et Réglages Système
 
-    private enum MacCommand { case finder(FinderCommand), settings(SettingsCommand), media(MediaCommand), browser(BrowserCommand) }
-
-    private func macCommand(_ text: String) -> MacCommand? {
-        guard config.jarvisEnabled, config.systemCommands ?? true else { return nil }
-        if let s = SettingsCommands.match(text) { return .settings(s) }
-        // « Joue la musique », « musique suivante » : touches multimédia (commandes du Mac), pas une recherche.
-        if !SystemCommands.fixedPhrases.contains(normalize(text)),
-           let m = MediaCommands.match(text, front: Universal.frontApp()?.bundleIdentifier) { return .media(m) }
-        if let b = BrowserCommands.match(text, front: Universal.frontApp()?.bundleIdentifier) { return .browser(b) }
-        guard let f = FinderCommands.match(text) else { return nil }
-        // Sélection du Finder : seulement Finder au premier plan (« supprime » ailleurs ne vise jamais un fichier).
-        if f.needsFinderFront, Universal.frontApp()?.bundleIdentifier != "com.apple.finder" { return nil }
-        return .finder(f)
-    }
-
-    private func runMac(_ mac: MacCommand) {
-        let title: String, dangerous: Bool
-        switch mac {
-        case let .finder(f): (title, dangerous) = (f.title, f.dangerous)
-        case let .settings(c): (title, dangerous) = (c.title, c.dangerous)
-        case let .media(m): (title, dangerous) = (m.title, false)
-        case let .browser(b): (title, dangerous) = (b.title, false)
-        }
-        let front = Universal.frontApp()
-        if config.dryRun == true { return log("[essai] → \(title)") }
-        let config = self.config
-        let run = { [weak self] in
-            DispatchQueue.global().async {
-                let result: (ok: Bool, detail: String)
-                var say: String?
-                switch mac {
-                case let .finder(f): result = FinderCommands.perform(f, config: config)
-                case let .settings(c): let ok = SettingsCommands.perform(c); result = (ok, ok ? "fait" : "impossible")
-                case let .media(m): let r = MediaCommands.perform(m); say = r.say; result = (r.ok, r.ok ? "fait" : "impossible")
-                case let .browser(b):
-                    // Raccourcis : le même navigateur doit être encore devant.
-                    let ok = (!b.needsBrowserFront || front.map(AXButtonPresser.isFrontmost) == true) && BrowserCommands.perform(b, front: front)
-                    result = (ok, ok ? "fait" : "impossible")
-                }
-                DispatchQueue.main.async {
-                    if let say { self?.speak(say) } // titre en cours, ou raison de l'échec
-                    Feedback.play(result.ok ? .understood : .failed)
-                    if !result.ok { Bilan.record(.system, "\(title) \(result.detail)") }
-                    log("Mac : \(title) → \(result.detail)\(config.debug && say != nil ? " (« \(say!) »)" : "").")
-                }
-            }
-        }
-        if dangerous {
-            log("Confirmation demandée → \(title).")
-            return askConfirmation(title, run: run)
-        }
-        run()
-    }
-
+    enum MacCommand { case finder(FinderCommand), settings(SettingsCommand), media(MediaCommand), browser(BrowserCommand) }
     // MARK: Nom d'appel
 
-    private var pendingWakeName: DispatchWorkItem?
-    private var pendingInterpret: DispatchWorkItem?
-    private var interpreting = false
-
-    /// Phrase libre après le nom d'appel : attendre qu'elle soit finie (2 s stable ou résultat définitif),
-    /// puis demander à Claude la commande correspondante et la traiter comme si elle avait été dite.
-    private func scheduleInterpret(_ text: String, isFinal: Bool) {
-        pendingInterpret?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.pendingInterpret = nil
-            guard self.active == nil, !self.interpreting, self.currentReader() == nil, !self.reader.isActive,
-                  Date().timeIntervalSince(self.lastWake) >= self.config.cooldownSeconds else { return }
-            let gate = self.voiceGate()
-            if gate == false { self.detector.reset(); return }
-            self.detector.reset()
-            if self.config.dryRun == true { return log("[essai] → interpréteur\(said(text))") }
-            self.interpreting = true
-            self.lastWake = Date()
-            let extra = AppCommand.allCases.flatMap { $0.phrases(self.config) }
-                + (self.config.routines ?? []).flatMap { $0.phrases ?? [] }
-            log("Interpréteur : demande envoyée\(self.config.debug ? said(text) : "").")
-            Interpreter.interpret(text, front: Universal.frontApp()?.localizedName, jarvis: self.config.jarvisEnabled, extra: extra) { [weak self] command, detail in
-                guard let self else { return }
-                self.interpreting = false
-                guard let command, !command.isEmpty else {
-                    Feedback.play(.failed)
-                    Bilan.record(.command, command == nil ? "interpréteur : \(detail)" : "interpréteur : rien compris")
-                    return log("Interpréteur : \(command == nil ? detail : "aucune commande ne correspond").")
-                }
-                // Seules les commandes que VoiceWake reconnaît sont exécutées, par le chemin habituel.
-                guard self.wakeKey(command) != nil, self.active == nil else {
-                    Feedback.play(.failed)
-                    Bilan.record(.command, "interpréteur : commande inconnue")
-                    return log("Interpréteur : réponse non reconnue\(self.config.debug ? said(command) : "").")
-                }
-                log("Interpréteur → \(self.wakeKey(command) ?? "")\(self.config.debug ? said(command) : "").")
-                let run = { [weak self] in
-                    guard let self else { return }
-                    self.lastWake = .distantPast
-                    self.handleWake(command, fromVoice: false, verified: gate == true)
-                }
-                if Interpreter.needsConfirmation(command) {
-                    log("Confirmation demandée → commande interprétée.")
-                    return self.askConfirmation(command, run: run)
-                }
-                run()
-            }
-        }
-        pendingInterpret = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + (isFinal ? 0.1 : 2), execute: work)
-    }
-
-    private func afterWakeName(_ text: String) -> String? {
-        guard config.jarvisEnabled else { return nil }
-        return WakeName.command(after: text, names: config.wakeNames ?? WakeName.defaults)
-    }
-
-    /// Pendant une dictée : « Jarvis, <commande> » coupe le micro puis exécute la commande (stable 1,5 s).
-    private func checkWakeNameDuringDictation(_ text: String, _ t: Target) -> Bool {
-        guard recording, !stopping, let command = afterWakeName(text), wakeKey(command) != nil else {
-            pendingWakeName?.cancel() // la phrase a continué : ce n'était pas (ou plus) une commande
-            pendingWakeName = nil
-            return false
-        }
-        pendingWakeName?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, self.active?.id == t.id, self.recording, !self.stopping else { return }
-            self.pendingWakeName = nil
-            let gate = self.voiceGate()
-            if gate == false { return } // voix non reconnue : la dictée continue
-            self.pendingSend?.cancel()
-            self.stopping = true
-            log("Nom d'appel pendant la dictée → \(t.id) : micro coupé, commande exécutée.")
-            self.trigger.stopDictation(t, in: self.dictationWindow, external: self.externalDictation(for: t)) { [weak self] _ in
-                guard let self else { return }
-                self.stopping = false
-                self.endPause()
-                self.detector.reset()
-                self.lastWake = .distantPast
-                self.handleWake(command, fromVoice: false, verified: gate == true)
-            }
-        }
-        pendingWakeName = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
-        return true
-    }
-
+    var pendingWakeName: DispatchWorkItem?
+    var pendingInterpret: DispatchWorkItem?
+    var interpreting = false
     // MARK: Diagnostic et routines à heure fixe
 
-    private func startupDiagnostic() {
-        let checks = Diagnostic.run(config)
-        for c in checks where !c.ok { log("Diagnostic : \(c.name) — \(c.fix)") }
-        guard config.announceProblems ?? true, let summary = Diagnostic.spokenSummary(checks),
-              active == nil, !reader.isActive, currentReader() == nil else { return }
-        speak(summary)
-    }
-
-    private var routineClock: Timer?
-    private var lastRoutineMinute = ""
-
-    /// Routines avec une heure (`"at": "09:00"`) : lancées à cette heure, si VoiceWake est en veille.
-    private func startRoutineClock() {
-        guard (config.routines ?? []).contains(where: { $0.at != nil }) else { return }
-        let timer = Timer(timeInterval: 20, repeats: true) { [weak self] _ in self?.checkRoutineClock() }
-        RunLoop.main.add(timer, forMode: .common)
-        routineClock = timer
-    }
-
-    private func checkRoutineClock(now: Date = Date()) {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd HH:mm"
-        let minute = f.string(from: now)
-        guard minute != lastRoutineMinute else { return }
-        lastRoutineMinute = minute
-        for r in Routines.due(config.routines ?? [], at: now) {
-            guard active == nil, pendingConfirmation == nil, !reader.isActive, currentReader() == nil else {
-                log("Routine « \(Routines.label(r)) » de \(r.at ?? "") non lancée : dictée, confirmation ou lecture en cours.")
-                continue
-            }
-            log("Routine « \(Routines.label(r)) » : heure prévue (\(r.at ?? "")).")
-            runRoutine(r, step: 0)
-            break // une à la fois
-        }
-    }
-
+    var routineClock: Timer?
+    var lastRoutineMinute = ""
     // MARK: Couper la parole
 
     /// Pendant une lecture à voix haute, ta voix (reconnue par le filtre de voix) coupe la lecture et rouvre le
     /// micro, comme on interrompt quelqu'un : pas besoin de dire « écoute ». La voix de lecture et les autres
     /// personnes ne déclenchent rien. Vérifié toutes les 0,5 s, hors fil principal.
-    private var bargeTimer: Timer?
-    private var bargeChecking = false
-    private var lastBargeIn = Date.distantPast
-    private let bargeQueue = DispatchQueue(label: "voicewake.barge-in")
-
-    private func startBargeInWatch() {
-        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.checkBargeIn() }
-        RunLoop.main.add(timer, forMode: .common)
-        bargeTimer = timer
-    }
-
-    private func checkBargeIn() {
-        guard let settings = config.voiceFilter, settings.enabled == true, settings.bargeIn ?? true,
-              let print = VoicePrint.shared, print.profile != nil, !bargeChecking, active == nil,
-              currentReader() != nil || (reader.isActive && !reader.isPaused),
-              Date().timeIntervalSince(lastBargeIn) > 3 else { return }
-        let threshold = Float(settings.bargeInThreshold ?? (settings.threshold ?? 0.45) + 0.1)
-        bargeChecking = true
-        bargeQueue.async { [weak self] in
-            // Au moins 0,5 s de parole dans la dernière 1,2 s, puis une seule empreinte (~35 ms).
-            let score = print.speechSeconds(last: 1.2) >= 0.5 ? print.score(lastSeconds: 1.2, split: false) : nil
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.bargeChecking = false
-                guard let score, score >= threshold, self.active == nil,
-                      self.currentReader() != nil || (self.reader.isActive && !self.reader.isPaused) else { return }
-                self.lastBargeIn = Date()
-                let shown = String(format: "%.2f", score)
-                guard settings.block == true else {
-                    return log("Filtre de voix (observation) : ta voix pendant la lecture (score \(shown)) → aurait coupé la lecture.")
-                }
-                log("Ta voix pendant la lecture (score \(shown)) : lecture coupée, micro ouvert.")
-                self.lastWake = .distantPast
-                self.handleWake(self.config.interruptPhrases?.first ?? "écoute", fromVoice: false, verified: true)
-            }
-        }
-    }
-
+    var bargeTimer: Timer?
+    var bargeChecking = false
+    var lastBargeIn = Date.distantPast
+    let bargeQueue = DispatchQueue(label: "voicewake.barge-in")
     // MARK: Questions de l'assistant
 
     /// Carte de question visible dans l'assistant au premier plan (relue toutes les 2 s, hors dictée et lecture).
-    private var currentCard: (card: QuestionCard, app: NSRunningApplication)?
-    private var questionTimer: Timer?
-    private var scanningCard = false
-
-    private func startQuestionWatch() {
-        guard config.answerQuestions ?? true else { return }
-        let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in self?.scanQuestion() }
-        RunLoop.main.add(timer, forMode: .common)
-        questionTimer = timer
-    }
-
-    private func scanQuestion() {
-        guard !scanningCard else { return }
-        guard active == nil, !reader.isActive, let t = router.frontmostTarget(),
-              let app = ShortcutTrigger.runningApp(for: t), AXButtonPresser.isFrontmost(app) else { currentCard = nil; return }
-        scanningCard = true
-        DispatchQueue.global().async { [weak self] in
-            let found = QuestionAnswer.card(in: app)
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.scanningCard = false
-                let had = self.currentCard != nil
-                self.currentCard = found.map { ($0.card, app) }
-                // Une question vient de s'afficher : petit son, tu peux répondre à la voix.
-                if !had, found != nil { Feedback.play(.micOpen) }
-                if self.config.debug, had != (found != nil) {
-                    log(found.map { "Question affichée : \($0.card.options.count) options." } ?? "Question fermée.")
-                }
-            }
-        }
-    }
-
+    var currentCard: (card: QuestionCard, app: NSRunningApplication)?
+    var questionTimer: Timer?
+    var scanningCard = false
     // MARK: Routines
 
-    private var routineWork: DispatchWorkItem?
-
-    /// Exécute l'étape `i` comme une phrase dite, puis la suivante après le délai de la routine. Arrêt si une
-    /// dictée s'ouvre, une confirmation est demandée, une lecture commence ou une étape n'est pas reconnue.
-    private func runRoutine(_ r: Routine, step i: Int) {
-        routineWork = nil
-        let steps = Array(r.steps.prefix(Routines.maxSteps))
-        let name = Routines.label(r)
-        guard i < steps.count else { return log("Routine « \(name) » terminée.") }
-        // VoiceWake parle (« où on en est ? ») : on attend la fin de l'annonce.
-        if announcer.isSpeaking { return scheduleRoutine(r, step: i, after: 0.5) }
-        if i > 0, active != nil || pendingConfirmation != nil || reader.isActive || currentReader() != nil {
-            Bilan.record(.routine, "routine \(name) étape \(i + 1)")
-            return log("Routine « \(name) » arrêtée avant l'étape \(i + 1) : dictée, confirmation ou lecture en cours.")
-        }
-        let step = steps[i]
-        guard Routines.match(step, config: config) == nil, wakeKey(step) != nil else {
-            Feedback.play(.failed)
-            Bilan.record(.routine, "routine \(name) étape \(i + 1)")
-            return log("Routine « \(name) » : étape \(i + 1) non reconnue, arrêt\(config.debug ? " (« \(step) »)" : "").")
-        }
-        if config.debug { log("Routine « \(name) » : étape \(i + 1) (« \(step) »).") }
-        lastWake = .distantPast // pas de délai entre deux commandes pour les étapes d'une routine
-        handleWake(step, fromVoice: false)
-        scheduleRoutine(r, step: i + 1, after: Routines.delay(r))
-    }
-
-    private func scheduleRoutine(_ r: Routine, step i: Int, after delay: Double) {
-        let work = DispatchWorkItem { [weak self] in self?.runRoutine(r, step: i) }
-        routineWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
-    }
-
+    var routineWork: DispatchWorkItem?
     // MARK: Skills
-
-    /// Tape « /skill arguments » dans la zone de saisie de l'assistant au premier plan, puis attend « ok envoie »
-    /// (comme après « garde le brouillon »). « … et envoie » à la fin : envoi immédiat.
-    private func runSkill(_ query: [String], said text: String) {
-        guard let t = router.frontmostTarget(), let app = ShortcutTrigger.runningApp(for: t), AXButtonPresser.isFrontmost(app) else {
-            Feedback.play(.failed); Bilan.record(.skill, "aucun assistant au premier plan"); return log("Skill : aucun assistant au premier plan.")
-        }
-        var q = query
-        let sendNow = q.count >= 2 && ["envoie", "envoyer"].contains(q.last!) && ["et", "puis"].contains(q[q.count - 2])
-        if sendNow { q.removeLast(2) }
-        DispatchQueue.global().async { [weak self] in
-            let entries = SkillCatalog.entries(for: t)
-            let hit = SkillCatalog.match(q, in: entries)
-            DispatchQueue.main.async {
-                guard let self else { return }
-                guard let hit else {
-                    Feedback.play(.failed)
-                    Bilan.record(.skill, self.config.debug ? q.joined(separator: " ") : "aucun skill ne correspond")
-                    return log("Skill → \(t.id) : aucun skill ne correspond (\(entries.count) connus)\(self.config.debug ? " à « \(q.joined(separator: " ")) »" : "").")
-                }
-                // Arguments : texte d'origine après la phrase et le nom du skill.
-                let phraseWords = normalize(text).split(separator: " ").count - query.count
-                let args = SkillCatalog.originalSlice(text, skippingWords: phraseWords + hit.consumed, droppingLastWords: sendNow ? 2 : 0)
-                let typed = args.isEmpty ? hit.entry.text + " " : hit.entry.text + " " + args
-                if self.config.dryRun == true { return log("[essai] → skill \(hit.entry.text) dans \(t.id)") }
-                self.typeSkill(typed, skill: hit.entry.text, target: t, app: app, sendNow: sendNow)
-            }
-        }
-    }
-
-    private func typeSkill(_ typed: String, skill: String, target t: Target, app: NSRunningApplication, sendNow: Bool) {
-        DispatchQueue.global().async { [weak self] in
-            var ok = false
-            // Seulement si le champ visé a bien reçu le focus : le texte ne part jamais ailleurs.
-            if let field = AXButtonPresser.composerField(in: app), AXButtonPresser.focusVerified(field, in: app) {
-                ok = TextTyper.type(typed, to: app.processIdentifier, while: { AXButtonPresser.isFrontmost(app) })
-            }
-            DispatchQueue.main.async {
-                guard let self else { return }
-                guard ok else {
-                    Feedback.play(.failed)
-                    Bilan.record(.skill, "zone de saisie introuvable")
-                    return log("Skill → \(t.id) : zone de saisie introuvable ou app passée en arrière-plan.")
-                }
-                Feedback.play(.understood)
-                log("Skill → \(t.id) : \(skill) tapé\(sendNow ? ", envoi" : ", en attente de « ok envoie »").")
-                // Envoi immédiat seulement si l'envoi vocal est activé (sinon : texte laissé dans la zone de saisie).
-                if sendNow, self.sendEnabled, self.config.dryRun != true { self.submitNow(t) } else { self.holdForSend(t) }
-            }
-        }
-    }
-
-    /// Texte prêt dans la zone de saisie : « ok envoie » l'envoie (même attente qu'après « garde le brouillon »).
-    private func holdForSend(_ t: Target) {
-        guard config.dryRun != true, sendEnabled else { return }
-        pauseTimer?.invalidate()
-        active = t
-        dictationWindow = ShortcutTrigger.dictationWindow(for: t)
-        recording = false
-        stopping = false
-        dictatedContent = .held
-        let until = Date().addingTimeInterval(config.reviewSeconds ?? 180)
-        reviewUntil = until
-        detector.reset()
-        pauseTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
-            guard let self else { timer.invalidate(); return }
-            guard self.active?.id == t.id, self.reviewUntil != nil, !self.recording else { timer.invalidate(); return }
-            if Date() >= until {
-                self.endPause()
-                log("Reprise de la veille (pas de « ok envoie » après le skill).")
-                self.detector.reset()
-            }
-        }
-    }
-
     // MARK: Confirmation vocale
 
-    private var pendingConfirmation: (title: String, run: () -> Void, expires: Date)?
-    private var confirmWork: DispatchWorkItem?
-
-    /// Action sensible : « Confirmer … ? », puis « oui » ou « non » dit seul dans les 8 s.
-    private func askConfirmation(_ action: Universal.Action, in name: String) {
-        log("Confirmation demandée → \(name)\(label(action.title)).")
-        askConfirmation(action.title) { [weak self] in self?.performUniversal(action, in: name, confirmed: true) }
-    }
-
-    /// Demande « Confirmer … ? » et n'exécute `run` que sur « je confirme » dit seul.
-    private func askConfirmation(_ title: String, run: @escaping () -> Void) {
-        pendingConfirmation = (title, run, Date().addingTimeInterval(Universal.confirmSeconds + 3))
-        speak(Universal.confirmationPrompt(title, config: config)) { [weak self] in
-            self?.pendingConfirmation?.expires = Date().addingTimeInterval(Universal.confirmSeconds)
-        }
-    }
-
-    /// true si la transcription a été prise comme réponse (ou ignorée pendant l'annonce).
-    private func handleConfirmation(_ text: String, isFinal: Bool) -> Bool {
-        guard let pending = pendingConfirmation else { return false }
-        if Date() > pending.expires {
-            pendingConfirmation = nil
-            confirmWork?.cancel()
-            Feedback.play(.micClosed)
-            log("Confirmation expirée : rien n'a été fait.")
-            return false
-        }
-        if announcer.isSpeaking { return true } // c'est la question qu'on entend
-        confirmWork?.cancel()
-        guard let answer = Universal.answer(text, config: config) else { return false }
-        // Pendant une lecture à voix haute, la réponse pourrait venir de la voix : jamais de confirmation.
-        if answer == .confirm, reader.isActive || currentReader() != nil {
-            Feedback.play(.ignored)
-            log("Confirmation ignorée : lecture à voix haute en cours.")
-            return true
-        }
-        // Confirmer : résultat définitif du moteur seulement. Annuler : dès que la réponse est stable (0,9 s).
-        if answer == .confirm, !isFinal { return true }
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, let p = self.pendingConfirmation else { return }
-            self.pendingConfirmation = nil
-            self.detector.reset()
-            switch answer {
-            case .confirm:
-                log("Confirmé.")
-                p.run()
-            case .cancel:
-                Feedback.play(.micClosed)
-                log("Annulé : rien n'a été fait.")
-            }
-        }
-        confirmWork = work
-        if isFinal { work.perform() } else { DispatchQueue.main.asyncAfter(deadline: .now() + 0.9, execute: work) }
-        return true
-    }
-
-    private func performUniversal(_ action: Universal.Action, in name: String, confirmed: Bool = false) {
-        DispatchQueue.global().async { [weak self] in
-            let ok = action.perform(confirmed: confirmed)
-            DispatchQueue.main.async {
-                Feedback.play(ok ? .understood : .failed)
-                if !ok { Bilan.record(.universal, action.kind == .menu ? "menu non exécuté" : "bouton non exécuté") }
-                log("Commande universelle → \(name) : \(action.kind == .menu ? "menu" : "bouton")\(self?.label(action.title) ?? "") \(ok ? "exécuté" : "non exécuté").")
-            }
-        }
-    }
-
+    var pendingConfirmation: (title: String, run: () -> Void, expires: Date)?
+    var confirmWork: DispatchWorkItem?
     // MARK: Indices de reconnaissance
 
     /// Au plus ce nombre d'indices (au-delà, le moteur d'Apple en tire moins de profit).
     static let maxHints = 100
-    private var hintTimer: Timer?
+    var hintTimer: Timer?
 
     /// Met à jour les indices toutes les 60 s : noms de projets et de conversations de l'app au premier plan
     /// (« ouvre VoxTV » est alors bien mieux compris), puis phrases d'activation et commandes.
-    private func startHintRefresh() {
+    func startHintRefresh() {
         _ = SystemCommands.installedApps() // liste des apps prête avant la première commande
         refreshHints()
         let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in self?.refreshHints() }
@@ -718,7 +234,7 @@ final class Coordinator {
         hintTimer = timer
     }
 
-    private func refreshHints() {
+    func refreshHints() {
         // Pas pendant une dictée ou une lecture : la lecture de l'arbre d'accessibilité prend un instant.
         guard active == nil, !reader.isActive else { return }
         var names: [String] = []
@@ -758,7 +274,7 @@ final class Coordinator {
 
     /// « Quelles commandes ? » : ce qu'on peut dire dans l'app au premier plan, à voix haute (sans jamais
     /// commencer une phrase par une commande ; tout ce que le micro entend pendant l'annonce est ignoré).
-    private func announceHelp() {
+    func announceHelp() {
         guard !announcer.isSpeaking else { return }
         let app = Universal.frontApp()
         let allowed = app?.bundleIdentifier.map { Universal.allowedApps(config).contains($0) } ?? false
@@ -799,22 +315,22 @@ final class Coordinator {
         }
     }
 
-    private let announcer = Announcer()
+    let announcer = Announcer()
 
     /// Annonce parlée : le micro est coupé pendant toute l'annonce (VoiceWake ne peut pas s'entendre lui-même),
     /// puis relancé avec une transcription vide.
-    private func speak(_ message: String, then: (() -> Void)? = nil) {
+    func speak(_ message: String, then: (() -> Void)? = nil) {
         detector.stop()
         announcer.say(message, locale: config.locale, voice: config.readerVoice) { [weak self] in
             self?.detector.start()
             then?()
         }
     }
-    private var lastStatus = Date.distantPast
+    var lastStatus = Date.distantPast
 
     /// « Où on en est ? » : dit l'état de VoiceWake avec une voix du Mac. Le texte ne contient aucune
     /// phrase de commande, pour que VoiceWake ne réagisse pas à sa propre annonce.
-    private func announceStatus() {
+    func announceStatus() {
         guard !announcer.isSpeaking, Date().timeIntervalSince(lastStatus) >= 4 else { return }
         lastStatus = Date()
         let name = { (t: Target) in t.appName ?? t.id.capitalized }
@@ -838,13 +354,13 @@ final class Coordinator {
         speak(message)
     }
 
-    private let reader = Reader()
-    private let follower = ReadingFollower()
-    private var detectedReader: (target: Target?, at: Date) = (nil, .distantPast)
+    let reader = Reader()
+    let follower = ReadingFollower()
+    var detectedReader: (target: Target?, at: Date) = (nil, .distantPast)
 
     /// L'assistant qui lit à voix haute : lecture lancée par VoiceWake, sinon lecture lancée à la main
     /// (bouton de pause visible dans l'app au premier plan ; vérifié au plus toutes les 2 s).
-    private func currentReader() -> Target? {
+    func currentReader() -> Target? {
         if let r = trigger.readingTarget() { return r }
         if Date().timeIntervalSince(detectedReader.at) < 2 { return detectedReader.target }
         var found: Target?
@@ -858,10 +374,10 @@ final class Coordinator {
         detectedReader = (found, Date())
         return found
     }
-    private var readerTarget: Target?
+    var readerTarget: Target?
 
     /// « Lis à partir de … » : cherche le passage dans le texte affiché par l'assistant et le lit depuis là.
-    private func readFrom(_ query: [String]) {
+    func readFrom(_ query: [String]) {
         guard let target = trigger.pausedTarget() ?? trigger.readingTarget() ?? router.frontmostTarget(),
               let app = ShortcutTrigger.runningApp(for: target) else { Feedback.play(.failed); return log("Lecture : aucun assistant ouvert.") }
         let tokens = PassageFinder.tokens(in: app, target: target)
@@ -880,30 +396,30 @@ final class Coordinator {
     }
 
     /// Le micro entend aussi le lecteur intégré : une commande présente dans ce qu'il lit en ce moment est ignorée.
-    private func spokenByOwnReader(_ text: String) -> Bool {
+    func spokenByOwnReader(_ text: String) -> Bool {
         if voiceVerified { return false } // voix reconnue par le filtre : c'est l'utilisateur
         let phrases = (config.readPausePhrases ?? []) + (config.interruptPhrases ?? []) + (config.readResumePhrases ?? [])
             + ReaderNav.allPhrases(config)
         return VoiceFilter.spokenByReader(text, phrases: phrases, spokenNow: reader.spokenNow, router: router)
     }
 
-    private var insistence = Insistence()
+    var insistence = Insistence()
 
     /// Commande attribuée à la voix de lecture mais redite par l'utilisateur (voir `Insistence`).
-    private func insisted(_ text: String, phrases: [String]?, spokenNow: String) -> Bool {
+    func insisted(_ text: String, phrases: [String]?, spokenNow: String) -> Bool {
         guard let phrase = router.lastMatch(text, phrases)?.phrase else { return false }
         return insistence.accept(phrase, spokenNow: spokenNow)
     }
 
-    private var readCommandPhrases: [String] { (config.readPausePhrases ?? []) + (config.interruptPhrases ?? []) }
+    var readCommandPhrases: [String] { (config.readPausePhrases ?? []) + (config.interruptPhrases ?? []) }
 
     /// « Stop Claude » passe du premier coup, sauf si la réponse affichée contient elle-même la phrase.
-    private func strongInterrupt(_ text: String, _ reader: Target) -> Bool {
+    func strongInterrupt(_ text: String, _ reader: Target) -> Bool {
         guard let app = ShortcutTrigger.runningApp(for: reader) else { return false }
         return router.isStrongInterrupt(text, notIn: AXButtonPresser.windowTexts(in: app).joined(separator: " "))
     }
 
-    private func spokenByReader(_ text: String, _ reader: Target) -> Bool {
+    func spokenByReader(_ text: String, _ reader: Target) -> Bool {
         if voiceVerified { return false } // voix reconnue par le filtre : c'est l'utilisateur
         let phrases = (config.readPausePhrases ?? []) + (config.interruptPhrases ?? [])
         guard let hit = router.lastMatch(text, phrases), let app = ShortcutTrigger.runningApp(for: reader) else { return false }
@@ -913,716 +429,31 @@ final class Coordinator {
         return shown.contains(" " + previous + " " + hit.phrase + " ")
     }
 
-    private var pendingWake: DispatchWorkItem?
+    var pendingWake: DispatchWorkItem?
 
     // MARK: Filtre « ma voix uniquement »
 
     /// La commande en cours vient d'une voix reconnue par le filtre (mode blocage) : les protections contre la voix
     /// de lecture, fondées sur le texte affiché, ne s'appliquent pas.
-    private var voiceVerified = false
+    var voiceVerified = false
+    var latestWakeText = ""
 
-    /// nil : filtre inactif ou en observation (rien ne change) ; true : voix reconnue ; false : commande bloquée.
-    private func voiceDecision(_ text: String) -> Bool? {
-        guard wakeKey(text) != nil else { return nil }
-        return voiceGate()
-    }
-
-    /// Même décision, sur la parole entendue à l'instant (aussi pour les phrases que l'interpréteur IA ou le nom
-    /// d'appel transformeront en commande : la vérification se fait sur la voix d'origine).
-    private func voiceGate() -> Bool? {
-        guard let settings = config.voiceFilter, settings.enabled == true, let print = VoicePrint.shared,
-              print.profile != nil else { return nil }
-        let threshold = Float(settings.threshold ?? 0.45)
-        let score = print.score(lastSeconds: settings.windowSeconds ?? 4)
-        let ok = score.map { $0 >= threshold } ?? false
-        let shown = score.map { String(format: "%.2f", $0) } ?? "aucune parole"
-        guard settings.block == true else {
-            log("Filtre de voix (observation) : score \(shown), seuil \(String(format: "%.2f", threshold)) → \(ok ? "ta voix" : "aurait été bloquée").")
-            return nil
-        }
-        if ok { if config.debug { log("Filtre de voix : score \(shown) → ta voix.") }; return true }
-        Feedback.play(.ignored)
-        log("Commande ignorée : voix non reconnue (score \(shown)).")
-        return false
-    }
-    private var latestWakeText = ""
-
-    /// Ce que la phrase déclencherait (cible ou commande de lecture), ou nil.
-    private func wakeKey(_ text: String) -> String? {
-        if router.readFromQuery(text) != nil || router.containsAny(text, config.readFromPhrases) { return "#readfrom" }
-        if router.containsInterruptPhrase(text) { return "#interrupt" }
-        if router.containsAny(text, config.readPausePhrases) { return "#pause" }
-        if router.containsAny(text, config.readResumePhrases) { return "#resume" }
-        if router.containsReadAloudPhrase(text) { return "#readaloud" }
-        if reader.isActive, let nav = ReaderNav.match(text, config: config) { return "#" + nav.rawValue }
-        if Routines.match(text, config: config) != nil { return "#routine" }
-        if let card = currentCard, QuestionAnswer.match(text, card: card.card) != nil { return "#answer" }
-        if Palette.key(text, paletteOpen: paletteOpen) != nil { return "#key" }
-        if Palette.request(text, config: config) != nil { return "#palette" }
-        if SkillCatalog.request(text, config: config) != nil { return "#skill" }
-        if WriteCommand.request(text, config: config) != nil { return "#write" }
-        if Universal.match(text, config: config) != nil { return "#universal" }
-        if macCommand(text) != nil { return "#mac" }
-        if systemCommand(text) != nil { return "#system" }
-        if NavCommands.match(text, target: nil, config: config) != nil { return "#nav" }
-        if let command = AppCommand.match(text, router: router, config: config) { return "#" + command.rawValue }
-        return router.route(text)?.id
-    }
-
-    private func handleWake(_ text: String, fromVoice: Bool = true, verified: Bool = false) {
-        voiceVerified = verified
-        if fromVoice, let accepted = voiceDecision(text) {
-            guard accepted else { detector.reset(); return }
-            voiceVerified = true
-        }
-        let interrupt = router.containsInterruptPhrase(text)
-        let pauseRead = router.containsAny(text, config.readPausePhrases)
-        let resumeRead = router.containsAny(text, config.readResumePhrases)
-        let routed = router.route(text)
-        let readAloud = router.containsReadAloudPhrase(text)
-        if let query = router.readFromQuery(text) {
-            detector.reset()
-            // Le lecteur intégré ne doit pas se relancer lui-même en lisant « à partir de … ».
-            if reader.isActive, !reader.isPaused,
-               router.containsAny(reader.spokenNow, config.readFromPhrases),
-               !insisted(text, phrases: config.readFromPhrases, spokenNow: reader.spokenNow) {
-                Feedback.play(.ignored)
-                return log("Commande ignorée : prononcée par le lecteur intégré.")
-            }
-            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
-            lastWake = Date()
-            if config.dryRun == true { return log("[essai] → lecture à partir d'un passage\(said(text))") }
-            readFrom(query)
-            return
-        }
-        // Lecteur intégré en cours : pause, reprise, écoute.
-        if reader.isActive {
-            defer { detector.reset() }
-            if !router.isStrongInterrupt(text, notIn: reader.spokenNow), spokenByOwnReader(text), !insisted(text, phrases: readCommandPhrases + (config.readResumePhrases ?? []) + ReaderNav.allPhrases(config), spokenNow: reader.spokenNow) { Feedback.play(.ignored); return log("Commande ignorée : prononcée par le lecteur intégré.") }
-            if interrupt, let t = readerTarget {
-                reader.stop()
-                lastWake = Date()
-                log("Écoute → \(t.id) (micro).")
-                detector.stop()
-                trigger.fire(t, external: config.externalDictation) { [weak self] started in self?.didTrigger(t, started: started) }
-            } else if pauseRead {
-                reader.pause(); Feedback.play(.understood); log("Lecteur intégré : pause.")
-            } else if resumeRead {
-                reader.resume(); Feedback.play(.understood); log("Lecteur intégré : reprise.")
-            } else if let nav = ReaderNav.match(text, config: config) {
-                let ok: Bool
-                switch nav {
-                case .faster, .slower:
-                    let r = reader.changeRate(faster: nav == .faster)
-                    ok = r != nil
-                    log(r.map { "Lecteur intégré : vitesse × \(String(format: "%.2f", $0))." } ?? "Lecteur intégré : vitesse déjà à la limite.")
-                case .repeatSentence, .nextSentence:
-                    ok = reader.skipSentence(forward: nav == .nextSentence)
-                    log(ok ? "Lecteur intégré : \(nav == .nextSentence ? "phrase suivante" : "phrase reprise")." : "Lecteur intégré : pas d'autre phrase.")
-                }
-                Feedback.play(ok ? .understood : .failed)
-            }
-            return
-        }
-        // Routines : une phrase dite seule enchaîne plusieurs commandes.
-        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let routine = Routines.match(text, config: config) {
-            detector.reset()
-            if !voiceVerified, let r = currentReader() {
-                Feedback.play(.ignored)
-                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
-            }
-            guard routineWork == nil else { return log("Routine déjà en cours.") }
-            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
-            lastWake = Date()
-            Feedback.play(.understood)
-            log("Routine « \(Routines.label(routine)) » : \(min(routine.steps.count, Routines.maxSteps)) étapes.")
-            runRoutine(routine, step: 0)
-            return
-        }
-        // Question affichée par l'assistant : option, rang, « passe », « réponds … ».
-        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil,
-           let card = currentCard, let reply = QuestionAnswer.match(text, card: card.card) {
-            detector.reset()
-            if !voiceVerified, let r = currentReader() {
-                Feedback.play(.ignored)
-                return log("Réponse ignorée : lecture à voix haute de \(r.id) en cours.")
-            }
-            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
-            lastWake = Date()
-            if config.dryRun == true { return log("[essai] → réponse à la question : \(reply)") }
-            let app = card.app
-            let answer = { [weak self] in
-            DispatchQueue.global().async { [weak self] in
-                let ok = QuestionAnswer.perform(reply, expected: card.card, in: app)
-                DispatchQueue.main.async {
-                    Feedback.play(ok ? .understood : .failed)
-                    if !ok { Bilan.record(.command, "reponse a une question") }
-                    let what: String
-                    switch reply {
-                    case let .option(i): what = "option \(i + 1)"
-                    case .skip: what = "passer"
-                    case .free: what = "réponse libre envoyée"
-                    }
-                    log("Question → \(what) : \(ok ? "fait" : "carte changée ou introuvable").")
-                    self?.currentCard = nil
-                }
-            }
-            }
-            // Option sensible (supprimer, publier, envoyer…) : « je confirme » d'abord, comme pour les boutons.
-            if case let .option(i) = reply, i < card.card.options.count, Universal.isDangerous(card.card.options[i], path: "") {
-                log("Confirmation demandée → réponse à la question.")
-                return askConfirmation(card.card.options[i], run: answer)
-            }
-            answer()
-            return
-        }
-        // Touches et palettes de commandes, dans une app autorisée au premier plan.
-        let keySpec = Palette.key(text, paletteOpen: paletteOpen)
-        let palette = keySpec == nil ? Palette.request(text, config: config) : nil
-        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, keySpec != nil || palette != nil {
-            detector.reset()
-            if !voiceVerified, let r = currentReader() {
-                Feedback.play(.ignored)
-                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
-            }
-            // Flèches : répétables vite (1,5 s) ; tout le reste : délai normal entre deux commandes.
-            let repeatable = keySpec == "up" || keySpec == "down"
-            guard Date().timeIntervalSince(lastWake) >= (repeatable ? 1.5 : config.cooldownSeconds) else { return }
-            lastWake = Date()
-            guard let app = Universal.frontApp(), let bid = app.bundleIdentifier, Universal.allowedApps(config).contains(bid) else {
-                Feedback.play(.failed); Bilan.record(.palette, "app non autorisée"); return log("Touche ou palette : app au premier plan non autorisée.")
-            }
-            let name = app.localizedName ?? bid
-            if config.dryRun == true { return log("[essai] → \(keySpec.map { "touche \($0)" } ?? "palette") dans \(name)") }
-            if let keySpec {
-                if keySpec == "return" { lastPaletteAt = .distantPast }
-                DispatchQueue.global().async {
-                    let ok = Palette.pressKey(keySpec, in: app)
-                    DispatchQueue.main.async { Feedback.play(ok ? .understood : .failed); if !ok { Bilan.record(.palette, "touche \(keySpec)") }; log("Touche \(keySpec) → \(name) : \(ok ? "envoyée" : "non envoyée").") }
-                }
-                return
-            }
-            guard let palette, let spec = Palette.shortcut(for: bid, config: config) else {
-                Feedback.play(.failed); Bilan.record(.palette, "pas de palette pour \(bid)"); return log("Palette : pas de palette connue pour \(name) (paletteShortcuts).")
-            }
-            // Texte d'origine de la commande, découpé sur les mêmes mots que la phrase reconnue.
-            let command = SkillCatalog.originalSlice(text, skippingWords: palette.phraseWords, droppingLastWords: palette.validate ? 2 : 0)
-            guard !command.isEmpty else { Feedback.play(.failed); return log("Palette : commande vide.") }
-            lastPaletteAt = palette.validate ? .distantPast : Date()
-            DispatchQueue.global().async { [weak self] in
-                let ok = Palette.run(command, validate: palette.validate, shortcut: spec, in: app)
-                DispatchQueue.main.async {
-                    Feedback.play(ok ? .understood : .failed)
-                    if !ok { Bilan.record(.palette, "palette \(name)") }
-                    log("Palette → \(name) : \(ok ? (palette.validate ? "commande lancée" : "commande tapée, « valide » pour l'exécuter") : "échec")\(self?.config.debug == true ? " (« \(command) »)" : "").")
-                }
-            }
-            return
-        }
-        // Skills et commandes slash : « lance le skill code review sur ce fichier ».
-        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let q = SkillCatalog.request(text, config: config) {
-            detector.reset()
-            if !voiceVerified, let r = currentReader() {
-                Feedback.play(.ignored)
-                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
-            }
-            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
-            lastWake = Date()
-            runSkill(q, said: text)
-            return
-        }
-        // « Écris … » : texte tapé dans le champ qui a le focus.
-        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let n = WriteCommand.request(text, config: config) {
-            detector.reset()
-            if !voiceVerified, let r = currentReader() {
-                Feedback.play(.ignored)
-                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
-            }
-            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
-            lastWake = Date()
-            writeText(WriteCommand.text(text, phraseWords: n))
-            return
-        }
-        // Commandes universelles : « menu <libellé> », « clique sur <libellé> », dans l'app au premier plan.
-        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let u = Universal.match(text, config: config) {
-            detector.reset()
-            if !voiceVerified, let r = currentReader() {
-                Feedback.play(.ignored)
-                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
-            }
-            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
-            lastWake = Date()
-            guard let app = Universal.frontApp(), let bid = app.bundleIdentifier, Universal.allowedApps(config).contains(bid) else {
-                Feedback.play(.failed)
-                Bilan.record(.universal, "app non autorisée")
-                return log("Commande universelle : app au premier plan non autorisée (ajouter son identifiant à universalApps).")
-            }
-            runUniversal(u.kind, u.query, in: app)
-            return
-        }
-        // Finder et Réglages Système.
-        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let mac = macCommand(text) {
-            detector.reset()
-            if !voiceVerified, let r = currentReader() {
-                Feedback.play(.ignored)
-                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
-            }
-            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
-            lastWake = Date()
-            runMac(mac)
-            return
-        }
-        // Commandes du Mac : apps, fenêtres, son, musique, capture d'écran.
-        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil, let sys = systemCommand(text) {
-            detector.reset()
-            if !voiceVerified, let r = currentReader() {
-                Feedback.play(.ignored)
-                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
-            }
-            // Son, luminosité, musique : répétables vite (1,5 s).
-            let repeatable = [.volumeUp, .volumeDown, .brightnessUp, .brightnessDown, .nextTrack, .previousTrack].contains(sys)
-            guard Date().timeIntervalSince(lastWake) >= (repeatable ? 1.5 : config.cooldownSeconds) else { return }
-            lastWake = Date()
-            runSystem(sys)
-            return
-        }
-        // Navigation dans l'app au premier plan : menus, barre latérale, « ouvre <projet> ».
-        if !interrupt, !pauseRead, !resumeRead, !readAloud, routed == nil,
-           let front = router.frontmostTarget(), let request = NavCommands.match(text, target: front, config: config) {
-            detector.reset()
-            if !voiceVerified, let r = currentReader() {
-                Feedback.play(.ignored)
-                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
-            }
-            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
-            lastWake = Date()
-            // Noms de projets et titres de sessions : journalisés seulement en mode debug (données privées).
-            if config.dryRun == true { return log("[essai] → navigation sur \(front.id)\(config.debug ? " : \(request)" : "")") }
-            NavCommands.run(request, target: front) { [weak self] ok, detail in
-                Feedback.play(ok ? .understood : .failed)
-                if !ok { Bilan.record(.nav, self?.config.debug == true ? text : "navigation impossible") }
-                log("Navigation → \(front.id) : \(ok ? "faite" : "impossible")\(self?.config.debug == true ? " (\(detail))" : "").")
-            }
-            return
-        }
-        // Gestion de l'assistant : efface le brouillon, nouvelle conversation, copie, état.
-        if !interrupt, !pauseRead, !resumeRead, !readAloud,
-           let command = AppCommand.match(text, router: router, config: config) {
-            detector.reset()
-            if command == .status { return announceStatus() }
-            if command == .help { return announceHelp() }
-            // Pendant une lecture à voix haute, la voix pourrait dire la phrase : on n'agit pas.
-            if !voiceVerified, let r = currentReader() {
-                Feedback.play(.ignored)
-                return log("Commande ignorée : lecture à voix haute de \(r.id) en cours (mettre en pause d'abord).")
-            }
-            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
-            lastWake = Date()
-            guard let t = router.frontmostTarget() else { Feedback.play(.failed); Bilan.record(.command, command.rawValue); return log("Commande : aucun assistant ouvert.") }
-            if config.dryRun == true { return log("[essai] → \(command.rawValue) sur \(t.id)") }
-            AppActions.run(command, target: t) { ok, detail in
-                Feedback.play(ok ? .understood : .failed)
-                if !ok { Bilan.record(.command, command.rawValue) }
-                log("Commande \(command.rawValue) → \(t.id) : \(ok ? "faite" : "impossible") (\(detail)).")
-            }
-            return
-        }
-        guard interrupt || pauseRead || resumeRead || readAloud || routed != nil else { return }
-        // Lecture en pause : « reprends la lecture » la relance, « écoute » ouvre le micro.
-        if trigger.readingTarget() == nil, let paused = trigger.pausedTarget(), resumeRead || interrupt {
-            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { detector.reset(); return }
-            lastWake = Date()
-            detector.reset()
-            if resumeRead {
-                Feedback.play(.understood)
-                log("Reprise de la lecture → \(paused.id).")
-                trigger.resumeReading(paused)
-            } else {
-                log("Écoute → \(paused.id) (micro).")
-                detector.stop()
-                trigger.fire(paused, external: config.externalDictation) { [weak self] started in
-                    self?.didTrigger(paused, started: started)
-                }
-            }
-            return
-        }
-        // Lecture à voix haute lancée par VoiceWake et encore en cours : seule une phrase
-        // d'interruption compte, pour ne pas se déclencher sur la voix de l'assistant.
-        // (Une app peut garder sa sortie audio ouverte sans rien lire : on ne bloque que nos lectures.)
-        // La lecture reste « en cours » jusqu'à 3 s de silence continu (voir startReading).
-        if let reader = currentReader() {
-            if (pauseRead || interrupt), !strongInterrupt(text, reader), spokenByReader(text, reader),
-               !insisted(text, phrases: readCommandPhrases, spokenNow: "") {
-                Feedback.play(.ignored)
-                log("Commande ignorée : prononcée par la voix de lecture de \(reader.id).")
-                detector.reset()
-                return
-            }
-            if pauseRead && !interrupt {
-                Feedback.play(.understood)
-                log("Lecture mise en pause → \(reader.id).")
-                detector.reset()
-                trigger.pauseReading(reader)
-            } else if interrupt {
-                let t = reader
-                lastWake = Date()
-                log("Interruption de la lecture → \(t.id)\(said(text)).")
-                detector.stop()
-                trigger.interruptAndDictate(t, external: config.externalDictation) { [weak self] started in
-                    self?.didTrigger(t, started: started)
-                }
-            } else {
-                log("Phrase ignorée : lecture à voix haute de \(reader.id) en cours\(said(text)).")
-                detector.reset()
-            }
-            return
-        }
-        // « Fais la lecture » (ou « reprends la lecture » sans lecture en pause) : lire la dernière réponse.
-        if readAloud || resumeRead {
-            detector.reset()
-            guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
-            lastWake = Date()
-            guard let t = router.frontmostTarget() else { Feedback.play(.failed); return log("Lecture : aucun assistant ouvert.") }
-            if config.dryRun == true { return log("[essai] → lecture de la dernière réponse de \(t.id)") }
-            log("Lecture demandée → \(t.id).")
-            trigger.readAloudNow(t) { ok in
-                Feedback.play(ok ? .understood : .failed)
-                log(ok ? "\(t.id) : lecture à voix haute lancée." : "\(t.id) : bouton de lecture introuvable.")
-            }
-            return
-        }
-        guard let routedTarget = routed else { detector.reset(); return }
-        // Éditeur de code au premier plan avec cet assistant intégré : on vise l'éditeur.
-        let target = config.externalDictation == nil ? (router.inEditor(routedTarget) ?? routedTarget) : routedTarget
-        let now = Date()
-        guard now.timeIntervalSince(lastWake) >= config.cooldownSeconds else {
-            detector.reset()
-            return
-        }
-        if config.dryRun == true {
-            // Essai à blanc : on montre ce qui serait déclenché, sans rien ouvrir.
-            log("[essai] → \(target.id)\(said(text))")
-            detector.reset()
-            return
-        }
-        lastWake = now
-        log("Phrase détectée → \(target.id)\(said(text)).")
-
-        // On libère le micro avant d'appuyer sur le raccourci.
-        detector.stop()
-        let external = externalDictation(for: target)
-        trigger.fire(target, external: external) { [weak self] started in
-            self?.didTrigger(target, started: started)
-        }
-    }
-
-    private var dictatedContent = DictatedContent.empty
-    private var lastAutoSendPause: TimeInterval = 0
-
-    /// Conversation continue : la lecture de la réponse est finie, on rouvre le micro du même assistant.
-    private func continueConversation(_ t: Target, in window: ShortcutTrigger.DictationWindow) {
-        guard config.continuousConversation == true, externalDictation(for: t) == nil, config.dryRun != true,
-              active == nil, pendingWake == nil, !reader.isActive else { return }
-        // Seulement si l'assistant est resté devant : on ne reprend pas la main sur une autre app.
-        guard window.isSameConversation else {
-            return log("Conversation continue : chat de \(t.id) changé ou non identifié, veille.")
-        }
-        lastWake = Date()
-        log("Conversation continue → \(t.id) (micro).")
-        detector.stop()
-        trigger.reopenDictation(t, in: window) { [weak self] started in
-            guard let self else { return }
-            if started { self.pauseUntilConversationEnds(t, reopenedIn: window) }
-            else { self.detector.start() }
-        }
-    }
-
-    private func endSilentContinuation(_ t: Target) {
-        guard active?.id == t.id, recording, !stopping else { return }
-        stopping = true
-        dictatedContent = .held
-        trigger.stopDictation(t, in: dictationWindow, recoverFocus: false) { [weak self] stopped in
-            guard let self, self.active?.id == t.id else { return }
-            self.stopping = false
-            if stopped {
-                self.endPause()
-                Feedback.play(.micClosed)
-                log("Conversation continue : rien entendu, micro refermé.")
-                self.detector.reset()
-            } else {
-                log("Conversation continue : fermeture du micro non confirmée.")
-            }
-        }
-    }
+    var dictatedContent = DictatedContent.empty
+    var lastAutoSendPause: TimeInterval = 0
 
     /// Micro de l'app encore ouvert (false après « ok arrête »).
-    private var recording = false
-    private var stopping = false
-    private var dictationWindow: ShortcutTrigger.DictationWindow?
+    var recording = false
+    var stopping = false
+    var dictationWindow: ShortcutTrigger.DictationWindow?
     /// Après « ok arrête » : attente de « ok envoie » jusqu'à cette date.
-    private var reviewUntil: Date?
+    var reviewUntil: Date?
 
     /// Phrase en fin de transcription, puis silence :
     ///   « ok envoie » → coupe le micro de l'app si besoin et envoie ;
     ///   « ok arrête » → coupe seulement le micro, pour relire.
     /// Transcriptions récentes (date, texte normalisé), pour mesurer la pause avant « ok envoie ».
-    private var history: [(at: Date, text: String)] = []
-
-    /// Ce qui a été dit après la dernière pause d'au moins `minPause` secondes (texte normalisé), sinon nil.
-    private func spokenAfterPause(_ n: String, minPause: Double) -> String? {
-        guard history.count >= 2 else { return nil }
-        for i in stride(from: history.count - 2, through: 0, by: -1) {
-            let h = history[i].text
-            guard !h.isEmpty, n.hasPrefix(h + " ") else { continue }
-            if history[i + 1].at.timeIntervalSince(history[i].at) >= minPause { return String(n.dropFirst(h.count + 1)) }
-        }
-        return nil
-    }
-
-    /// « OK tu peux envoyer », « vas-y envoie »… : courte phrase après une pause, terminée par le verbe d'envoi.
-    /// Pendant une dictée : « Salut Codex », dit seul après une pause, vise un autre assistant.
-    private func switchTarget(_ text: String, from current: Target) -> Target? {
-        guard !stopping else { return nil }
-        let n = normalize(text)
-        // Une vraie pause, puis la phrase d'activation dite seule : « dis à Codex » cité au fil
-        // d'une dictée ne doit pas changer d'assistant.
-        let candidate = spokenAfterPause(n, minPause: max(config.sendPauseBeforeSeconds ?? 0.6, 1.2)) ?? n
-        guard router.isWakePhrase(candidate), let routed = router.route(candidate) else { return nil }
-        let next = router.inEditor(routed) ?? routed
-        return next.id == current.id ? nil : next
-    }
-
-    /// Arrête la dictée en cours (sans envoyer) puis ouvre le micro de l'autre assistant.
-    private func switchDictation(from current: Target, to next: Target) {
-        guard Date().timeIntervalSince(lastWake) >= config.cooldownSeconds else { return }
-        lastWake = Date()
-        log("Changement d'assistant : \(current.id) → \(next.id).")
-        let window = dictationWindow
-        pendingSend?.cancel()
-        pendingSend = nil
-        let open = { [weak self] in
-            guard let self else { return }
-            self.endPause()
-            self.detector.stop()
-            self.trigger.fire(next, external: self.externalDictation(for: next)) { [weak self] started in
-                self?.didTrigger(next, started: started)
-            }
-        }
-        guard recording else { return open() }
-        stopping = true
-        trigger.stopDictation(current, in: window, external: externalDictation(for: current)) { [weak self] stopped in
-            guard let self, self.active?.id == current.id else { return }
-            if stopped { open() }
-            else {
-                self.stopping = false
-                log("Changement annulé : l'arrêt du micro de \(current.id) n'a pas été confirmé.")
-                self.detector.reset()
-            }
-        }
-    }
-
-    private func checkSend(_ text: String, _ t: Target, isFinal: Bool) {
-        lastDictationText = text
-        guard !stopping else { return }
-        let normalized = normalize(text)
-        if history.last?.text == normalized, !isFinal { return }
-        pendingSend?.cancel()
-        pendingSend = nil
-        if history.last?.text != normalized {
-            history.append((Date(), normalized))
-        }
-        if history.count > 60 { history.removeFirst(history.count - 60) }
-        let external = externalDictation(for: t)
-        let isolated = spokenAfterPause(normalized, minPause: config.sendPauseBeforeSeconds ?? 0.6) ?? normalized
-        let stop = recording && (router.isStandaloneStop(text) || router.isStandaloneStop(isolated))
-        let pause = !stop && recording && external == nil &&
-            (router.isThoughtPause(text) || router.isThoughtPause(isolated))
-        let send = !stop && !pause && sendEnabled && external == nil &&
-            (router.isSendCommand(text) || router.isSendCommand(isolated))
-        guard send || stop || pause else {
-            if !normalized.isEmpty { dictatedContent.heardContent() }
-            return
-        }
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, self.active?.id == t.id else { return }
-            self.pendingSend = nil
-            if pause {
-                self.dictatedContent = .paused
-                self.lastAutoSendPause = ProcessInfo.processInfo.systemUptime
-                self.history.removeAll()
-                self.detector.reset()
-                log("Envoi automatique suspendu jusqu'à la reprise de la dictée.")
-                return
-            }
-            if stop {
-                self.dictatedContent = .held
-                log("Phrase d'arrêt détectée → \(t.id)\(self.said(text)).")
-                self.stopping = true
-                self.trigger.stopDictation(t, in: self.dictationWindow, external: external) { [weak self] stopped in
-                    guard let self, self.active?.id == t.id else { return }
-                    self.stopping = false
-                    if stopped {
-                        if external != nil || !self.sendEnabled {
-                            self.endPause()
-                            Feedback.play(.micClosed)
-                            log("Dictée arrêtée. Reprise de la veille.")
-                            self.detector.reset()
-                            return
-                        }
-                        self.recording = false
-                        self.reviewUntil = Date().addingTimeInterval(self.config.reviewSeconds ?? 180)
-                        Feedback.play(.micClosed)
-                        log("Dictée arrêtée. En attente de « ok envoie ».")
-                    } else {
-                        Feedback.play(.failed)
-                        log("Arrêt de la dictée non effectué.")
-                    }
-                    self.detector.reset()
-                }
-                return
-            }
-            log("Phrase d'envoi détectée → \(t.id)\(self.said(text)).")
-            self.submitNow(t)
-        }
-        if isFinal { work.perform() }
-        else {
-            pendingSend = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + (config.sendSilenceSeconds ?? 1.2), execute: work)
-        }
-    }
+    var history: [(at: Date, text: String)] = []
 
     /// Dernière transcription entendue pendant la dictée (pour juger si la phrase est finie).
-    private var lastDictationText = ""
-
-    private func sendAfterSilence(_ target: Target, startedAt: TimeInterval) -> Bool {
-        let base = config.autoSendSilenceSeconds ?? 5
-        let delay = (config.naturalTurnEnd ?? true) ? TurnEnd.delay(for: lastDictationText, base: base) : base
-        guard pendingSend == nil, recording, let audio = detector.audioActivity else { return false }
-        let now = ProcessInfo.processInfo.systemUptime
-        guard dictatedContent.shouldSend(now: now, startedAt: max(startedAt, lastAutoSendPause), lastBuffer: audio.lastBuffer,
-                                         lastSpeech: audio.lastSpeech, delay: delay) else { return false }
-        guard dictationWindow?.isSameConversation == true, let shortcut = target.automaticSubmitShortcut else { return false }
-        var submission = target
-        submission.submitShortcut = shortcut
-        log("Silence de \(String(format: "%.1f", delay)) s : envoi → \(target.id).")
-        submitNow(submission, automatic: true)
-        return true
-    }
-
-    private func submitNow(_ t: Target, automatic: Bool = false) {
-        let stopFirst = recording
-        let window = dictationWindow
-        let readBaseline = trigger.readAloudBaseline(t, in: window)
-        endPause()
-        detector.stop()
-        trigger.submit(t, in: window, stopFirst: stopFirst, automatic: automatic) { [weak self] submitted in
-            Feedback.play(submitted ? .sent : .failed)
-            log(submitted ? "Reprise de la veille (action d'envoi déclenchée)." : "Reprise de la veille (envoi annulé).")
-            self?.detector.start()
-            guard submitted, let self else { return }
-            if t.readAloudShortcut?.buttons.isEmpty == false {
-                self.trigger.readAloudWhenDone(t, in: window, baseline: readBaseline)
-            } else if self.config.continuousConversation == true, let window {
-                // Pas de lecture à voix haute (extension d'éditeur, ChatGPT) : le micro se rouvre à la fin de la réponse.
-                self.trigger.whenAnswerDone(t, in: window) { [weak self] in self?.continueConversation(t, in: window) }
-            }
-        }
-    }
-
-    private func endPause() {
-        history.removeAll()
-        lastDictationText = ""
-        dictatedContent = .empty
-        lastAutoSendPause = 0
-        pauseTimer?.invalidate()
-        pendingSend?.cancel()
-        pendingSend = nil
-        active = nil
-        dictationWindow = nil
-        recording = false
-        stopping = false
-        reviewUntil = nil
-    }
-
-    private func didTrigger(_ target: Target, started: Bool) {
-        if started { pauseUntilConversationEnds(target) } else { Feedback.play(.failed); detector.start() }
-    }
-
-    /// Reste en pause tant qu'une application utilise le micro.
-    /// Avec l'envoi vocal, VoiceWake continue d'écouter (micro partagé) pour entendre « ok envoie ».
-    private func pauseUntilConversationEnds(_ target: Target, reopenedIn window: ShortcutTrigger.DictationWindow? = nil) {
-        let c = config.conversation
-        let started = Date()
-        let startedAt = ProcessInfo.processInfo.systemUptime
-        var lastActive = started
-        var sawConversation = false
-        let external = externalDictation(for: target)
-        let natural = config.continuousConversation == true && external == nil && config.dryRun != true
-        let canStop = (natural || !(config.stopPhrases ?? []).isEmpty) &&
-            (external == nil || external?.stopShortcut != nil)
-        let canSend = external == nil && sendEnabled
-        let listening = canStop || canSend
-        let mode = canSend ? "envoi vocal actif" : "arrêt vocal actif"
-        log("Pause pendant la conversation\(listening ? " (\(mode))" : "").")
-        Feedback.play(.micOpen)
-        if listening {
-            active = target
-            dictationWindow = window ?? (external == nil ? trigger.nativeDictationWindow : trigger.externalDictationWindow)
-            if natural, dictationWindow?.conversation == nil {
-                log("\(target.id) : chat non identifié, envoi automatique désactivé pour ce tour.")
-            }
-            recording = true
-            reviewUntil = nil
-            detector.start()
-        }
-
-        pauseTimer?.invalidate()
-        pauseTimer = Timer.scheduledTimer(withTimeInterval: natural ? 0.2 : 1, repeats: true) { [weak self] timer in
-            guard let self else { timer.invalidate(); return }
-            guard !self.stopping else { return }
-            if natural, self.active?.id == target.id {
-                if let origin = self.dictationWindow,
-                   !origin.isFocused || (origin.conversation != nil && !origin.isSameConversation) {
-                    self.endPause()
-                    Feedback.play(.failed)
-                    log("\(target.id) : envoi automatique annulé, chat ou fenêtre changé.")
-                    self.detector.reset()
-                    return
-                }
-                if self.sendAfterSilence(target, startedAt: startedAt) { return }
-                let lastSpeech = self.detector.audioActivity?.lastSpeech ?? startedAt
-                if window != nil, self.dictatedContent == .empty, self.pendingSend == nil,
-                   ProcessInfo.processInfo.systemUptime - max(startedAt, lastSpeech) >= (self.config.continueSilenceSeconds ?? 10) {
-                    self.endSilentContinuation(target)
-                    return
-                }
-            }
-            let now = Date()
-            let elapsed = now.timeIntervalSince(started)
-
-            if listening ? MicMonitor.isInputInUseByOtherProcess() : MicMonitor.isAnyInputInUse() {
-                lastActive = now
-                if !sawConversation { sawConversation = true; log("Conversation en cours.") }
-            }
-
-            let idle = now.timeIntervalSince(lastActive)
-            let reason: String?
-            if elapsed >= c.maxPauseMinutes * 60 {
-                reason = "durée maximale atteinte"
-            } else if let until = self.reviewUntil {
-                // Relecture après « ok arrête » : on attend « ok envoie ».
-                reason = now >= until ? "pas de « ok envoie » après relecture" : nil
-            } else if elapsed >= c.startGraceSeconds && idle >= c.idleSecondsBeforeResume {
-                reason = sawConversation ? "conversation terminée" : "aucune conversation détectée"
-            } else {
-                reason = nil
-            }
-            guard let reason else { return }
-
-            self.endPause()
-            log("Reprise de la veille (\(reason)).")
-            if listening { self.detector.reset() } else { self.detector.start() }
-        }
-    }
-
+    var lastDictationText = ""
 }
