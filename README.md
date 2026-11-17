@@ -139,7 +139,7 @@ Sans liste à tenir à jour : VoiceWake lit l'app au premier plan au moment où 
 
 ### Commandes du Mac (toutes les apps)
 
-> **En pause par défaut.** Le nom d'appel « Jarvis », les commandes du Mac, le Finder, les Réglages, la musique, les navigateurs et l'interpréteur IA ne s'exécutent que si `"jarvis": true` est dans la configuration. Sans cela, VoiceWake ne pilote que les assistants IA et les éditeurs.
+> **En pause par défaut.** Le nom d'appel « Jarvis », les commandes du Mac, le Finder, les Réglages, la musique, les navigateurs et l'interpréteur ne proposent ces commandes du Mac que si `"jarvis": true` est dans la configuration. Sans cela, VoiceWake ne pilote que les assistants IA et les éditeurs.
 
 | Phrase | Effet |
 | --- | --- |
@@ -290,7 +290,7 @@ Sans casque, la voix de lecture peut laisser un écho : la reprise attend 3 s de
 
 ### Voix ElevenLabs (optionnel)
 
-Par défaut, VoiceWake n'appelle aucun service en ligne (voir aussi l'interpréteur IA ci-dessous). Si vous avez un compte ElevenLabs, vous pouvez remplacer la voix du Mac pour « lis à partir de… » :
+Par défaut, VoiceWake n'appelle aucun service en ligne. Si vous avez un compte ElevenLabs, vous pouvez remplacer la voix du Mac pour « lis à partir de… » :
 
 ```json
 "elevenLabs": { "enabled": true, "voiceID": "JBFqnCBsd6RMkjVDRZzb", "model": "eleven_flash_v2_5" }
@@ -314,15 +314,20 @@ Aucun son n'est enregistré ni envoyé : les 8 dernières secondes restent en m�
 
 Modèle : WeSpeaker ResNet34 ([pyannote/wespeaker-voxceleb-resnet34-LM](https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM)), converti en Core ML par Fluid Inference, licence [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) ; fichiers modifiés (conversion Core ML, poids 8 bits), non inclus dans ce dépôt.
 
-### Interpréteur IA (optionnel)
+### Parler naturellement (interpréteur local)
 
-Quand vous dites le nom d'appel suivi d'une phrase libre que VoiceWake ne reconnaît pas (« Jarvis, mets-moi un peu de jazz sur Spotify », « Jarvis, j'entends rien »), Claude la reformule en **une** commande VoiceWake connue (« cherche jazz sur spotify », « monte le son »). Cette commande passe ensuite par le traitement habituel : mêmes vérifications, et « je confirme » toujours demandé pour les actions sensibles. Une réponse que VoiceWake ne reconnaît pas n'est jamais exécutée.
+Adressez-vous à un assistant par son nom, avec vos mots : VoiceWake comprend la demande, sans phrase-clé.
 
-```json
-"interpreter": { "enabled": true, "model": "claude-haiku-5-5" }
-```
+| Vous dites | VoiceWake fait |
+| --- | --- |
+| « Claude, tu peux me lire ce qu'il a répondu ? » | lis la réponse |
+| « Claude, on repart sur une nouvelle discussion » | nouvelle conversation |
+| « Claude, va dans le projet VoxTV » | ouvre VoxTV |
+| « Codex, c'est quoi l'état actuel ? » | où on en est |
+| « Claude, montre-moi le terminal » | affiche le terminal |
+| « Claude, il fait beau aujourd'hui » | rien (ce n'est pas une demande) |
 
-Placez la clé dans `~/.config/voicewake/anthropic.env` (une ligne `ANTHROPIC_API_KEY=…`, droits `600`), jamais dans la configuration ni dans le dépôt. Seule la phrase dite après le nom d'appel, et le nom de l'app au premier plan, sont envoyés à Anthropic ; sans le nom d'appel, rien ne part. Chaque demande est facturée sur votre compte Anthropic (quelques dixièmes de centime avec Haiku). Essai sans rien exécuter : `voicewake ia "mets un peu de jazz"`.
+Le modèle d'Apple intégré au Mac (Apple Intelligence, macOS 26 ou plus) choisit l'action parmi celles que VoiceWake connaît : sans Internet, sans clé, sans coût. Il ne peut rien inventer ; une remarque ne déclenche rien ; effacer, écrire ou lancer un skill demandent « je confirme ». Réponse en moins d'une seconde. Les phrases-clés restent le chemin le plus rapide. Essai sans rien exécuter : `voicewake ia "Claude, relis-moi ta réponse"`. Désactiver : `"interpreter": { "enabled": false }`.
 
 ## Applications prises en charge
 
@@ -477,7 +482,7 @@ voicewake bilan                    # commandes ratées les plus fréquentes, ave
 voicewake boutons <bundle-id>      # boutons visibles (ce que « clique sur … » peut viser)
 voicewake question <bundle-id> "la deuxième"   # question affichée et réponse reconnue, sans cliquer
 voicewake voix apprends | test | efface        # empreinte du filtre « ma voix uniquement »
-voicewake ia "phrase"                          # commande que l'interpréteur IA tirerait de la phrase
+voicewake ia "phrase"                          # commande que l'interpréteur local tirerait de la phrase
 tail -f ~/Library/Logs/voicewake.log   # archivé en voicewake.log.1 au-delà de 5 Mo
 ```
 
