@@ -312,6 +312,8 @@ final class Coordinator {
             self.pendingInterpret = nil
             guard self.active == nil, !self.interpreting, self.currentReader() == nil, !self.reader.isActive,
                   Date().timeIntervalSince(self.lastWake) >= self.config.cooldownSeconds else { return }
+            let gate = self.voiceGate()
+            if gate == false { self.detector.reset(); return }
             self.detector.reset()
             if self.config.dryRun == true { return log("[essai] → interpréteur IA\(said(text))") }
             self.interpreting = true
@@ -335,7 +337,7 @@ final class Coordinator {
                 }
                 log("Interpréteur IA → \(self.wakeKey(command) ?? "")\(self.config.debug ? said(command) : "").")
                 self.lastWake = .distantPast
-                self.handleWake(command, fromVoice: false)
+                self.handleWake(command, fromVoice: false, verified: gate == true)
             }
         }
         pendingInterpret = work
@@ -358,6 +360,8 @@ final class Coordinator {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.active?.id == t.id, self.recording, !self.stopping else { return }
             self.pendingWakeName = nil
+            let gate = self.voiceGate()
+            if gate == false { return } // voix non reconnue : la dictée continue
             self.pendingSend?.cancel()
             self.stopping = true
             log("Nom d'appel pendant la dictée → \(t.id) : micro coupé, commande exécutée.")
@@ -367,7 +371,7 @@ final class Coordinator {
                 self.endPause()
                 self.detector.reset()
                 self.lastWake = .distantPast
-                self.handleWake(command, fromVoice: false)
+                self.handleWake(command, fromVoice: false, verified: gate == true)
             }
         }
         pendingWakeName = work
@@ -805,8 +809,15 @@ final class Coordinator {
 
     /// nil : filtre inactif ou en observation (rien ne change) ; true : voix reconnue ; false : commande bloquée.
     private func voiceDecision(_ text: String) -> Bool? {
+        guard wakeKey(text) != nil else { return nil }
+        return voiceGate()
+    }
+
+    /// Même décision, sur la parole entendue à l'instant (aussi pour les phrases que l'interpréteur IA ou le nom
+    /// d'appel transformeront en commande : la vérification se fait sur la voix d'origine).
+    private func voiceGate() -> Bool? {
         guard let settings = config.voiceFilter, settings.enabled == true, let print = VoicePrint.shared,
-              print.profile != nil, wakeKey(text) != nil else { return nil }
+              print.profile != nil else { return nil }
         let threshold = Float(settings.threshold ?? 0.45)
         let score = print.score(lastSeconds: settings.windowSeconds ?? 4)
         let ok = score.map { $0 >= threshold } ?? false
@@ -844,8 +855,8 @@ final class Coordinator {
         return router.route(text)?.id
     }
 
-    private func handleWake(_ text: String, fromVoice: Bool = true) {
-        voiceVerified = false
+    private func handleWake(_ text: String, fromVoice: Bool = true, verified: Bool = false) {
+        voiceVerified = verified
         if fromVoice, let accepted = voiceDecision(text) {
             guard accepted else { detector.reset(); return }
             voiceVerified = true

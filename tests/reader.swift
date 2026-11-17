@@ -432,7 +432,8 @@ struct ReaderTests {
         check(Interpreter.parse(apiReply("{\"command\": \"x\"}", stop: "refusal")) == nil, "IA : refus ignoré")
         check(Interpreter.parse(apiReply("pas du json")) == nil, "IA : réponse invalide")
         let iaBody = Interpreter.body(text: "mets un peu de jazz", model: Interpreter.defaultModel, front: "Spotify", extra: ["où on en est"])
-        check((iaBody["model"] as? String) == "claude-haiku-5-5" && (iaBody["system"] as? String)?.contains("Spotify") == true
+        check((iaBody["model"] as? String) == "claude-haiku-5-5" && ((iaBody["messages"] as? [[String: Any]])?.first?["content"] as? String)?.contains("« Spotify »") == true
+              && Interpreter.clean("Spot\nify\u{7}", max: 60) == "Spotify"
               && (iaBody["system"] as? String)?.contains("où on en est") == true, "IA : requête construite")
         check(try! JSONSerialization.data(withJSONObject: iaBody).count > 0, "IA : requête sérialisable")
 
