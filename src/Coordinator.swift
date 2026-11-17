@@ -789,6 +789,12 @@ final class Coordinator {
 
     private var readCommandPhrases: [String] { (config.readPausePhrases ?? []) + (config.interruptPhrases ?? []) }
 
+    /// « Stop Claude » passe du premier coup, sauf si la réponse affichée contient elle-même la phrase.
+    private func strongInterrupt(_ text: String, _ reader: Target) -> Bool {
+        guard let app = ShortcutTrigger.runningApp(for: reader) else { return false }
+        return router.isStrongInterrupt(text, notIn: AXButtonPresser.windowTexts(in: app).joined(separator: " "))
+    }
+
     private func spokenByReader(_ text: String, _ reader: Target) -> Bool {
         if voiceVerified { return false } // voix reconnue par le filtre : c'est l'utilisateur
         let phrases = (config.readPausePhrases ?? []) + (config.interruptPhrases ?? [])
@@ -884,7 +890,7 @@ final class Coordinator {
         // Lecteur intégré en cours : pause, reprise, écoute.
         if reader.isActive {
             defer { detector.reset() }
-            if !router.isStrongInterrupt(text), spokenByOwnReader(text), !insisted(text, phrases: readCommandPhrases + (config.readResumePhrases ?? []) + ReaderNav.allPhrases(config), spokenNow: reader.spokenNow) { Feedback.play(.ignored); return log("Commande ignorée : prononcée par le lecteur intégré.") }
+            if !router.isStrongInterrupt(text, notIn: reader.spokenNow), spokenByOwnReader(text), !insisted(text, phrases: readCommandPhrases + (config.readResumePhrases ?? []) + ReaderNav.allPhrases(config), spokenNow: reader.spokenNow) { Feedback.play(.ignored); return log("Commande ignorée : prononcée par le lecteur intégré.") }
             if interrupt, let t = readerTarget {
                 reader.stop()
                 lastWake = Date()
@@ -1137,7 +1143,7 @@ final class Coordinator {
         // (Une app peut garder sa sortie audio ouverte sans rien lire : on ne bloque que nos lectures.)
         // La lecture reste « en cours » jusqu'à 3 s de silence continu (voir startReading).
         if let reader = currentReader() {
-            if (pauseRead || interrupt), !router.isStrongInterrupt(text), spokenByReader(text, reader),
+            if (pauseRead || interrupt), !strongInterrupt(text, reader), spokenByReader(text, reader),
                !insisted(text, phrases: readCommandPhrases, spokenNow: "") {
                 Feedback.play(.ignored)
                 log("Commande ignorée : prononcée par la voix de lecture de \(reader.id).")

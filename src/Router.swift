@@ -110,10 +110,16 @@ struct Router {
     var strongInterruptPhrases: [String] {
         if let custom = config.strongInterruptPhrases { return custom }
         let names = Set(config.targets.map { normalize($0.id) } + ["claude", "codex", "gemini", "chatgpt", "assistant"])
+            .filter { $0.count >= 4 && !$0.contains(" ") }
         return names.flatMap { ["stop \($0)", "\($0) stop", "écoute \($0)", "\($0) écoute", "écoute moi \($0)", "attends \($0)"] }
     }
 
-    func isStrongInterrupt(_ text: String) -> Bool { containsAny(text, strongInterruptPhrases) }
+    /// Interruption nommée entendue, sauf si `shown` (texte affiché ou lu) la contient aussi : la voix de lecture
+    /// pourrait alors être en train de la dire, et la vérification habituelle s'applique.
+    func isStrongInterrupt(_ text: String, notIn shown: String) -> Bool {
+        let n = " " + normalize(text) + " ", seen = " " + normalize(shown) + " "
+        return strongInterruptPhrases.map(normalize).contains { !$0.isEmpty && n.contains(" " + $0 + " ") && !seen.contains(" " + $0 + " ") }
+    }
 
     private func endsWith(_ text: String, _ phrases: [String]?) -> Bool { suffix(text, phrases) != nil }
 

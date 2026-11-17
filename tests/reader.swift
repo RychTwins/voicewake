@@ -457,9 +457,10 @@ struct ReaderTests {
             check(e?.count == 2 && e?.first?.count == 256, "voix : modèle → empreintes de 256 nombres")
         }
 
-        check(router.isStrongInterrupt("Stop Claude") && router.isStrongInterrupt("Claude, écoute")
-              && router.containsInterruptPhrase("écoute-moi Claude") && !router.isStrongInterrupt("écoute"),
-              "interruption nommée : « stop Claude » reconnue, « écoute » seul reste vérifié")
+        check(router.isStrongInterrupt("Stop Claude", notIn: "") && router.isStrongInterrupt("Claude, écoute", notIn: "")
+              && router.containsInterruptPhrase("écoute-moi Claude") && !router.isStrongInterrupt("écoute", notIn: "")
+              && !router.isStrongInterrupt("Stop Claude", notIn: "Dites « Stop Claude » pendant la lecture"),
+              "interruption nommée : « stop Claude » reconnue, sauf si la réponse la contient ; « écoute » seul reste vérifié")
 
         print("Tous les tests passent.")
     }
