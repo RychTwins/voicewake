@@ -24,7 +24,7 @@ struct InterpretedCommand {
 
 enum Interpreter {
     /// Actions que le modèle peut choisir (formes exactes reconnues par VoiceWake).
-    static let fixedActions = ["salut claude", "salut codex", "salut gemini", "salut chatgpt", "lis la réponse",
+    static let fixedActions = ["salut claude", "salut codex", "salut gemini", "salut chatgpt", "salut antigravity", "lis la réponse",
         "arrête la lecture", "reprends la lecture", "efface le brouillon", "nouvelle conversation", "copie la réponse",
         "où on en est", "quelles commandes", "session précédente", "session suivante", "page précédente", "page suivante",
         "rouvre la session", "ouvre la recherche", "mode code", "mode discussion", "palette de commandes",
@@ -49,7 +49,7 @@ enum Interpreter {
 
     /// Commandes des assistants IA et des éditeurs (formes exactes reconnues par VoiceWake).
     static let assistantCatalog = """
-    Ouvrir le micro d'un assistant pour lui parler : « salut claude », « salut codex », « salut gemini », « salut chatgpt ».
+    Ouvrir le micro d'un assistant pour lui parler : « salut claude », « salut codex », « salut gemini », « salut chatgpt », « salut antigravity ».
     Lecture : « lis la réponse » (lire la dernière réponse), « arrête la lecture », « reprends la lecture », \
     « lis à partir de <quelques mots du passage> ».
     Assistant au premier plan : « efface le brouillon », « nouvelle conversation », « copie la réponse », \
@@ -76,7 +76,7 @@ enum Interpreter {
     """
 
     /// Noms par lesquels on s'adresse à un assistant en début de phrase.
-    static let addressNames = ["claude", "codex", "gemini", "chatgpt", "assistant", "jarvis"]
+    static let addressNames = ["claude", "codex", "gemini", "chatgpt", "antigravity", "assistant", "jarvis"]
 
     /// La phrase s'adresse à un assistant par son nom (« Claude, … », « dis Claude, … ») et contient une demande.
     static func addressed(_ text: String) -> Bool {

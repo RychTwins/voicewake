@@ -51,6 +51,9 @@ struct Target: Codable {
     var launchDelaySeconds: Double?
     /// Libellés AX exacts du champ de saisie pour la dictée externe.
     var dictationFieldLabels: [String]?
+    /// App sans bouton micro (agent d'Antigravity…) : VoiceWake écoute lui-même, puis tape le texte dans le champ
+    /// `dictationFieldLabels` et appuie sur `submitShortcut` à l'envoi (« ok envoie » ou fin de phrase).
+    var typedDictation: Bool?
     /// Envoi vocal : touche d'envoi (défaut "return").
     var submitShortcut: Shortcut?
     /// Couper le micro de l'app avant l'envoi (défaut true).
@@ -122,6 +125,8 @@ struct ExternalDictation: Codable {
     var useMacOSDictationMenu: Bool?
     /// Omettre pour les outils à maintien, ou si l'arrêt se fait dans l'outil.
     var stopShortcut: Shortcut?
+    /// Dictée par VoiceWake (cibles `typedDictation`) : VoiceWake écoute lui-même et tape le texte à l'envoi.
+    var typedByVoiceWake: Bool?
 }
 
 struct Config: Codable {

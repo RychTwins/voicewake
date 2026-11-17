@@ -490,6 +490,10 @@ struct ReaderTests {
               && router.route("Claude")?.id == "claude" && !router.isWakePhrase("Claude"),
               "nom seul : ouvre l'assistant, jamais au milieu d'une phrase ni pendant une dictée")
 
+        check(router.withoutTrailing("Corrige le bug de la page d'accueil, ok envoie", ["ok envoie"]) == "Corrige le bug de la page d'accueil"
+              && router.withoutTrailing("Ajoute un test", ["ok envoie"]) == "Ajoute un test",
+              "dictée tapée : la phrase d'envoi n'est pas tapée")
+
         print("Tous les tests passent.")
     }
 }

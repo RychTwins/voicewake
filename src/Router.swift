@@ -19,7 +19,7 @@ struct Router {
     /// Mots soufflés au moteur pour mieux reconnaître les noms propres.
     var hints: [String] {
         let conversation = config.continuousConversation == true ? ["attends je réfléchis", "garde le brouillon"] : []
-        let names = (config.bareNames ?? true) ? ["Claude", "Codex", "Gemini", "ChatGPT", "assistant"] : []
+        let names = (config.bareNames ?? true) ? ["Claude", "Codex", "Gemini", "ChatGPT", "Antigravity", "assistant"] : []
         return Array(Set(config.targets.flatMap(\.phrases) + config.frontmostPhrases + conversation + names))
     }
 
@@ -29,6 +29,7 @@ struct Router {
         "codex": "codex", "codecs": "codex", "code x": "codex", "codeks": "codex",
         "gemini": "gemini", "jemini": "gemini", "jimini": "gemini", "jeminy": "gemini", "gemmini": "gemini",
         "chatgpt": "chatgpt", "chat gpt": "chatgpt", "chat gbt": "chatgpt", "chat jpt": "chatgpt",
+        "antigravity": "antigravity", "anti gravity": "antigravity", "antigravite": "antigravity",
         "assistant": "",
     ]
 
@@ -133,6 +134,20 @@ struct Router {
 
     /// Interruption nommée entendue, sauf si `shown` (texte affiché ou lu) la contient aussi : la voix de lecture
     /// pourrait alors être en train de la dire, et la vérification habituelle s'applique.
+    /// Phrases retirées du texte tapé par VoiceWake.
+    var sendPhrasesForTyping: [String] { Array(sendCommands) + (config.sendPhrases ?? []) }
+    var stopPhrasesForTyping: [String] { stopCommands }
+    var thoughtPausePhrases: [String] { ["attends je réfléchis", "attends", "je réfléchis", "garde le brouillon"] }
+
+    /// Texte d'origine sans la phrase finale (la plus longue qui le termine) parmi `phrases`.
+    func withoutTrailing(_ text: String, _ phrases: [String]) -> String {
+        let n = " " + normalize(text)
+        guard let hit = phrases.map(normalize).filter({ !$0.isEmpty && n.hasSuffix(" " + $0) }).max(by: { $0.count < $1.count })
+        else { return text }
+        return SkillCatalog.originalSlice(text, skippingWords: 0, droppingLastWords: hit.split(separator: " ").count)
+            .trimmingCharacters(in: CharacterSet(charactersIn: " ,.;:"))
+    }
+
     func isStrongInterrupt(_ text: String, notIn shown: String) -> Bool {
         let n = " " + normalize(text) + " ", seen = " " + normalize(shown) + " "
         return strongInterruptPhrases.map(normalize).contains { !$0.isEmpty && n.contains(" " + $0 + " ") && !seen.contains(" " + $0 + " ") }

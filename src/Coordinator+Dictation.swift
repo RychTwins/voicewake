@@ -95,6 +95,10 @@ extension Coordinator {
 
     func checkSend(_ text: String, _ t: Target, isFinal: Bool) {
         lastDictationText = text
+        if t.typedDictation == true, recording {
+            typedCurrent = text
+            if isFinal { typedDone.append(text); typedCurrent = "" }
+        }
         guard !stopping else { return }
         let normalized = normalize(text)
         if history.last?.text == normalized, !isFinal { return }
@@ -104,7 +108,7 @@ extension Coordinator {
             history.append((Date(), normalized))
         }
         if history.count > 60 { history.removeFirst(history.count - 60) }
-        let external = externalDictation(for: t)
+        let external = thirdPartyDictation(for: t)
         let isolated = spokenAfterPause(normalized, minPause: config.sendPauseBeforeSeconds ?? 0.6) ?? normalized
         let stop = recording && (router.isStandaloneStop(text) || router.isStandaloneStop(isolated))
         let pause = !stop && recording && external == nil &&
@@ -122,6 +126,11 @@ extension Coordinator {
                 self.dictatedContent = .paused
                 self.lastAutoSendPause = ProcessInfo.processInfo.systemUptime
                 self.history.removeAll()
+                if t.typedDictation == true {
+                    // « Attends, je réfléchis » ne fait pas partie du message.
+                    self.typedDone.append(self.router.withoutTrailing(self.typedCurrent, self.router.thoughtPausePhrases))
+                    self.typedCurrent = ""
+                }
                 self.detector.reset()
                 log("Envoi automatique suspendu jusqu'à la reprise de la dictée.")
                 return
@@ -130,7 +139,11 @@ extension Coordinator {
                 self.dictatedContent = .held
                 log("Phrase d'arrêt détectée → \(t.id)\(self.said(text)).")
                 self.stopping = true
-                self.trigger.stopDictation(t, in: self.dictationWindow, external: external) { [weak self] stopped in
+                if t.typedDictation == true {
+                    self.typedDone.append(self.router.withoutTrailing(self.typedCurrent, self.router.stopPhrasesForTyping))
+                    self.typedCurrent = ""
+                }
+                self.trigger.stopDictation(t, in: self.dictationWindow, external: self.externalDictation(for: t)) { [weak self] stopped in
                     guard let self, self.active?.id == t.id else { return }
                     self.stopping = false
                     if stopped {
@@ -170,7 +183,8 @@ extension Coordinator {
         let now = ProcessInfo.processInfo.systemUptime
         guard dictatedContent.shouldSend(now: now, startedAt: max(startedAt, lastAutoSendPause), lastBuffer: audio.lastBuffer,
                                          lastSpeech: audio.lastSpeech, delay: delay) else { return false }
-        guard dictationWindow?.isSameConversation == true, let shortcut = target.automaticSubmitShortcut else { return false }
+        let sameChat = dictationWindow?.isSameConversation == true || (target.typedDictation == true && dictationWindow?.isFocused == true)
+        guard sameChat, let shortcut = target.automaticSubmitShortcut else { return false }
         var submission = target
         submission.submitShortcut = shortcut
         log("Silence de \(String(format: "%.1f", delay)) s : envoi → \(target.id).")
@@ -179,6 +193,7 @@ extension Coordinator {
     }
 
     func submitNow(_ t: Target, automatic: Bool = false) {
+        if t.typedDictation == true { return submitTyped(t) }
         let stopFirst = recording
         let window = dictationWindow
         let readBaseline = trigger.readAloudBaseline(t, in: window)
@@ -198,7 +213,45 @@ extension Coordinator {
         }
     }
 
+    /// Dictée tapée par VoiceWake : tape le texte entendu (sans la phrase d'envoi) dans le champ, puis envoie.
+    func submitTyped(_ t: Target) {
+        let text = router.withoutTrailing((typedDone + [typedCurrent]).filter { !$0.isEmpty }.joined(separator: " "),
+                                          router.sendPhrasesForTyping)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let window = dictationWindow
+        endPause()
+        detector.stop()
+        guard !text.isEmpty, let window, let app = ShortcutTrigger.runningApp(for: t) else {
+            Feedback.play(.failed)
+            log("\(t.id) : rien à envoyer.")
+            detector.start()
+            return
+        }
+        DispatchQueue.global().async { [weak self] in
+            let typed = TextTyper.type(text, to: app.processIdentifier, while: { window.isFocused })
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard typed else {
+                    Feedback.play(.failed)
+                    log("\(t.id) : texte non tapé, fenêtre ou champ changé.")
+                    self.detector.start()
+                    return
+                }
+                usleep(250_000)
+                self.trigger.submit(t, in: window, stopFirst: false) { [weak self] submitted in
+                    Feedback.play(submitted ? .sent : .failed)
+                    log(submitted ? "\(t.id) : texte tapé et envoyé. Reprise de la veille." : "\(t.id) : texte tapé, envoi non effectué.")
+                    self?.detector.start()
+                    guard submitted, let self, self.config.continuousConversation == true else { return }
+                    self.trigger.whenAnswerDone(t, in: window) { [weak self] in self?.continueConversation(t, in: window) }
+                }
+            }
+        }
+    }
+
     func endPause() {
+        typedDone = []
+        typedCurrent = ""
         history.removeAll()
         lastDictationText = ""
         dictatedContent = .empty
@@ -225,7 +278,8 @@ extension Coordinator {
         let startedAt = ProcessInfo.processInfo.systemUptime
         var lastActive = started
         var sawConversation = false
-        let external = externalDictation(for: target)
+        let external = thirdPartyDictation(for: target)
+        let typed = target.typedDictation == true
         let natural = config.continuousConversation == true && external == nil && config.dryRun != true
         let canStop = (natural || !(config.stopPhrases ?? []).isEmpty) &&
             (external == nil || external?.stopShortcut != nil)
@@ -236,8 +290,9 @@ extension Coordinator {
         Feedback.play(.micOpen)
         if listening {
             active = target
-            dictationWindow = window ?? (external == nil ? trigger.nativeDictationWindow : trigger.externalDictationWindow)
-            if natural, dictationWindow?.conversation == nil {
+            dictationWindow = window ?? (typed || external != nil ? trigger.externalDictationWindow : trigger.nativeDictationWindow)
+            if typed { typedDone = []; typedCurrent = "" }
+            if natural, !typed, dictationWindow?.conversation == nil {
                 log("\(target.id) : chat non identifié, envoi automatique désactivé pour ce tour.")
             }
             recording = true
@@ -269,7 +324,10 @@ extension Coordinator {
             let now = Date()
             let elapsed = now.timeIntervalSince(started)
 
-            if listening ? MicMonitor.isInputInUseByOtherProcess() : MicMonitor.isAnyInputInUse() {
+            // Dictée tapée par VoiceWake : aucune app n'utilise le micro, c'est ta parole qui compte.
+            let speaking = typed ? ProcessInfo.processInfo.systemUptime - (self.detector.audioActivity?.lastSpeech ?? 0) < 2
+                : (listening ? MicMonitor.isInputInUseByOtherProcess() : MicMonitor.isAnyInputInUse())
+            if speaking {
                 lastActive = now
                 if !sawConversation { sawConversation = true; log("Conversation en cours.") }
             }

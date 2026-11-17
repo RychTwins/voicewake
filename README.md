@@ -65,6 +65,7 @@ Chaque commande se dit **seule**, avec une courte pause avant et environ une sec
 | « Dis Codex », « Salut Codex » | micro de Codex |
 | « Dis Gemini », « Salut Gemini » | micro de Gemini |
 | « Salut ChatGPT » | dictée dans ChatGPT |
+| « Salut Antigravity », « Antigravity. » | agent d'Antigravity : VoiceWake écoute lui-même (l'agent n'a pas de micro), tape le texte dans sa zone de saisie et l'envoie sur « OK envoie » ou en fin de phrase |
 | « Salut assistant », « Dis assistant » | assistant de l'application au premier plan, sinon `defaultTarget` |
 | « Claude. », « Codex. », « Gemini. », « ChatGPT. », « Assistant. » (le nom **seul**, puis silence) | même effet ; jamais quand le nom est au milieu d'une phrase, ni pendant une dictée. Pensé pour le filtre de voix (seule votre voix compte). `"bareNames": false` désactive |
 
@@ -477,6 +478,13 @@ Pour utiliser Whisper, SuperWhisper, MacWhisper, Wispr Flow, VoiceInk ou un outi
 - Outil à maintien : `"shortcut": "hold 3 fn"`, sans `stopShortcut`.
 - Dictée macOS par le menu Édition : `"useMacOSDictationMenu": true`, sans `stopShortcut`.
 - Si le curseur n'est pas placé dans le bon champ : `"dictationFieldLabels": ["libellé exact du champ"]` dans la cible concernée.
+- **App sans micro** (agent d'Antigravity) : `"typedDictation": true` dans la cible, avec `"dictationFieldLabels"` et `"submitShortcut"`. VoiceWake écoute, puis tape le texte entendu (sans la phrase d'envoi) et appuie sur le bouton d'envoi. Exemple :
+
+```json
+{ "id": "antigravity", "appName": "Antigravity IDE", "bundleID": "com.google.antigravity-ide",
+  "phrases": ["salut antigravity"], "shortcut": "button:Message input", "typedDictation": true,
+  "dictationFieldLabels": ["Message input"], "submitShortcut": "button:Send message" }
+```
 
 ---
 

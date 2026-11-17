@@ -92,7 +92,16 @@ final class Coordinator {
     var sendEnabled: Bool { !(config.sendPhrases ?? []).isEmpty }
 
     func externalDictation(for target: Target) -> ExternalDictation? {
-        target.id.contains("@") ? nil : config.externalDictation
+        if target.typedDictation == true {
+            return ExternalDictation(shortcut: target.shortcut, useMacOSDictationMenu: nil, stopShortcut: nil, typedByVoiceWake: true)
+        }
+        return target.id.contains("@") ? nil : config.externalDictation
+    }
+
+    /// Dictée externe au sens strict (outil tiers) : nil pour une dictée tapée par VoiceWake, qui se comporte
+    /// comme le micro intégré d'une app (arrêt, envoi vocal, fin de tour).
+    func thirdPartyDictation(for target: Target) -> ExternalDictation? {
+        target.typedDictation == true ? nil : externalDictation(for: target)
     }
 
     /// Le texte transcrit (tes paroles) n'est écrit dans le log qu'en mode debug.
@@ -456,6 +465,9 @@ final class Coordinator {
     ///   « ok arrête » → coupe seulement le micro, pour relire.
     /// Transcriptions récentes (date, texte normalisé), pour mesurer la pause avant « ok envoie ».
     var history: [(at: Date, text: String)] = []
+    /// Dictée tapée par VoiceWake : segments définitifs et segment en cours de la transcription.
+    var typedDone: [String] = []
+    var typedCurrent = ""
 
     /// Dernière transcription entendue pendant la dictée (pour juger si la phrase est finie).
     var lastDictationText = ""

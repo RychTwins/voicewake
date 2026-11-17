@@ -201,6 +201,15 @@ final class ShortcutTrigger {
             AXIsProcessTrusted() && window.isFocused &&
                 AXButtonPresser.focusedTextField(in: app).map { CFEqual($0, field) } == true
         }
+        if external.typedByVoiceWake == true {
+            // VoiceWake écoute lui-même : le champ a le focus, rien d'autre à lancer.
+            let identity = AXButtonPresser.conversationIdentity(in: element, target: target)
+            externalDictationWindow = DictationWindow(app: app, element: element, target: target,
+                                                      conversation: identity.map(ConversationGuard.init))
+            log("\(target.id) : dictée par VoiceWake (texte tapé à l'envoi).")
+            completion?(true)
+            return
+        }
         if external.useMacOSDictationMenu == true {
             let started = AXButtonPresser.startMacOSDictation(in: app, while: allowed)
             if started { externalDictationWindow = window }
@@ -552,6 +561,7 @@ final class ShortcutTrigger {
         }
         var stopTarget = t
         if let external {
+            if external.typedByVoiceWake == true { completion(true); return } // rien à arrêter : VoiceWake écoute
             guard let stop = external.stopShortcut else { completion(false); return }
             stopTarget.shortcut = stop
         } else {

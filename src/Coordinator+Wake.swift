@@ -61,7 +61,7 @@ extension Coordinator {
                 lastWake = Date()
                 log("Écoute → \(t.id) (micro).")
                 detector.stop()
-                trigger.fire(t, external: config.externalDictation) { [weak self] started in self?.didTrigger(t, started: started) }
+                trigger.fire(t, external: externalDictation(for: t)) { [weak self] started in self?.didTrigger(t, started: started) }
             } else if pauseRead {
                 reader.pause(); Feedback.play(.understood); log("Lecteur intégré : pause.")
             } else if resumeRead {
@@ -297,7 +297,7 @@ extension Coordinator {
             } else {
                 log("Écoute → \(paused.id) (micro).")
                 detector.stop()
-                trigger.fire(paused, external: config.externalDictation) { [weak self] started in
+                trigger.fire(paused, external: externalDictation(for: paused)) { [weak self] started in
                     self?.didTrigger(paused, started: started)
                 }
             }
