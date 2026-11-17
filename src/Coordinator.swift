@@ -32,6 +32,13 @@ final class Coordinator {
         trigger.onReadingFinished = { [weak self] target, window in
             self?.continueConversation(target, in: window)
         }
+        trigger.onReadAloudUnavailable = { [weak self] target, window, text in
+            guard let self, self.active == nil, self.pendingWake == nil, !self.reader.isActive,
+                  window.isSameConversation else { return }
+            log("\(target.id) : lecture via le lecteur intégré.")
+            self.reader.onFinish = { [weak self] in self?.continueConversation(target, in: window) }
+            self.reader.speak(text, config: self.config)
+        }
     }
 
     /// Bundle IDs des apps et éditeurs pilotés.
@@ -1233,7 +1240,7 @@ final class Coordinator {
         guard active?.id == t.id, recording, !stopping else { return }
         stopping = true
         dictatedContent = .held
-        trigger.stopDictation(t, in: dictationWindow, external: nil) { [weak self] stopped in
+        trigger.stopDictation(t, in: dictationWindow, recoverFocus: false) { [weak self] stopped in
             guard let self, self.active?.id == t.id else { return }
             self.stopping = false
             if stopped {
@@ -1388,24 +1395,21 @@ final class Coordinator {
         let now = ProcessInfo.processInfo.systemUptime
         guard dictatedContent.shouldSend(now: now, startedAt: max(startedAt, lastAutoSendPause), lastBuffer: audio.lastBuffer,
                                          lastSpeech: audio.lastSpeech, delay: delay) else { return false }
-        guard dictationWindow?.isSameConversation == true else { return false }
+        guard dictationWindow?.isSameConversation == true, let shortcut = target.automaticSubmitShortcut else { return false }
         var submission = target
-        if (submission.submitShortcut?.buttons ?? []).isEmpty, submission.bundleID == "com.anthropic.claudefordesktop" {
-            submission.submitShortcut = try? Shortcut(spec: "button:Envoyer|Send|Send message")
-        }
-        guard !(submission.submitShortcut?.buttons ?? []).isEmpty else { return false }
+        submission.submitShortcut = shortcut
         log("Silence de \(delay) s : envoi → \(target.id).")
-        submitNow(submission)
+        submitNow(submission, automatic: true)
         return true
     }
 
-    private func submitNow(_ t: Target) {
+    private func submitNow(_ t: Target, automatic: Bool = false) {
         let stopFirst = recording
         let window = dictationWindow
         let readBaseline = trigger.readAloudBaseline(t, in: window)
         endPause()
         detector.stop()
-        trigger.submit(t, in: window, stopFirst: stopFirst) { [weak self] submitted in
+        trigger.submit(t, in: window, stopFirst: stopFirst, automatic: automatic) { [weak self] submitted in
             Feedback.play(submitted ? .sent : .failed)
             log(submitted ? "Reprise de la veille (action d'envoi déclenchée)." : "Reprise de la veille (envoi annulé).")
             self?.detector.start()

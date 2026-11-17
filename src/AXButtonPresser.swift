@@ -15,38 +15,51 @@ enum AXButtonPresser {
 
     enum ConversationIdentity: Equatable {
         case route(String)
-        case anchor(AXUIElement, String)
+        case anchor(AXUIElement)
     }
 
     /// Ne retient ni le texte du brouillon ni la réponse en cours de génération.
-    static func conversationIdentity(in window: AXUIElement, bundleID: String?) -> ConversationIdentity? {
-        let supported = ["com.anthropic.claudefordesktop", "com.openai.codex", "com.google.GeminiMacOS"]
-        guard let bundleID, supported.contains(bundleID) else { return nil }
-        let windowTitle: String = value(window, kAXTitleAttribute) ?? ""
-        var remaining = 1800
+    static func conversationIdentity(in window: AXUIElement, target: Target) -> ConversationIdentity? {
+        let inEditor = target.id.contains("@")
+        let assistants = [
+            "com.anthropic.claudefordesktop": "claude", "com.openai.codex": "codex",
+            "com.google.GeminiMacOS": "gemini", "com.openai.chat": "chatgpt"
+        ]
+        let assistant = inEditor ? target.id.split(separator: "@").first.map(String.init) : assistants[target.bundleID ?? ""]
+        guard let assistant else { return nil }
+        var remaining = 4000
         func find(in element: AXUIElement, depth: Int, inOutline: Bool) -> ConversationIdentity? {
-            guard remaining > 0, depth < 45 else { return nil }
+            guard remaining > 0, depth < 65 else { return nil }
             remaining -= 1
             let role: String? = value(element, kAXRoleAttribute)
             if role == "AXMenuBar" { return nil }
-            switch bundleID {
-            case "com.anthropic.claudefordesktop":
+            switch assistant {
+            case "claude":
                 if role == "AXWebArea",
                    let url: URL = value(element, kAXURLAttribute),
                    let id = claudeConversationID(url) { return .route(id) }
-            case "com.google.GeminiMacOS":
-                if inOutline, role == "AXButton",
-                   (value(element, kAXSelectedAttribute) as Bool?) == true,
-                   let title: String = value(element, kAXDescriptionAttribute), !title.isEmpty {
-                    return .anchor(element, title)
+            case "gemini":
+                if !inEditor, role == "AXOutline",
+                   let rows: [AXUIElement] = value(element, kAXSelectedRowsAttribute), rows.count == 1 {
+                    return .anchor(rows[0])
                 }
-            case "com.openai.codex":
-                // Le document Electron a une URL fixe. Le premier message du chat et le titre
-                // de sa fenêtre donnent ensemble un repère qui survit à l'ajout d'une réponse.
-                if role == "AXHeading", !windowTitle.isEmpty,
-                   let title: String = value(element, kAXTitleAttribute),
+                if !inEditor, inOutline, role == "AXButton" || role == "AXRow",
+                   (value(element, kAXSelectedAttribute) as Bool?) == true ||
+                    (value(element, "AXARIACurrent") as String?) == "page" {
+                    return .anchor(element)
+                }
+            case "codex":
+                // Le titre de la fenêtre change pendant la réponse. Le repère est le message, jamais le titre.
+                if !inEditor, role == "AXHeading",
+                   let title: String = value(element, kAXTitleAttribute) ?? value(element, kAXDescriptionAttribute),
                    ["vous avez dit", "you said"].contains(normalize(title)) {
-                    return .anchor(element, windowTitle)
+                    return .anchor(element)
+                }
+            case "chatgpt":
+                if !inEditor, role == "AXWebArea", let url: URL = value(element, kAXURLAttribute),
+                   url.scheme == "https", url.host == "chatgpt.com", url.pathComponents.count == 3,
+                   url.pathComponents[1] == "c", let id = url.pathComponents.last, let uuid = UUID(uuidString: id) {
+                    return .route(uuid.uuidString)
                 }
             default: break
             }
@@ -64,6 +77,61 @@ enum AXButtonPresser {
               ["chat", "code", "epitaxy"].contains(path[1]),
               let id = path.last, UUID(uuidString: String(id.suffix(36))) != nil else { return nil }
         return id
+    }
+
+    static func codexReplyHeading(in window: AXUIElement) -> AXUIElement? {
+        let assistant = ["chatgpt said", "chatgpt a dit", "codex said", "codex a dit"]
+        var latest: AXUIElement?
+        var budget = 4000
+        func scan(_ node: AXUIElement, depth: Int) {
+            guard budget > 0, depth < 65 else { return }
+            budget -= 1
+            let role: String? = value(node, kAXRoleAttribute)
+            if role == "AXHeading", let title: String = value(node, kAXTitleAttribute) {
+                let label = normalize(title)
+                if assistant.contains(label) { latest = node }
+                if ["you said", "vous avez dit"].contains(label) { latest = nil }
+            }
+            for child in (value(node, kAXChildrenAttribute) as [AXUIElement]?) ?? [] {
+                scan(child, depth: depth + 1)
+            }
+        }
+        scan(window, depth: 0)
+        return budget > 0 ? latest : nil
+    }
+
+    /// Réponse Codex terminée et délimitée par sa propre action Copier.
+    static func codexReply(in window: AXUIElement) -> (heading: AXUIElement, text: String)? {
+        guard let latest = codexReplyHeading(in: window), let parent: AXUIElement = value(latest, kAXParentAttribute),
+              let siblings: [AXUIElement] = value(parent, kAXChildrenAttribute),
+              let index = siblings.firstIndex(where: { CFEqual($0, latest) }) else { return nil }
+
+        var words: [String] = []
+        var nodes = 2000
+        func collectText(_ node: AXUIElement, depth: Int) {
+            guard nodes > 0, depth < 50 else { return }
+            nodes -= 1
+            let role: String? = value(node, kAXRoleAttribute)
+            if role.map(roles.contains) == true { return }
+            if role == "AXStaticText", let text: String = value(node, kAXValueAttribute), !text.isEmpty {
+                words.append(text)
+            }
+            for child in (value(node, kAXChildrenAttribute) as [AXUIElement]?) ?? [] {
+                collectText(child, depth: depth + 1)
+            }
+        }
+        for sibling in siblings.dropFirst(index + 1) {
+            let role: String? = value(sibling, kAXRoleAttribute)
+            if role == "AXButton" {
+                let title: String = value(sibling, kAXTitleAttribute) ?? value(sibling, kAXDescriptionAttribute) ?? ""
+                let labels = ["copier", "copy", "copier la reponse", "copy response", "copier le message", "copy message"]
+                guard labels.contains(normalize(title)), nodes > 0, !words.isEmpty else { return nil }
+                return (latest, words.joined(separator: " "))
+            }
+            guard role == "AXGroup" || role == "AXStaticText" else { return nil }
+            collectText(sibling, depth: 0)
+        }
+        return nil
     }
 
     static func focusedTextField(in app: NSRunningApplication) -> AXUIElement? {
@@ -148,14 +216,14 @@ enum AXButtonPresser {
     /// L'app est-elle réellement au premier plan ? `isActive` peut rester périmé dans un service
     /// en arrière-plan : on confirme par l'app active du système et par l'Accessibilité.
     static func isFrontmost(_ app: NSRunningApplication) -> Bool {
-        if app.isActive { return true }
-        if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier { return true }
         var focused: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(), kAXFocusedApplicationAttribute as CFString, &focused) == .success,
-              let el = focused, CFGetTypeID(el) == AXUIElementGetTypeID() else { return false }
-        var pid: pid_t = 0
-        guard AXUIElementGetPid(el as! AXUIElement, &pid) == .success else { return false }
-        return pid == app.processIdentifier
+        if AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(), kAXFocusedApplicationAttribute as CFString, &focused) == .success,
+           let el = focused, CFGetTypeID(el) == AXUIElementGetTypeID() {
+            var pid: pid_t = 0
+            if AXUIElementGetPid(el as! AXUIElement, &pid) == .success { return pid == app.processIdentifier }
+        }
+        if let front = NSWorkspace.shared.frontmostApplication { return front.processIdentifier == app.processIdentifier }
+        return app.isActive
     }
 
     /// Blocs de texte de la fenêtre active, avec leur élément et la zone web qui les contient.
@@ -297,6 +365,33 @@ enum AXButtonPresser {
             }
         }
         return nil
+    }
+
+    /// L'envoi automatique n'agit que si un bouton d'envoi actif est identifiable sans ambiguïté.
+    static func pressUniqueSend(_ labels: [String], in app: NSRunningApplication, window: AXUIElement,
+                                while allowed: () -> Bool) -> Bool {
+        guard let field = composerField(in: app) else { return false }
+        // Une carte de choix peut aussi avoir un bouton « Envoyer » : il faut un voisin du composeur.
+        func ancestors(_ element: AXUIElement) -> [AXUIElement] {
+            var parents: [AXUIElement] = []
+            var current = element
+            for _ in 0..<5 {
+                guard let parent: AXUIElement = value(current, kAXParentAttribute), !CFEqual(parent, window),
+                      (value(parent, kAXRoleAttribute) as String?) != "AXWebArea" else { break }
+                parents.append(parent)
+                current = parent
+            }
+            return parents
+        }
+        let fieldParents = ancestors(field)
+        let buttons = all(labels, in: app, window: window).filter {
+            guard (value($0, kAXEnabledAttribute) as Bool?) == true,
+                  (value($0, kAXRoleAttribute) as String?) == "AXButton" else { return false }
+            let buttonParents = ancestors($0)
+            return fieldParents.contains { node in buttonParents.contains { CFEqual(node, $0) } }
+        }
+        guard buttons.count == 1 else { return false }
+        return activate(buttons[0], in: app, while: allowed)
     }
 
     /// Tous les éléments (boutons ou autres rôles si `anyRole`) dont le libellé exact est dans `labels`, dans l'ordre de l'arbre.

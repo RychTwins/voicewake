@@ -78,6 +78,13 @@ struct Target: Codable {
     var copyResponseShortcut: Shortcut?
     /// Commandes vocales de navigation (menus, boutons). Défaut : celles de l'app Claude (voir `NavCommands.claude`).
     var voiceCommands: [VoiceCommand]?
+
+    var automaticSubmitShortcut: Shortcut? {
+        if let submitShortcut, !submitShortcut.buttons.isEmpty { return submitShortcut }
+        guard ["com.anthropic.claudefordesktop", "com.openai.codex", "com.openai.chat", "com.google.GeminiMacOS"]
+            .contains(bundleID ?? "") else { return nil }
+        return try? Shortcut(spec: "button:Envoyer|Send|Envoyer le message|Send message")
+    }
 }
 
 /// Un assistant intégré à un éditeur (ex. extension Claude Code dans VS Code).
