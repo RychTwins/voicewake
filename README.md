@@ -66,6 +66,7 @@ Chaque commande se dit **seule**, avec une courte pause avant et environ une sec
 | « Dis Gemini », « Salut Gemini » | micro de Gemini |
 | « Salut ChatGPT » | dictée dans ChatGPT |
 | « Salut assistant », « Dis assistant » | assistant de l'application au premier plan, sinon `defaultTarget` |
+| « Claude. », « Codex. », « Gemini. », « ChatGPT. », « Assistant. » (le nom **seul**, puis silence) | même effet ; jamais quand le nom est au milieu d'une phrase, ni pendant une dictée. Pensé pour le filtre de voix (seule votre voix compte). `"bareNames": false` désactive |
 
 L'application est lancée si elle est fermée, puis mise au premier plan. VoiceWake attend le résultat définitif de la reconnaissance (environ une seconde après la fin de la phrase) avant d'agir : le moteur corrige souvent sa première hypothèse, par exemple « Salut Claude » en « Salut Codex ». « Salut … » est la forme la mieux reconnue.
 

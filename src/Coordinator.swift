@@ -147,8 +147,11 @@ final class Coordinator {
         // « Jarvis, <phrase libre> » sans commande reconnue : interpréteur IA (si activé).
         // Phrase libre adressée à un assistant (« Claude, tu peux me lire sa réponse ? ») ou après « Jarvis » :
         // interpréteur local (modèle d'Apple sur le Mac).
-        if active == nil, pendingWake == nil, config.interpreter?.enabled ?? true,
+        // « Claude… » (nom seul, en attente) qui continue en demande : la demande l'emporte.
+        if active == nil, config.interpreter?.enabled ?? true,
            named != nil || Interpreter.addressed(text), wakeKey(text) == nil {
+            pendingWake?.cancel()
+            pendingWake = nil
             return scheduleInterpret(text, isFinal: isFinal)
         }
         pendingInterpret?.cancel()

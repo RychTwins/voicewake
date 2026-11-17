@@ -236,6 +236,8 @@ struct Config: Codable {
     var naturalTurnEnd: Bool?
     /// Au démarrage, dire à voix haute s'il y a un problème (autorisation, app, modèle). Défaut true.
     var announceProblems: Bool?
+    /// Nom de l'assistant dit seul (« Claude. », « Gemini. ») pour ouvrir son micro. Défaut true.
+    var bareNames: Bool?
     /// Filtre « ma voix uniquement » (optionnel ; empreinte créée par `voicewake voix apprends`).
     var voiceFilter: VoiceFilterSettings?
     var targets: [Target]

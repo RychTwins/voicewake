@@ -19,7 +19,24 @@ struct Router {
     /// Mots soufflés au moteur pour mieux reconnaître les noms propres.
     var hints: [String] {
         let conversation = config.continuousConversation == true ? ["attends je réfléchis", "garde le brouillon"] : []
-        return Array(Set(config.targets.flatMap(\.phrases) + config.frontmostPhrases + conversation))
+        let names = (config.bareNames ?? true) ? ["Claude", "Codex", "Gemini", "ChatGPT", "assistant"] : []
+        return Array(Set(config.targets.flatMap(\.phrases) + config.frontmostPhrases + conversation + names))
+    }
+
+    /// Nom dit seul (« Claude. ») et ses déformations courantes → identifiant de la cible ; "" = app au premier plan.
+    static let bareNames: [String: String] = [
+        "claude": "claude", "clode": "claude", "clod": "claude", "glode": "claude", "claud": "claude",
+        "codex": "codex", "codecs": "codex", "code x": "codex", "codeks": "codex",
+        "gemini": "gemini", "jemini": "gemini", "jimini": "gemini", "jeminy": "gemini", "gemmini": "gemini",
+        "chatgpt": "chatgpt", "chat gpt": "chatgpt", "chat gbt": "chatgpt", "chat jpt": "chatgpt",
+        "assistant": "",
+    ]
+
+    /// Cible appelée par son nom dit seul, sans rien avant ni après (en veille seulement : une dictée n'est
+    /// jamais concernée). Le filtre de voix garantit que c'est bien l'utilisateur qui l'a dit.
+    func bareName(_ text: String) -> Target? {
+        guard config.bareNames ?? true, let id = Self.bareNames[normalize(text)] else { return nil }
+        return id.isEmpty ? frontmostTarget() : config.target(id: id)
     }
 
     /// Vrai si le texte demande la lecture de la dernière réponse (« fais la lecture »).
@@ -39,7 +56,7 @@ struct Router {
         if frontmostPhrases.contains(where: { n.contains(" " + $0 + " ") }) {
             return frontmostTarget()
         }
-        return nil
+        return bareName(text)
     }
 
     private var sendCommands: Set<String> {

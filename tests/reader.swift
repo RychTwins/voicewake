@@ -485,6 +485,11 @@ struct ReaderTests {
         check(Diagnostic.spokenSummary([Diagnostic.Check(name: "Micro", ok: false, fix: "")]) != nil
               && Diagnostic.spokenSummary([Diagnostic.Check(name: "Micro", ok: true, fix: "")]) == nil, "diagnostic : annonce seulement s'il y a un problème")
 
+        check(router.bareName("Claude.")?.id == "claude" && router.bareName("Gémini")?.id == "gemini"
+              && router.bareName("codecs")?.id == "codex" && router.bareName("j'ai demandé à Claude") == nil
+              && router.route("Claude")?.id == "claude" && !router.isWakePhrase("Claude"),
+              "nom seul : ouvre l'assistant, jamais au milieu d'une phrase ni pendant une dictée")
+
         print("Tous les tests passent.")
     }
 }
