@@ -387,18 +387,16 @@ case "voix":
     }
 
 case "ia":
-    // voicewake ia "phrase" : commande que l'interpréteur IA tirerait de la phrase (n'exécute rien).
+    // voicewake ia "phrase" : commande que l'interpréteur local tirerait de la phrase (n'exécute rien).
     let phrase = args.dropFirst().joined(separator: " ")
     guard !phrase.isEmpty else { print("Usage : voicewake ia \"phrase\""); exit(1) }
-    let settings = config.interpreter ?? InterpreterSettings()
     let done = DispatchSemaphore(value: 0)
     let extra = AppCommand.allCases.flatMap { $0.phrases(config) } + (config.routines ?? []).flatMap { $0.phrases ?? [] }
-    DispatchQueue.global().async {
-        Interpreter.interpret(phrase, settings: settings, front: nil, extra: extra) { c, d in
-            print(c.map { $0.isEmpty ? "→ aucune commande" : "→ « \($0) »" } ?? "→ échec : \(d)")
-            if config.interpreter?.enabled != true { print("(interpréteur désactivé dans la config : \"interpreter\": {\"enabled\": true})") }
-            done.signal()
-        }
+    let start = Date()
+    print(Interpreter.addressed(phrase) ? "(phrase adressée à un assistant : interprétée en veille)" : "(en veille, commencer par « Claude, … » pour l'interpréter)")
+    Interpreter.interpret(phrase, front: nil, jarvis: config.jarvisEnabled, extra: extra) { c, d in
+        print((c.map { $0.isEmpty ? "→ aucune commande" : "→ « \($0) »" } ?? "→ échec : \(d)") + " (\(Int(Date().timeIntervalSince(start) * 1000)) ms)")
+        done.signal()
     }
     while done.wait(timeout: .now()) == .timedOut { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
 

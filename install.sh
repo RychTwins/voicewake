@@ -57,7 +57,7 @@ echo "→ Compilation"
 mkdir -p "$APP/Contents/MacOS" "$(dirname "$LINK")" "$CONFIG_DIR" "$(dirname "$PLIST")" "$(dirname "$LOG")"
 cp "$ROOT/packaging/Info.plist" "$APP/Contents/Info.plist"
 swiftc -target "$(uname -m)-apple-macosx13.0" -O -swift-version 5 "$ROOT"/src/*.swift -o "$BIN" \
-  -framework AppKit -framework AVFoundation -framework Speech -framework CoreAudio -framework CoreML
+  -framework AppKit -framework AVFoundation -framework Speech -framework CoreAudio -framework CoreML -framework FoundationModels
 
 echo "→ Signature"
 if ensure_certificate; then

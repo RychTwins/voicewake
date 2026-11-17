@@ -422,20 +422,20 @@ struct ReaderTests {
         check(fresh.contains("Journal précédent archivé"), "journal neuf ouvert")
         try? FileManager.default.removeItem(atPath: tmp); try? FileManager.default.removeItem(atPath: tmp + ".1")
 
-        // Interpréteur IA : réponse structurée lue, réponses invalides refusées.
-        func apiReply(_ inner: String, stop: String = "end_turn") -> Data {
-            let o: [String: Any] = ["stop_reason": stop, "content": [["type": "thinking", "thinking": ""], ["type": "text", "text": inner]]]
-            return try! JSONSerialization.data(withJSONObject: o)
-        }
-        check(Interpreter.parse(apiReply("{\"command\": \"monte le son\"}")) == "monte le son", "IA : commande lue")
-        check(Interpreter.parse(apiReply("{\"command\": \"\"}")) == "", "IA : commande vide")
-        check(Interpreter.parse(apiReply("{\"command\": \"x\"}", stop: "refusal")) == nil, "IA : refus ignoré")
-        check(Interpreter.parse(apiReply("pas du json")) == nil, "IA : réponse invalide")
-        let iaBody = Interpreter.body(text: "mets un peu de jazz", model: Interpreter.defaultModel, front: "Spotify", extra: ["où on en est"])
-        check((iaBody["model"] as? String) == "claude-haiku-5-5" && ((iaBody["messages"] as? [[String: Any]])?.first?["content"] as? String)?.contains("« Spotify »") == true
-              && Interpreter.clean("Spot\nify\u{7}", max: 60) == "Spotify"
-              && (iaBody["system"] as? String)?.contains("où on en est") == true, "IA : requête construite")
-        check(try! JSONSerialization.data(withJSONObject: iaBody).count > 0, "IA : requête sérialisable")
+        // Interpréteur local : phrases adressées à un assistant, données assainies.
+        check(Interpreter.addressed("Claude, tu peux me lire ce qu'il a répondu ?") && Interpreter.addressed("Dis Codex, ouvre le projet")
+              && !Interpreter.addressed("Claude") && !Interpreter.addressed("j'ai parlé à Claude hier"), "interpréteur : phrase adressée")
+        check(Interpreter.userContent(text: "x", front: "Spot\nify\u{7}").contains("« Spotify »")
+              && Interpreter.tidy("« lis la réponse ». ") == "lis la réponse", "interpréteur : données assainies")
+        check(!Interpreter.instructions(jarvis: false, extra: []).contains("Finder")
+              && Interpreter.instructions(jarvis: true, extra: []).contains("Finder"), "interpréteur : commandes Mac seulement en mode Jarvis")
+        check(Interpreter.needsConfirmation("efface le brouillon") && !Interpreter.needsConfirmation("lis la réponse"),
+              "interpréteur : « je confirme » avant d'effacer")
+        check(Interpreter.compose(action: "ouvre", argument: "VoxTV.", jarvis: false) == "ouvre VoxTV"
+              && Interpreter.compose(action: "monte le son", argument: "", jarvis: false) == ""
+              && Interpreter.compose(action: "monte le son", argument: "", jarvis: true) == "monte le son"
+              && Interpreter.compose(action: "menu", argument: "", jarvis: false) == ""
+              && Interpreter.compose(action: "rm -rf", argument: "/", jarvis: true) == "", "interpréteur : seulement les actions listées")
 
         // Filtre de voix : rééchantillonnage, détection de parole, empreinte (modèle seulement s'il est installé).
         let vpTest = VoicePrint(sampleRate: 48_000)

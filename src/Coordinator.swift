@@ -16,6 +16,10 @@ final class Coordinator {
         detector.onText = { [weak self] text, isFinal in self?.handle(text, isFinal: isFinal) }
         Feedback.configure(config)
         Bilan.configure(config)
+        if config.interpreter?.enabled ?? true {
+            if Interpreter.isAvailable { DispatchQueue.global().async { Interpreter.prewarm() } }
+            else { log("Interpréteur local : \(Interpreter.unavailableReason).") }
+        }
         if config.voiceFilter?.enabled == true {
             let path = VoicePrint.defaultPath(config.voiceFilter)
             let modelPath = VoicePrint.defaultModelPath(config.voiceFilter)
@@ -135,7 +139,10 @@ final class Coordinator {
         // détection (un flux continu, comme la voix de lecture, ne bloque donc pas les commandes).
         latestWakeText = text
         // « Jarvis, <phrase libre> » sans commande reconnue : interpréteur IA (si activé).
-        if named != nil, pendingWake == nil, wakeKey(text) == nil, config.jarvisEnabled, config.interpreter?.enabled == true {
+        // Phrase libre adressée à un assistant (« Claude, tu peux me lire sa réponse ? ») ou après « Jarvis » :
+        // interpréteur local (modèle d'Apple sur le Mac).
+        if active == nil, pendingWake == nil, config.interpreter?.enabled ?? true,
+           named != nil || Interpreter.addressed(text), wakeKey(text) == nil {
             return scheduleInterpret(text, isFinal: isFinal)
         }
         pendingInterpret?.cancel()
@@ -315,36 +322,44 @@ final class Coordinator {
     private func scheduleInterpret(_ text: String, isFinal: Bool) {
         pendingInterpret?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, let settings = self.config.interpreter else { return }
+            guard let self else { return }
             self.pendingInterpret = nil
             guard self.active == nil, !self.interpreting, self.currentReader() == nil, !self.reader.isActive,
                   Date().timeIntervalSince(self.lastWake) >= self.config.cooldownSeconds else { return }
             let gate = self.voiceGate()
             if gate == false { self.detector.reset(); return }
             self.detector.reset()
-            if self.config.dryRun == true { return log("[essai] → interpréteur IA\(said(text))") }
+            if self.config.dryRun == true { return log("[essai] → interpréteur\(said(text))") }
             self.interpreting = true
             self.lastWake = Date()
             let extra = AppCommand.allCases.flatMap { $0.phrases(self.config) }
                 + (self.config.routines ?? []).flatMap { $0.phrases ?? [] }
-            log("Interpréteur IA : demande envoyée\(self.config.debug ? said(text) : "").")
-            Interpreter.interpret(text, settings: settings, front: Universal.frontApp()?.localizedName, extra: extra) { [weak self] command, detail in
+            log("Interpréteur : demande envoyée\(self.config.debug ? said(text) : "").")
+            Interpreter.interpret(text, front: Universal.frontApp()?.localizedName, jarvis: self.config.jarvisEnabled, extra: extra) { [weak self] command, detail in
                 guard let self else { return }
                 self.interpreting = false
                 guard let command, !command.isEmpty else {
                     Feedback.play(.failed)
                     Bilan.record(.command, command == nil ? "interpréteur : \(detail)" : "interpréteur : rien compris")
-                    return log("Interpréteur IA : \(command == nil ? detail : "aucune commande ne correspond").")
+                    return log("Interpréteur : \(command == nil ? detail : "aucune commande ne correspond").")
                 }
                 // Seules les commandes que VoiceWake reconnaît sont exécutées, par le chemin habituel.
                 guard self.wakeKey(command) != nil, self.active == nil else {
                     Feedback.play(.failed)
                     Bilan.record(.command, "interpréteur : commande inconnue")
-                    return log("Interpréteur IA : réponse non reconnue\(self.config.debug ? said(command) : "").")
+                    return log("Interpréteur : réponse non reconnue\(self.config.debug ? said(command) : "").")
                 }
-                log("Interpréteur IA → \(self.wakeKey(command) ?? "")\(self.config.debug ? said(command) : "").")
-                self.lastWake = .distantPast
-                self.handleWake(command, fromVoice: false, verified: gate == true)
+                log("Interpréteur → \(self.wakeKey(command) ?? "")\(self.config.debug ? said(command) : "").")
+                let run = { [weak self] in
+                    guard let self else { return }
+                    self.lastWake = .distantPast
+                    self.handleWake(command, fromVoice: false, verified: gate == true)
+                }
+                if Interpreter.needsConfirmation(command) {
+                    log("Confirmation demandée → commande interprétée.")
+                    return self.askConfirmation(command, run: run)
+                }
+                run()
             }
         }
         pendingInterpret = work
