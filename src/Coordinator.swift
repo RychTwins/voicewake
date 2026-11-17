@@ -95,17 +95,19 @@ final class Coordinator {
     /// Le texte transcrit (tes paroles) n'est écrit dans le log qu'en mode debug.
     private func said(_ text: String) -> String { config.debug ? " (« \(text) »)" : "" }
 
-    private func handle(_ text: String, isFinal: Bool = false) {
-        if pendingConfirmation != nil, handleConfirmation(text, isFinal: isFinal) { return }
+    private func handle(_ heard: String, isFinal: Bool = false) {
+        // En veille, erreurs de reconnaissance fréquentes corrigées (« lance le ski » → « lance le skill »).
+        let fixed = active == nil ? SpeechFixes.apply(heard) : heard
+        if pendingConfirmation != nil, handleConfirmation(fixed, isFinal: isFinal) { return }
         // VoiceWake parle (état, aide, confirmation) : ce que le micro entend est sa propre voix.
         if announcer.isSpeaking { return }
         // Pas de garde « un assistant parle » ici : Claude garde une sortie audio ouverte pendant sa dictée.
         // Relecture après « ok arrête » / « garde le brouillon » (micro coupé) : une commande de veille
         // (« lis à partir de… », « fais la lecture », « dis Claude »…) abandonne l'attente de « ok envoie ».
         if active != nil, !recording, !stopping, reviewUntil != nil,
-           !router.isSendCommand(text), wakeKey(text) != nil {
+           !router.isSendCommand(fixed), wakeKey(fixed) != nil {
             // « Où on en est ? » : on répond sans abandonner le brouillon.
-            if AppCommand.match(text, router: router, config: config) == .status {
+            if AppCommand.match(fixed, router: router, config: config) == .status {
                 announceStatus()
                 return
             }
@@ -113,10 +115,10 @@ final class Coordinator {
             endPause()
             // Pas de return : la même phrase est traitée tout de suite par la veille, ci-dessous.
         }
-        if let t = active, checkWakeNameDuringDictation(text, t) { return }
+        if let t = active, checkWakeNameDuringDictation(fixed, t) { return }
         // En veille, le nom d'appel est facultatif : « Jarvis, monte le son » = « monte le son ».
-        let named = active == nil ? afterWakeName(text).flatMap { $0.isEmpty ? nil : $0 } : nil
-        let text = named ?? text
+        let named = active == nil ? afterWakeName(fixed).flatMap { $0.isEmpty ? nil : $0 } : nil
+        let text = named ?? fixed
         if let t = active {
             if !router.endsWithStopPhrase(text), let other = switchTarget(text, from: t) {
                 switchDictation(from: t, to: other)

@@ -469,6 +469,12 @@ struct ReaderTests {
         check(TurnEnd.delay(for: "Tu peux regarder ?", base: 1.5) < 1.5 && TurnEnd.delay(for: "je pense que", base: 1.5) >= 3.5
               && TurnEnd.delay(for: "Ajoute un test", base: 1.5) == 1.5, "fin de tour : délais adaptés")
 
+        check(SpeechFixes.apply("Ouvrez Quality holding") == "ouvre Quality holding"
+              && SpeechFixes.apply("Lance le ski brainstorming sur mon idée") == "Lance le skill brainstorming sur mon idée"
+              && SpeechFixes.apply("Nouvelle session de VoxTV") == "nouvelle session dans VoxTV"
+              && SpeechFixes.apply("Dit codex, c'est quoi") == "dis codex, c'est quoi"
+              && SpeechFixes.apply("le ski c'est bien") == "le ski c'est bien", "corrections de reconnaissance")
+
         print("Tous les tests passent.")
     }
 }

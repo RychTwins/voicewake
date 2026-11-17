@@ -317,6 +317,10 @@ Aucun son n'est enregistré ni envoyé : les 8 dernières secondes restent en m�
 
 Modèle : WeSpeaker ResNet34 ([pyannote/wespeaker-voxceleb-resnet34-LM](https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM)), converti en Core ML par Fluid Inference, licence [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) ; fichiers modifiés (conversion Core ML, poids 8 bits), non inclus dans ce dépôt.
 
+### Erreurs de reconnaissance corrigées
+
+En veille, VoiceWake corrige les erreurs fréquentes du moteur vocal avant de chercher la commande : « Ouvrez … » → « ouvre … », « lance le ski … » → « lance le skill … », « nouvelle session de … » → « nouvelle session dans … », « dit Codex » → « dis Codex ». Une dictée n'est jamais modifiée. (Comparatif fait avec le nouveau moteur de macOS 26 : pas meilleur sur les commandes, le moteur actuel est conservé.)
+
 ### Parler naturellement (interpréteur local)
 
 Adressez-vous à un assistant par son nom, avec vos mots : VoiceWake comprend la demande, sans phrase-clé.
