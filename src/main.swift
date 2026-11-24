@@ -193,7 +193,8 @@ case "route":
     let text = args.dropFirst().joined(separator: " ")
     let router = Router(config: config)
     print(router.route(text).map { "→ \($0.id)" } ?? "→ aucune cible")
-    if !config.jarvisEnabled { print("(mode Jarvis en pause : les lignes Mac, Finder, musique, navigateur et Réglages ci-dessous ne s'exécutent pas — \"jarvis\": true pour les réactiver)") }
+    // Sur la sortie d'erreur : la sortie standard ne porte que le résultat (lu par tests/route.sh).
+    if !config.jarvisEnabled { FileHandle.standardError.write(Data("(mode Jarvis en pause : les lignes Mac, Finder, musique, navigateur et Réglages ci-dessous ne s'exécutent pas — \"jarvis\": true pour les réactiver)\n".utf8)) }
     if let f = FinderCommands.match(text) { print("→ Finder : \(f)\(f.dangerous ? " — confirmation requise" : "")\(f.needsFinderFront ? " (Finder au premier plan)" : "")") }
     if case let .goTo(d)? = FinderCommands.match(text) { print("  dossier : \(FinderCommands.resolve(d, config: config, current: nil) ?? "introuvable")") }
     if case let .copy(d)? = FinderCommands.match(text) { print("  dossier : \(FinderCommands.resolve(d, config: config, current: nil) ?? "introuvable")") }
@@ -345,6 +346,15 @@ case "voix":
     let modelPath = VoicePrint.defaultModelPath(config.voiceFilter)
     guard VoicePrint.loadModel(modelPath) else { print("Modèle introuvable : \(modelPath)"); exit(1) }
     let engine = AVAudioEngine()
+    // --echo : même annulation d'écho que VoiceWake (echoCancellation), pour comparer.
+    if args.contains("--echo") {
+        do { try engine.inputNode.setVoiceProcessingEnabled(true); print("Annulation d'écho : activée") }
+        catch { print("Annulation d'écho indisponible : \(error.localizedDescription)") }
+        if #available(macOS 14.0, *) {
+            engine.inputNode.voiceProcessingOtherAudioDuckingConfiguration =
+                AVAudioVoiceProcessingOtherAudioDuckingConfiguration(enableAdvancedDucking: false, duckingLevel: .min)
+        }
+    }
     let format = engine.inputNode.outputFormat(forBus: 0)
     guard format.sampleRate > 0 else { print("Aucun micro disponible."); exit(1) }
     let vp = VoicePrint(sampleRate: format.sampleRate)
@@ -382,15 +392,18 @@ case "voix":
         } catch { print("Enregistrement impossible : \(error.localizedDescription)"); exit(1) }
     } else {
         let seconds = args.count > 2 ? max(5, min(600, Int(args[2]) ?? 20)) : 20
+        var heard = 0.0
         print("Score toutes les secondes (\(seconds) s) : 1 = même voix, 0 = voix différente. Seuil : \(config.voiceFilter?.threshold ?? 0.45)")
         let start = Date()
         for _ in 0..<seconds {
             RunLoop.main.run(until: Date().addingTimeInterval(1))
             let t = Int(Date().timeIntervalSince(start))
+            heard += vp.speechSeconds(last: 1)
             print(String(format: "%4d s ", t) + (vp.score(lastSeconds: 2).map { String(format: "score %5.2f", $0) } ?? "(silence)"))
             fflush(stdout)
         }
         engine.stop()
+        print(String(format: "Parole entendue : %.1f s sur %d s", heard, seconds))
     }
 
 case "ia":

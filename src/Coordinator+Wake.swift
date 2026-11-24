@@ -57,11 +57,23 @@ extension Coordinator {
             defer { detector.reset() }
             if !router.isStrongInterrupt(text, notIn: reader.spokenNow), spokenByOwnReader(text), !insisted(text, phrases: readCommandPhrases + (config.readResumePhrases ?? []) + ReaderNav.allPhrases(config), spokenNow: reader.spokenNow) { Feedback.play(.ignored); return log("Commande ignorée : prononcée par le lecteur intégré.") }
             if interrupt, let t = readerTarget {
+                let window = readerWindow
                 reader.stop()
+                readerWindow = nil
+                if let window, !window.isSameConversation {
+                    return log("Écoute annulée : chat ou fenêtre changé.")
+                }
                 lastWake = Date()
                 log("Écoute → \(t.id) (micro).")
                 detector.stop()
-                trigger.fire(t, external: externalDictation(for: t)) { [weak self] started in self?.didTrigger(t, started: started) }
+                if let window {
+                    trigger.reopenDictation(t, in: window) { [weak self] started in
+                        if started { self?.pauseUntilConversationEnds(t, reopenedIn: window) }
+                        else { self?.detector.start() }
+                    }
+                } else {
+                    trigger.fire(t, external: externalDictation(for: t)) { [weak self] started in self?.didTrigger(t, started: started) }
+                }
             } else if pauseRead {
                 reader.pause(); Feedback.play(.understood); log("Lecteur intégré : pause.")
             } else if resumeRead {
@@ -344,7 +356,7 @@ extension Coordinator {
             log("Lecture demandée → \(t.id).")
             trigger.readAloudNow(t) { ok in
                 Feedback.play(ok ? .understood : .failed)
-                log(ok ? "\(t.id) : lecture à voix haute lancée." : "\(t.id) : bouton de lecture introuvable.")
+                log(ok ? "\(t.id) : lecture à voix haute lancée." : "\(t.id) : lecture indisponible.")
             }
             return
         }

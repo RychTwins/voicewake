@@ -27,6 +27,23 @@ struct ConversationTests {
             let unidentified = ConversationGuard(a)
             assert(!unidentified.check(nil), "Un chat non identifié invalide l'envoi")
             assert(!unidentified.check(a))
+            // Chat neuf : repère provisoire, remplacé une seule fois par le vrai (après le premier envoi).
+            let fresh = ConversationGuard("page:")
+            fresh.succeeds = { old, new in old.hasPrefix("page:") && !new.hasPrefix("page:") }
+            assert(fresh.check("page:"), "Autorise l'envoi automatique dans un chat neuf")
+            assert(fresh.check(a), "Le chat neuf reçoit son identifiant : le tour continue")
+            assert(fresh.check(a))
+            assert(!fresh.check(b), "Un vrai changement de chat invalide toujours le tour")
+            assert(!fresh.check(a))
+            // Fenêtre trop chargée pour être parcourue : repère inconnu, qui n'annule jamais le tour.
+            let long = ConversationGuard(a)
+            long.isUnknown = { $0 == "page:" }
+            assert(long.check("page:"), "Un parcours incomplet n'annule pas l'envoi automatique")
+            assert(long.check(a))
+            assert(!long.check(b), "Un autre chat identifié annule toujours")
+            let blind = ConversationGuard("page:")
+            blind.isUnknown = { $0 == "page:" }
+            assert(blind.check("page:") && blind.check(a) && !blind.check(b))
             print("\(target) : garde de conversation validée")
         }
     }

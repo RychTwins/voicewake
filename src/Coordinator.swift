@@ -14,6 +14,10 @@ final class Coordinator {
         self.router = Router(config: config)
         self.detector = try WakeWordDetector(config: config, hints: router.hints)
         detector.onText = { [weak self] text, isFinal in self?.handle(text, isFinal: isFinal) }
+        detector.isIdle = { [weak self] in
+            guard let self else { return true }
+            return self.active == nil && !self.reader.isActive && self.currentReader() == nil
+        }
         Feedback.configure(config)
         Bilan.configure(config)
         if config.interpreter?.enabled ?? true {
@@ -36,12 +40,20 @@ final class Coordinator {
         trigger.onReadingFinished = { [weak self] target, window in
             self?.continueConversation(target, in: window)
         }
-        trigger.onReadAloudUnavailable = { [weak self] target, window, text in
+        trigger.onReadText = { [weak self] target, window, text in
             guard let self, self.active == nil, self.pendingWake == nil, !self.reader.isActive,
-                  window.isSameConversation else { return }
+                  window.isSameConversation else { return false }
             log("\(target.id) : lecture via le lecteur intégré.")
-            self.reader.onFinish = { [weak self] in self?.continueConversation(target, in: window) }
-            self.reader.speak(text, config: self.config)
+            self.readerTarget = target
+            self.readerWindow = window
+            self.reader.voiceName = self.config.readerVoice
+            self.reader.onFinish = { [weak self] in
+                log("\(target.id) : lecture terminée.")
+                self?.readerWindow = nil
+                self?.continueConversation(target, in: window)
+            }
+            self.reader.speak(text, locale: self.config.locale)
+            return true
         }
     }
 
@@ -387,6 +399,7 @@ final class Coordinator {
         return found
     }
     var readerTarget: Target?
+    var readerWindow: ShortcutTrigger.DictationWindow?
 
     /// « Lis à partir de … » : cherche le passage dans le texte affiché par l'assistant et le lit depuis là.
     func readFrom(_ query: [String]) {
@@ -397,6 +410,7 @@ final class Coordinator {
         guard let start else { Feedback.play(.failed); Bilan.record(.read, config.debug ? query.joined(separator: " ") : "passage introuvable"); return log("Lecture : passage introuvable\(said(query.joined(separator: " "))).") }
         if trigger.readingTarget() != nil { trigger.pauseReading(target) }
         readerTarget = target
+        readerWindow = nil
         reader.voiceName = config.readerVoice
         reader.onFinish = { log("Lecteur intégré : lecture terminée.") }
         let words = PassageFinder.passage(tokens, from: start)

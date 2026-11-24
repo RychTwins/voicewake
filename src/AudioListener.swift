@@ -26,7 +26,13 @@ final class AudioListener {
             }
         }
         let format = input.outputFormat(forBus: 0)
-        guard format.sampleRate > 0 else { throw ConfigError("Aucun micro disponible") }
+        guard format.sampleRate > 0, format.channelCount > 0 else { throw ConfigError("Aucun micro disponible") }
+        // Pendant un changement de périphérique, le format du nœud et celui du matériel divergent un instant :
+        // installTap lève alors une exception Objective-C (plantage). On attend que les deux concordent.
+        let hardware = input.inputFormat(forBus: 0)
+        guard hardware.sampleRate == format.sampleRate, hardware.channelCount == format.channelCount else {
+            throw ConfigError("périphérique audio en cours de changement")
+        }
         // Filtre « ma voix uniquement » : analyse du timbre au même rythme que la reconnaissance.
         if let p = VoicePrint.profileToUse {
             if VoicePrint.shared?.sampleRate != format.sampleRate { VoicePrint.shared = VoicePrint(sampleRate: format.sampleRate) }

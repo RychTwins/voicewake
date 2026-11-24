@@ -27,6 +27,15 @@ final class WakeWordDetector {
     private var wanted = false
     private var observersInstalled = false
     private var waitedForModel = 0
+    // Chien de garde : l'écoute peut rester « En écoute » tout en n'entendant plus rien (micro muet) ou en ne
+    // reconnaissant plus aucun mot (moteur vocal bloqué). Seule une relance du service a réparé ce second cas.
+    private var healthTimer: Timer?
+    private var lastBufferAt: TimeInterval = 0
+    private var speechSinceText: Double = 0
+    private var lastErrorLogAt: TimeInterval = 0
+    /// Faux pendant une dictée ou une lecture : le service n'est alors jamais relancé.
+    var isIdle: (() -> Bool)?
+    private static let deafRestartKey = "lastDeafRestart"
 
     var audioActivity: AudioActivity? {
         lock.lock()
@@ -77,6 +86,45 @@ final class WakeWordDetector {
         installObserversOnce()
         wanted = true
         restartAudio()
+        startHealthWatch()
+    }
+
+    private func startHealthWatch() {
+        guard healthTimer == nil else { return }
+        healthTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.checkHealth() }
+    }
+
+    private func checkHealth() {
+        guard wanted, audio.isRunning else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - audioStartedAt > 20 else { return }
+        lock.lock(); let silentFor = now - lastBufferAt; let unheard = speechSinceText; lock.unlock()
+        if silentFor > 15 {
+            log("Micro muet depuis \(Int(silentFor)) s : redémarrage de l'écoute.")
+            return restartAudio()
+        }
+        guard unheard >= 120 else { return }
+        lock.lock(); speechSinceText = 0; lock.unlock()
+        let last = UserDefaults.standard.double(forKey: Self.deafRestartKey)
+        let recently = Date().timeIntervalSince1970 - last < 6 * 3600
+        // Sous launchd (KeepAlive), quitter relance un service neuf. Au plus une fois toutes les 6 h :
+        // un bruit continu sans parole (ventilateur, musique) ne doit pas relancer en boucle.
+        if getppid() == 1, !recently, isIdle?() ?? true {
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.deafRestartKey)
+            log("Écoute sourde : 2 min de son sans aucun mot reconnu. Relance du service.")
+            exit(1)
+        }
+        log("Écoute sourde : 2 min de son sans aucun mot reconnu. Redémarrage de l'écoute.")
+        restartAudio()
+    }
+
+    /// Des mots viennent d'être reconnus : c'est de la parole, même si le niveau du micro est trop faible pour
+    /// que l'énergie seule le montre (volume d'entrée bas). Évite l'envoi automatique en pleine phrase.
+    func noteSpeech() {
+        let now = ProcessInfo.processInfo.systemUptime
+        lock.lock()
+        if request != nil { activity = AudioActivity(lastBuffer: activity?.lastBuffer ?? now, lastSpeech: now) }
+        lock.unlock()
     }
 
     /// Coupe l'écoute et libère le micro.
@@ -84,7 +132,7 @@ final class WakeWordDetector {
         wanted = false
         rotateTimer?.invalidate()
         generation += 1
-        lock.lock(); let r = request; request = nil; activity = nil; lock.unlock()
+        lock.lock(); let r = request; request = nil; activity = nil; speechSinceText = 0; lock.unlock()
         r?.endAudio()
         task?.cancel()
         task = nil
@@ -97,14 +145,20 @@ final class WakeWordDetector {
         startTask()
     }
 
+    private var audioStartedAt: TimeInterval = 0
+
     private func installObserversOnce() {
         guard !observersInstalled else { return }
         observersInstalled = true
         audio.onBuffer = { [weak self] buffer in
             guard let self else { return }
-            let level = self.config.continuousConversation == true ? Self.hasSpeechEnergy(buffer) : nil
+            let energy = Self.hasSpeechEnergy(buffer)
+            let level = self.config.continuousConversation == true ? energy : nil
+            let seconds = buffer.format.sampleRate > 0 ? Double(buffer.frameLength) / buffer.format.sampleRate : 0
             self.lock.lock()
             let r = self.request
+            self.lastBufferAt = ProcessInfo.processInfo.systemUptime
+            if r != nil, energy == true { self.speechSinceText += seconds }
             if r != nil, let level {
                 let now = ProcessInfo.processInfo.systemUptime
                 self.activity = AudioActivity(lastBuffer: now, lastSpeech: level ? now : self.activity?.lastSpeech ?? 0)
@@ -116,6 +170,9 @@ final class WakeWordDetector {
             forName: .AVAudioEngineConfigurationChange, object: nil, queue: .main
         ) { [weak self] _ in
             guard let self, self.wanted else { return }
+            // L'annulation d'écho reconfigure elle-même le périphérique au démarrage : ignorer ces échos-là,
+            // sinon l'écoute redémarre en boucle.
+            if ProcessInfo.processInfo.systemUptime - self.audioStartedAt < 3 { return }
             log("Périphérique audio modifié, redémarrage.")
             self.restartAudio()
         }
@@ -130,8 +187,9 @@ final class WakeWordDetector {
 
     private func restartAudio() {
         guard wanted else { return }
-        lock.lock(); activity = nil; lock.unlock()
+        lock.lock(); activity = nil; lastBufferAt = ProcessInfo.processInfo.systemUptime; lock.unlock()
         do {
+            audioStartedAt = ProcessInfo.processInfo.systemUptime
             try audio.start()
         } catch {
             log("Erreur audio : \(error.localizedDescription). Nouvel essai dans 5 s.")
@@ -173,7 +231,16 @@ final class WakeWordDetector {
         task = recognizer.recognitionTask(with: req) { [weak self] result, error in
             DispatchQueue.main.async {
                 guard let self, gen == self.generation else { return }
+                if let error = error as NSError?, ![203, 216, 301, 1110].contains(error.code) {
+                    // Hors « aucune parole » et annulations : une panne du moteur vocal doit se voir dans le journal.
+                    let now = ProcessInfo.processInfo.systemUptime
+                    if now - self.lastErrorLogAt > 600 {
+                        self.lastErrorLogAt = now
+                        log("Reconnaissance vocale : erreur \(error.code) (\(error.localizedDescription)).")
+                    }
+                }
                 if let text = result?.bestTranscription.formattedString, !text.isEmpty {
+                    self.lock.lock(); self.speechSinceText = 0; self.lock.unlock()
                     if self.config.debug {
                         log("… \(text)")
                         let alts = (result?.transcriptions ?? []).dropFirst().prefix(4).map(\.formattedString)

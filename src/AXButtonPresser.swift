@@ -28,6 +28,9 @@ enum AXButtonPresser {
         let assistant = inEditor ? target.id.split(separator: "@").first.map(String.init) : assistants[target.bundleID ?? ""]
         guard let assistant else { return nil }
         var remaining = 4000
+        // Chat tout neuf de Claude (pas encore d'identifiant dans l'adresse) : la page elle-même sert de repère,
+        // sinon l'envoi automatique après un silence reste désactivé pour tout le premier message.
+        var newChat: ConversationIdentity?
         func find(in element: AXUIElement, depth: Int, inOutline: Bool) -> ConversationIdentity? {
             guard remaining > 0, depth < 65 else { return nil }
             remaining -= 1
@@ -35,9 +38,10 @@ enum AXButtonPresser {
             if role == "AXMenuBar" { return nil }
             switch assistant {
             case "claude":
-                if role == "AXWebArea",
-                   let url: URL = value(element, kAXURLAttribute),
-                   let id = claudeConversationID(url) { return .route(id) }
+                if role == "AXWebArea", let url: URL = value(element, kAXURLAttribute) {
+                    if let id = claudeConversationID(url) { return .route(id) }
+                    if newChat == nil, url.host == "claude.ai" { newChat = .route("page:" + url.path) }
+                }
             case "gemini":
                 if !inEditor, role == "AXOutline",
                    let rows: [AXUIElement] = value(element, kAXSelectedRowsAttribute), rows.count == 1 {
@@ -68,7 +72,12 @@ enum AXButtonPresser {
             }
             return nil
         }
-        return find(in: window, depth: 0, inOutline: false)
+        // Aucun repère (chat neuf de Codex ou Gemini, assistant intégré à un éditeur) : repère provisoire, remplacé
+        // par le vrai dès qu'il apparaît. Sans lui, l'envoi automatique après un silence restait désactivé.
+        if let found = find(in: window, depth: 0, inOutline: false) { return found }
+        // Parcours interrompu (longue conversation, fenêtre très chargée) : repère inconnu, qui n'annule rien.
+        if remaining <= 0 { return .route("page:") }
+        return newChat ?? .route("page:new")
     }
 
     static func claudeConversationID(_ url: URL) -> String? {

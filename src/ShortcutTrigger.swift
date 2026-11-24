@@ -29,6 +29,18 @@ final class ShortcutTrigger {
         }
 
         var allowsAction: Bool { conversation == nil ? isFocused : isSameConversation }
+
+        /// Vrai quand le tour est perdu pour de bon : chat ou fenêtre changé depuis plus de 2 s (un écart bref,
+        /// le temps que l'app passe au premier plan, ne compte pas).
+        var isLost: Bool {
+            guard let conversation else { return !isFocused }
+            _ = isSameConversation
+            return conversation.isCancelled
+        }
+
+        var lossDetail: String {
+            "premier plan : \(isFocused ? "oui" : "non"), repère : \(conversation?.lastMismatch ?? "aucun")"
+        }
     }
 
     static func dictationWindow(for target: Target) -> DictationWindow? {
@@ -37,7 +49,16 @@ final class ShortcutTrigger {
         guard AXButtonPresser.isFrontmost(app),
               let window = AXButtonPresser.currentWindow(in: app) else { return nil }
         let identity = AXButtonPresser.conversationIdentity(in: window, target: target)
-        return DictationWindow(app: app, element: window, target: target, conversation: identity.map(ConversationGuard.init))
+        let conversation = identity.map(ConversationGuard.init)
+        conversation?.isUnknown = { $0 == .route("page:") }
+        conversation?.grace = 2
+        conversation?.succeeds = { old, new in
+            // Repère provisoire (chat neuf) → vrai repère, une seule fois ; jamais d'un vrai chat à un autre.
+            guard case .route(let before) = old, before.hasPrefix("page:") else { return false }
+            if case .route(let after) = new { return !after.hasPrefix("page:") }
+            return true
+        }
+        return DictationWindow(app: app, element: window, target: target, conversation: conversation)
     }
 
     /// Attend qu'une app tout juste lancée affiche sa fenêtre (essais toutes les 0,5 s). Les apps Electron
@@ -255,7 +276,7 @@ final class ShortcutTrigger {
 
     /// Appelé quand une lecture lancée par VoiceWake se termine d'elle-même (ni pause ni interruption).
     var onReadingFinished: ((Target, DictationWindow) -> Void)?
-    var onReadAloudUnavailable: ((Target, DictationWindow, String) -> Void)?
+    var onReadText: ((Target, DictationWindow, String) -> Bool)?
 
     func reopenDictation(_ target: Target, in window: DictationWindow, completion: @escaping (Bool) -> Void) {
         guard window.isSameConversation else { return completion(false) }
@@ -324,20 +345,24 @@ final class ShortcutTrigger {
               let window = AXButtonPresser.currentWindow(in: app) else { return completion(false) }
         readGeneration += 1
         let gen = readGeneration
-        let origin = t.bundleID == "com.openai.codex" ? Self.dictationWindow(for: t) : nil
         pausedReading = nil
+        if t.bundleID == "com.openai.codex" {
+            guard let origin = Self.dictationWindow(for: t), origin.isSameConversation else { return completion(false) }
+            DispatchQueue.global().async {
+                let text = AXButtonPresser.codexReply(in: origin.element)?.text
+                DispatchQueue.main.async {
+                    guard gen == self.readGeneration, origin.isSameConversation, let text else { return completion(false) }
+                    completion(self.onReadText?(t, origin, text) == true)
+                }
+            }
+            return
+        }
         DispatchQueue.global().async {
-            let ok = Self.pressReadAloud(t, labels, in: app, window: window, while: { origin?.allowsAction ?? true })
-            let fallback = !ok && origin?.isSameConversation == true ? AXButtonPresser.codexReply(in: window)?.text : nil
+            let ok = Self.pressReadAloud(t, labels, in: app, window: window)
             DispatchQueue.main.async {
                 guard gen == self.readGeneration else { return }
-                if ok {
-                    self.startReading(t, app: app, in: origin)
-                    completion(true)
-                } else if let origin, let fallback, origin.isSameConversation, let read = self.onReadAloudUnavailable {
-                    read(t, origin, fallback)
-                    completion(true)
-                } else { completion(false) }
+                if ok { self.startReading(t, app: app) }
+                completion(ok)
             }
         }
     }
@@ -396,13 +421,12 @@ final class ShortcutTrigger {
         }
     }
 
-    /// Attend la fin de la réponse, puis clique le dernier bouton de lecture à voix haute.
-    /// Fin = indicateur « en cours » (busyLabels) disparu, ou nouveau bouton de lecture, stable 2 s.
+    /// Repère la réponse visible avant l'envoi pour éviter de lire une ancienne réponse.
     func readAloudBaseline(_ t: Target, in window: DictationWindow?) -> ReadBaseline? {
         guard let labels = t.readAloudShortcut?.buttons, !labels.isEmpty, let window, window.allowsAction else { return nil }
         let busy = readBusyLabels(t)
         return ReadBaseline(
-            buttons: AXButtonPresser.all(labels, in: window.app, window: window.element),
+            buttons: t.bundleID == "com.openai.codex" ? [] : AXButtonPresser.all(labels, in: window.app, window: window.element),
             busy: !busy.isEmpty && !AXButtonPresser.all(busy, in: window.app, window: window.element, anyRole: true).isEmpty,
             codexReply: t.bundleID == "com.openai.codex" ? AXButtonPresser.codexReplyHeading(in: window.element) : nil
         )
@@ -434,7 +458,8 @@ final class ShortcutTrigger {
             while Date().timeIntervalSince(start) < timeout {
                 usleep(1_500_000)
                 guard DispatchQueue.main.sync(execute: { gen == self.readGeneration }) else { return }
-                guard window.isSameConversation else { return log("\(t.id) : attente annulée, chat changé.") }
+                if window.isLost { return log("\(t.id) : attente annulée, chat changé (\(window.lossDetail)).") }
+                guard window.isSameConversation else { continue }
                 let text = AXButtonPresser.windowTexts(in: app, window: window.element).joined(separator: "\n")
                 if text != last {
                     if last != nil { changed = true }
@@ -464,6 +489,7 @@ final class ShortcutTrigger {
         readGeneration += 1
         let gen = readGeneration
         let busy = readBusyLabels(t)
+        let isCodex = t.bundleID == "com.openai.codex"
         let timeout = t.readAloudTimeoutSeconds ?? 600
         log("\(t.id) : lecture à voix haute à la fin de la réponse.")
         DispatchQueue.global().async {
@@ -475,42 +501,44 @@ final class ShortcutTrigger {
             while Date().timeIntervalSince(start) < timeout {
                 usleep(500_000)
                 guard DispatchQueue.main.sync(execute: { gen == self.readGeneration }) else { return }
-                guard window.allowsAction else {
-                    log("\(t.id) : lecture automatique annulée, chat ou fenêtre changé.")
+                if window.isLost {
+                    log("\(t.id) : lecture automatique annulée, chat ou fenêtre changé (\(window.lossDetail)).")
                     return
                 }
+                guard window.allowsAction else { continue }
                 let isBusy = !busy.isEmpty && !AXButtonPresser.all(busy, in: app, window: window.element, anyRole: true).isEmpty
                 if isBusy {
                     sawBusy = true
                     stable = 0
                     stableReply = 0
+                    lastReply = nil
                     continue
+                }
+                // Le bouton Codex requiert le focus clavier. Lire la nouvelle réponse terminée sans agir sur l'interface.
+                if isCodex {
+                    let reply = AXButtonPresser.codexReply(in: window.element)
+                    let freshReply = reply.flatMap { item in
+                        baseline.codexReply.map { CFEqual($0, item.heading) } == true ? nil : item.text
+                    }
+                    stableReply = freshReply != nil && freshReply == lastReply ? stableReply + 1 : 0
+                    lastReply = freshReply
+                    guard stableReply >= 8, let freshReply else { continue }
+                    DispatchQueue.main.async {
+                        guard gen == self.readGeneration, window.isSameConversation else { return }
+                        _ = self.onReadText?(t, window, freshReply)
+                    }
+                    return
                 }
                 let buttons = AXButtonPresser.all(labels, in: app, window: window.element)
                 let newest = buttons.last
                 let newButton = newest.map { latest in !baseline.buttons.contains(where: { CFEqual($0, latest) }) } ?? false
-                let isCodex = t.bundleID == "com.openai.codex"
-                let reply = isCodex && window.conversation != nil ? AXButtonPresser.codexReply(in: window.element) : nil
-                let freshReply = reply.flatMap { item in
-                    baseline.codexReply.map { CFEqual($0, item.heading) } == true ? nil : item.text
-                }
-                stable = (newButton || (sawBusy && newest != nil && (!isCodex || freshReply != nil))) ? stable + 1 : 0
-                stableReply = freshReply != nil && freshReply == lastReply ? stableReply + 1 : 0
-                lastReply = freshReply
-                if stable < 4, stableReply >= 8, let freshReply {
-                    DispatchQueue.main.async {
-                        guard gen == self.readGeneration, window.isSameConversation else { return }
-                        self.onReadAloudUnavailable?(t, window, freshReply)
-                    }
-                    return
-                }
+                stable = (newButton || (sawBusy && newest != nil)) ? stable + 1 : 0
                 if stable >= 4 {
                     guard DispatchQueue.main.sync(execute: { gen == self.readGeneration }) else { return }
                     let ok = Self.pressReadAloud(t, labels, in: app, window: window.element, while: { window.allowsAction })
                     DispatchQueue.main.async {
                         guard gen == self.readGeneration, window.allowsAction else { return }
                         if ok { self.startReading(t, app: app, in: window) }
-                        else if let freshReply, window.isSameConversation { self.onReadAloudUnavailable?(t, window, freshReply) }
                         log(ok ? "\(t.id) : lecture à voix haute lancée." : "\(t.id) : bouton de lecture introuvable.")
                     }
                     return

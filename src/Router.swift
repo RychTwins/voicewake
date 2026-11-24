@@ -63,8 +63,8 @@ struct Router {
     private var sendCommands: Set<String> {
         guard let phrases = config.sendPhrases, !phrases.isEmpty else { return [] }
         let explicit = ["ok tu peux envoyer", "c est bon tu peux envoyer"]
-        let ambiguous = ["ok on voit", "okay on voit", "ok on voie"]
-        return Set(phrases.map(normalize) + explicit).subtracting(ambiguous + [""])
+        // Toute phrase de `sendPhrases` compte : c'est l'utilisateur qui choisit les siennes (« ok on voit »).
+        return Set(phrases.map(normalize) + explicit).subtracting([""])
     }
 
     func isSendCommand(_ text: String) -> Bool {

@@ -105,6 +105,7 @@ extension Coordinator {
         pendingSend?.cancel()
         pendingSend = nil
         if history.last?.text != normalized {
+            if !normalized.isEmpty { detector.noteSpeech() }
             history.append((Date(), normalized))
         }
         if history.count > 60 { history.removeFirst(history.count - 60) }
@@ -305,11 +306,11 @@ extension Coordinator {
             guard let self else { timer.invalidate(); return }
             guard !self.stopping else { return }
             if natural, self.active?.id == target.id {
-                if let origin = self.dictationWindow,
-                   !origin.isFocused || (origin.conversation != nil && !origin.isSameConversation) {
+                if let origin = self.dictationWindow, origin.isLost {
+                    let detail = origin.lossDetail
                     self.endPause()
                     Feedback.play(.failed)
-                    log("\(target.id) : envoi automatique annulé, chat ou fenêtre changé.")
+                    log("\(target.id) : envoi automatique annulé, chat ou fenêtre changé (\(detail)).")
                     self.detector.reset()
                     return
                 }
