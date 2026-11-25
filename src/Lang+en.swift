@@ -94,8 +94,9 @@ extension LanguagePack {
             "clique sur": ["click on"],
             "appuie sur": ["press"],
             "clique": ["click"],
-            "je confirme": ["i confirm", "confirm"],
-            "oui je confirme": ["yes i confirm", "yes confirm"],
+            // Jamais un mot seul et courant : une confirmation doit être dite exprès.
+            "je confirme": ["i confirm"],
+            "oui je confirme": ["yes i confirm"],
             "confirme l action": ["confirm the action"],
             "non": ["no"],
             "annule": ["cancel"],
@@ -188,8 +189,10 @@ extension LanguagePack {
             "skill.send": ["send"],
             "question.freePrefixes": ["my answer is", "answer", "reply"],
             "question.skip": ["skip", "skip it", "skip the question", "pass"],
-            "question.fillers": ["the", "option", "choice", "answer", "number", "one"],
-            "question.aloneOrdinals": ["first", "second", "third", "fourth"],
+            "question.fillers": ["the", "option", "choice", "answer", "number"],
+            // Aucun rang n'est accepté dit seul : « first » ou « second » sont des mots de tous les jours.
+            // On dit « the first », « option two », « second option ».
+            "question.aloneOrdinals": [],
             "router.strongInterrupts": ["stop %@", "%@ stop", "listen %@", "%@ listen", "listen to me %@", "wait %@", "hey %@ stop"],
             "routine.call": ["routine %@", "run the routine %@", "start the routine %@"],
             "turnEnd.continuation": [
@@ -204,7 +207,7 @@ extension LanguagePack {
             ],
         ],
         maps: [
-            // « option one » demande un mot de plus ; « first » suffit seul (voir question.aloneOrdinals).
+            // Toujours avec un mot porteur : « option one », « the first », « second choice ».
             "question.ordinals": [
                 "first": "0", "one": "0", "1": "0", "second": "1", "two": "1", "2": "1",
                 "third": "2", "three": "2", "3": "2", "fourth": "3", "four": "3", "4": "3",
