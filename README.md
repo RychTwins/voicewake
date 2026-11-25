@@ -306,7 +306,7 @@ Sans casque, la voix de lecture peut laisser un écho : la reprise attend 3 s de
 
 ### Voix ElevenLabs (optionnel)
 
-Par défaut, VoiceWake n'appelle aucun service en ligne et parle avec une voix du Mac. Si vous avez un compte ElevenLabs, sa voix remplace celle du Mac partout où VoiceWake parle lui-même : « lis à partir de… », « Où on en est ? », « Quelles commandes ? » et les demandes de confirmation.
+Par défaut, VoiceWake n'appelle aucun service en ligne et parle avec une voix du Mac. Si vous avez un compte ElevenLabs, sa voix remplace celle du Mac partout où VoiceWake parle lui-même : « lis à partir de… », « Où on en est ? », « Quelles commandes ? » et les demandes de confirmation. Ces annonces peuvent citer le nom d'une application, d'un menu ou d'un bouton : pour qu'elles restent sur le Mac, ajoutez `"announcements": false` (ElevenLabs ne sert alors qu'à « lis à partir de… »).
 
 ```json
 "elevenLabs": { "enabled": true, "voiceID": "JBFqnCBsd6RMkjVDRZzb", "model": "eleven_flash_v2_5" }

@@ -12,6 +12,9 @@ struct ElevenLabsSettings: Codable {
     /// Fichier contenant la ligne ELEVENLABS_API_KEY=… (défaut ~/.config/voicewake/elevenlabs.env).
     /// La clé n'est jamais écrite dans la configuration.
     var keyFile: String?
+    /// Faux : seul le lecteur intégré (« lis à partir de… ») passe par ElevenLabs ; les annonces (état, aide,
+    /// confirmations, qui peuvent citer un nom d'app, de menu ou de bouton) restent dites par la voix du Mac.
+    var announcements: Bool?
 }
 
 enum ElevenLabs {
@@ -109,14 +112,31 @@ enum ElevenLabs {
     }
 
     private static var announcer: AudioClip?
+    private static var announcement = 0
+
+    /// Coupe l'annonce en cours et annule celle qui serait encore en synthèse (file principale).
+    static func stopAnnouncement() {
+        announcement += 1
+        announcer?.onFinish = nil
+        announcer?.stop()
+        announcer = nil
+    }
 
     /// Dit une courte annonce avec la voix ElevenLabs. `completion(false)` : à dire autrement.
+    /// Une nouvelle annonce remplace la précédente : le rappel d'une annonce remplacée n'est jamais appelé.
     static func say(_ text: String, config: Config, completion: @escaping (Bool) -> Void) {
+        stopAnnouncement()
+        let mine = announcement
         synthesize(text, config: config) { speech in
+            guard mine == announcement else { return }
             guard let speech, let clip = AudioClip(speech.audio) else { return completion(false) }
             announcer = clip
-            clip.onFinish = { announcer = nil; completion(true) }
-            clip.play()
+            clip.onFinish = {
+                guard mine == announcement else { return }
+                announcer = nil
+                completion(true)
+            }
+            if !clip.play() { announcer = nil; completion(false) }
         }
     }
 }
@@ -147,7 +167,7 @@ final class AudioClip: NSObject, AVAudioPlayerDelegate {
     }
     /// Se place à `time` (s), en lecture comme en pause.
     func seek(to time: Double) { player.currentTime = min(max(0, time), max(0, player.duration - 0.05)) }
-    func play() { player.play() }
+    @discardableResult func play() -> Bool { player.play() }
     func pause() { player.pause() }
     func stop() { player.stop() }
 

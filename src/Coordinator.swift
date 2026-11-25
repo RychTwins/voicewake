@@ -340,24 +340,41 @@ final class Coordinator {
     }
 
     let announcer = Announcer()
+    var speakGeneration = 0
 
     /// Annonce parlée : le micro est coupé pendant toute l'annonce (VoiceWake ne peut pas s'entendre lui-même),
     /// puis relancé avec une transcription vide.
     func speak(_ message: String, then: (() -> Void)? = nil) {
         detector.stop()
+        // Une annonce qui en remplace une autre : seule la dernière rend le micro, sinon VoiceWake se remettrait
+        // à écouter pendant qu'il parle encore.
+        speakGeneration += 1
+        let mine = speakGeneration
+        ElevenLabs.stopAnnouncement()
         let finish = { [weak self] in
-            self?.detector.start()
+            guard let self, mine == self.speakGeneration else { return }
+            self.speakGeneration += 1 // une seule fois : le garde-fou ci-dessous ne rend pas le micro deux fois
+            self.announcer.external = false
+            self.detector.start()
             then?()
         }
         // Voix ElevenLabs si elle est configurée ; la voix du Mac seulement en secours (pas de clé, panne, hors ligne).
-        guard config.elevenLabs?.enabled == true else {
+        guard config.elevenLabs?.enabled == true, config.elevenLabs?.announcements ?? true else {
+            announcer.external = false
             return announcer.say(message, locale: config.locale, voice: config.readerVoice, onFinish: finish)
         }
         announcer.external = true
+        // Garde-fou : si l'annonce ne se termine jamais (lecture audio bloquée), le micro est rendu quand même.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in
+            guard let self, mine == self.speakGeneration else { return }
+            log("Annonce ElevenLabs sans fin après 60 s : micro rendu.")
+            ElevenLabs.stopAnnouncement()
+            finish()
+        }
         ElevenLabs.say(message, config: config) { [weak self] said in
-            guard let self else { return }
-            self.announcer.external = false
+            guard let self, mine == self.speakGeneration else { return }
             if said { return finish() }
+            self.announcer.external = false
             self.announcer.say(message, locale: self.config.locale, voice: self.config.readerVoice, onFinish: finish)
         }
     }
