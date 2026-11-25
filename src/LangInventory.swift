@@ -29,7 +29,7 @@ extension Lang {
         _ = router.thoughtPausePhrases
         _ = router.isSendCommand("")
         // Listes consultées au fil des phrases, sans propriété à elles.
-        for name in ["universal.fillers", "palette.validate", "and", "andThen", "skill.send", "question.skip",
+        for name in ["universal.dangerWords", "universal.fillers", "palette.validate", "and", "andThen", "skill.send", "question.skip",
                      "question.fillers", "question.aloneOrdinals", "router.strongInterrupts", "routine.call"] {
             _ = list(name, [])
         }

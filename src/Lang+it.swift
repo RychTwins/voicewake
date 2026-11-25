@@ -180,6 +180,8 @@ extension LanguagePack {
             "c est bon tu peux envoyer": ["tutto a posto puoi inviare", "è fatto puoi inviare"],
         ],
         lists: [
+            // Mots des menus et boutons dont l'action est irréversible ou sensible : confirmation obligatoire.
+            "universal.dangerWords": ["eliminare", "elimina", "cancellare", "cancella", "rimuovere", "svuotare", "cestino", "archiviare", "esci", "uscire", "chiudere", "chiudi", "disconnetti", "disconnettere", "ripristina", "ripristinare", "riavvia", "riavviare", "disinstalla", "disinstallare", "inviare", "invia", "pubblicare", "pubblica", "condividere", "condividi", "consenti", "autorizza", "approva", "accetta", "conferma", "rifiuta", "nega", "revoca", "scarta", "sovrascrivi", "sostituisci", "paga", "acquista", "abbonati", "disattiva", "unisci", "sposta", "trasferisci"],
             "nav.fillers": ["il", "lo", "la", "i", "gli", "le", "un", "una", "mio", "mia", "di", "del", "della", "progetto",
                             "sessione", "conversazione", "chat", "cartella", "favore"],
             "universal.fillers": ["il", "lo", "la", "un", "una", "su", "sul", "sulla", "pulsante", "bottone", "menu"],

@@ -181,6 +181,8 @@ extension LanguagePack {
             "c est bon tu peux envoyer": ["listo puedes enviar", "ya está puedes enviar"],
         ],
         lists: [
+            // Mots des menus et boutons dont l'action est irréversible ou sensible : confirmation obligatoire.
+            "universal.dangerWords": ["eliminar", "elimina", "borrar", "borra", "suprimir", "vaciar", "papelera", "archivar", "salir", "cerrar", "desconectar", "restablecer", "reiniciar", "desinstalar", "enviar", "publicar", "compartir", "permitir", "autorizar", "aprobar", "aceptar", "confirmar", "rechazar", "denegar", "revocar", "descartar", "sobrescribir", "reemplazar", "pagar", "comprar", "suscribir", "suscribirse", "desactivar", "fusionar", "mover", "transferir"],
             "nav.fillers": ["el", "la", "los", "las", "un", "una", "mi", "mis", "de", "del", "proyecto", "sesion", "conversacion", "chat", "carpeta", "por favor"],
             "universal.fillers": ["el", "la", "los", "las", "un", "una", "en", "boton", "menu"],
             "palette.validate": ["ejecuta", "valida", "lanza", "enter", "intro"],

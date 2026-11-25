@@ -180,6 +180,8 @@ extension LanguagePack {
             "c est bon tu peux envoyer": ["all good you can send", "that's it you can send"],
         ],
         lists: [
+            // Mots des menus et boutons dont l'action est irréversible ou sensible : confirmation obligatoire.
+            "universal.dangerWords": ["delete", "remove", "erase", "clear", "empty", "trash", "archive", "quit", "logout", "signout", "reset", "uninstall", "send", "publish", "share", "allow", "approve", "accept", "confirm", "reject", "deny", "revoke", "discard", "overwrite", "replace", "pay", "buy", "purchase", "subscribe", "restart", "disable", "merge", "push", "move", "transfer", "close"],
             "nav.fillers": ["the", "a", "an", "my", "of", "project", "session", "conversation", "chat", "folder", "please"],
             "universal.fillers": ["the", "a", "an", "on", "button", "menu"],
             "palette.validate": ["run", "validate", "execute", "enter"],

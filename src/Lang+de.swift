@@ -181,6 +181,8 @@ extension LanguagePack {
             "c est bon tu peux envoyer": ["alles gut du kannst senden", "passt du kannst senden"],
         ],
         lists: [
+            // Mots des menus et boutons dont l'action est irréversible ou sensible : confirmation obligatoire.
+            "universal.dangerWords": ["löschen", "entfernen", "leeren", "papierkorb", "archivieren", "beenden", "schließen", "abmelden", "ausloggen", "zurücksetzen", "neustarten", "deinstallieren", "senden", "absenden", "veröffentlichen", "teilen", "erlauben", "zulassen", "genehmigen", "akzeptieren", "annehmen", "bestätigen", "ablehnen", "verweigern", "widerrufen", "verwerfen", "überschreiben", "ersetzen", "bezahlen", "zahlen", "kaufen", "abonnieren", "deaktivieren", "zusammenführen", "verschieben", "übertragen"],
             "nav.fillers": ["das", "die", "der", "den", "dem", "ein", "eine", "mein", "meine", "von", "projekt", "sitzung", "unterhaltung", "chat", "ordner", "bitte"],
             "universal.fillers": ["das", "die", "der", "den", "auf", "button", "schaltflache", "menu"],
             "palette.validate": ["ausfuhren", "bestatigen", "enter", "los"],

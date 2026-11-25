@@ -333,6 +333,10 @@ case "langue":
                 print("  confirmation trop courte (« \(key) » → « \(said) ») : au moins deux mots."); left += 1
             }
         }
+        // Une annonce traduite doit garder autant de valeurs (%@) que l'original, sinon elle ne peut pas être dite.
+        for (french, said) in pack.speech where french.components(separatedBy: "%@").count != said.components(separatedBy: "%@").count {
+            print("  annonce avec un nombre de %@ différent : « \(french) » → « \(said) »."); left += 1
+        }
         if !(pack.lists["question.aloneOrdinals"] ?? []).isEmpty {
             print("  question.aloneOrdinals doit rester vide : un rang dit seul ne répond pas à une question."); left += 1
         }

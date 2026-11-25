@@ -12,7 +12,15 @@ enum Universal {
     static let maxWords = 8
 
     /// Mots d'une action irréversible ou sensible : jamais exécutée sans confirmation.
-    static let dangerWords: Set<String> = [
+    /// Les libellés suivent la langue de l'interface de chaque application, pas celle qu'on parle : les mots de
+    /// toutes les langues connues comptent toujours, quelle que soit la langue active.
+    static let dangerWords: Set<String> = sourceDangerWords.union(
+        Lang.builtIn.values.flatMap { $0.lists["universal.dangerWords"] ?? [] }.map(normalize).filter { !$0.isEmpty })
+
+    /// Les mêmes, pour les écritures sans espace (chinois, japonais, coréen) : cherchés dans le libellé entier.
+    static let unspacedDangerWords: [String] = dangerWords.filter { $0.contains(" ") }.map { $0.replacingOccurrences(of: " ", with: "") }
+
+    private static let sourceDangerWords: Set<String> = [
         // Français
         "supprimer", "supprime", "suppression", "effacer", "efface", "vider", "vide", "corbeille", "archiver", "archive",
         "deconnecter", "deconnexion", "quitter", "reinitialiser", "desinstaller", "envoyer", "publier", "partager",
@@ -105,7 +113,9 @@ enum Universal {
         let words = normalize(title).split(separator: " ").map(String.init)
         // « Se déconnecter » → « se deconnecter » ; « Sign out » → « signout ».
         let joined = zip(words, words.dropFirst()).map { $0 + $1 }
-        return !Set(words + joined).isDisjoint(with: dangerWords)
+        if !Set(words + joined).isDisjoint(with: dangerWords) { return true }
+        let compact = words.joined()
+        return unspacedDangerWords.contains { compact.contains($0) }
     }
 
     /// Action trouvée, prête à être exécutée (après confirmation si `dangerous`).

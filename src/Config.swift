@@ -27,7 +27,20 @@ func rotateLogIfNeeded(path: String = ("~/Library/Logs/voicewake.log" as NSStrin
 
 /// "Salut, Chat GPT !" -> "salut chat gpt"
 func normalize(_ s: String) -> String {
-    let folded = s.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "fr_FR")).lowercased()
+    var folded = s.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "fr_FR")).lowercased()
+    // Arabe : le moteur vocal écrit tantôt « أ », « إ », « آ », tantôt « ا », avec ou sans voyelles brèves.
+    if folded.unicodeScalars.contains(where: { (0x0600...0x06FF).contains($0.value) }) {
+        var plain = String.UnicodeScalarView()
+        for u in folded.unicodeScalars {
+            switch u.value {
+            case 0x0622, 0x0623, 0x0625, 0x0671: plain.append("\u{0627}")   // alif
+            case 0x0649: plain.append("\u{064A}")                          // alif maqsura → ya
+            case 0x064B...0x065F, 0x0670, 0x0640: continue                 // voyelles brèves, tatweel
+            default: plain.append(u)
+            }
+        }
+        folded = String(plain)
+    }
     // Chinois, japonais, coréen : pas d'espace entre les mots. Chaque caractère compte pour un mot, pour que les
     // commandes (« 打开 <nom> ») se retrouvent au début ou à la fin d'une phrase comme dans les autres langues.
     guard folded.unicodeScalars.contains(where: isUnspacedScript) else {

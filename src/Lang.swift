@@ -100,7 +100,8 @@ enum Lang {
 
     /// Packs fournis avec VoiceWake.
     static let builtIn: [String: LanguagePack] = [
-        "en": .english, "es": .spanish, "pt": .portuguese, "de": .german, "it": .italian,
+        "en": .english, "es": .spanish, "pt": .portuguese, "de": .german, "it": .italian, "nl": .dutch,
+        "ru": .russian, "tr": .turkish, "ar": .arabic, "hi": .hindi, "zh": .chinese, "ja": .japanese, "ko": .korean,
     ]
 
     /// Langue du Mac (« en », « es »…), pour proposer la bonne configuration à l'installation.
@@ -145,17 +146,26 @@ enum Lang {
     /// Liste entière propre à la langue (mots vides, mots de liaison…).
     static func list(_ name: String, _ french: [String]) -> [String] {
         if recording != nil { recording?.lists.append(name); return french }
-        return isSource ? french : pack.lists[name] ?? []
+        guard !isSource else { return french }
+        // Écrits naturellement dans le pack (accents, idéogrammes collés) : mis ici sous la forme comparée.
+        // Les motifs à %@ gardent leur forme : le nom y est inséré avant la comparaison.
+        return (pack.lists[name] ?? []).map { $0.contains("%@") ? $0 : normalize($0) }.filter { !$0.isEmpty }
     }
 
     static func map(_ name: String, _ french: [String: String]) -> [String: String] {
         if recording != nil { recording?.maps.append(name); return french }
-        return isSource ? french : pack.maps[name] ?? [:]
+        guard !isSource else { return french }
+        var out: [String: String] = [:]
+        for (key, value) in pack.maps[name] ?? [:] { out[normalize(key)] = value }
+        return out
     }
 
     /// Phrase dite à voix haute, avec ses valeurs (%@).
     static func say(_ french: String, _ args: CVarArg...) -> String {
-        String(format: isSource ? french : pack.speech[french] ?? french, arguments: args)
+        var text = isSource ? french : pack.speech[french] ?? french
+        // Traduction mal formée (pas le même nombre de %@) : on dit l'original plutôt que de se tromper de valeurs.
+        if text.components(separatedBy: "%@").count != french.components(separatedBy: "%@").count { text = french }
+        return String(format: text, arguments: args)
     }
 
     static var fixes: [(pattern: String, replacement: String)]? {

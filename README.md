@@ -23,7 +23,7 @@ Tout le reste (naviguer, cliquer un bouton, lancer un skill, répondre à une qu
 
 > **Open source et gratuit.** Téléchargez-le, testez-le sur votre Mac, améliorez-le et adaptez-le à votre façon de travailler. La version actuelle est en **français** ; elle s'adapte à n'importe quelle langue (voir [Adapter à votre langue](#adapter-à-votre-langue)). Les contributions sont les bienvenues.
 
-> **English speakers:** VoiceWake also works in English. Say "Hey Claude", talk, stay silent or say "OK send it", and the answer is read aloud. On a Mac set to English, `./install.sh` installs the English configuration (`config.example.en.json`); the built-in commands follow. This README is in French; see [Adapter à votre langue](#adapter-à-votre-langue) to add another language (`voicewake langue <code>`). The English pack has not been voice-tested yet: please report what the recognizer mishears.
+> **Not a French speaker?** VoiceWake ships with language packs for English, Spanish, Portuguese, German, Italian, Dutch, Russian, Turkish, Arabic, Hindi, Chinese, Japanese and Korean. `./install.sh` picks your Mac's language: you then say "Hey Claude", talk, stay silent or say "OK send it", and the answer is read aloud. Switch language any time with `voicewake exemple <code> --config config.example.json > ~/.config/voicewake/config.json`. This README is in French; see [Adapter à votre langue](#adapter-à-votre-langue). The packs pass the project's tests but have not been voice-tested by native speakers yet: please report what the recognizer mishears.
 
 > Projet indépendant, sans lien avec Anthropic, OpenAI ou Google.
 
@@ -525,6 +525,7 @@ voicewake question <bundle-id> "la deuxième"   # question affichée et réponse
 voicewake voix apprends | test | efface        # empreinte du filtre « ma voix uniquement »
 voicewake diagnostic                           # autorisations, apps, modèles
 voicewake langue en                            # pack de langue : ce qui est traduit, ce qui manque
+voicewake exemple es --config config.example.json   # configuration de départ dans une langue
 voicewake ia "phrase"                          # commande que l'interpréteur local tirerait de la phrase
 tail -f ~/Library/Logs/voicewake.log   # archivé en voicewake.log.1 au-delà de 5 Mo
 ```
@@ -622,19 +623,40 @@ Windows : `.\uninstall.ps1` (`-Purge` pour supprimer aussi la configuration).
 
 VoiceWake écoute **une langue à la fois**, celle de `locale` : le moteur vocal d'Apple ne sait pas en suivre deux en même temps. Toutes les commandes se disent dans cette langue.
 
-| Langue | État |
-| --- | --- |
-| Français (`fr-FR`) | langue d'origine, complète |
-| Anglais (`en-US`, `en-GB`…) | pack fourni : commandes, navigation, annonces. Traduction non encore rodée à la voix |
-| Autres | à ajouter : un fichier par langue (voir plus bas) |
+| Langue | `locale` | État |
+| --- | --- | --- |
+| Français | `fr-FR` | langue d'origine, utilisée et testée à la voix |
+| Anglais | `en-US` | pack fourni |
+| Espagnol | `es-ES` | pack fourni |
+| Portugais | `pt-BR` | pack fourni |
+| Allemand | `de-DE` | pack fourni |
+| Italien | `it-IT` | pack fourni |
+| Néerlandais | `nl-NL` | pack fourni |
+| Russe | `ru-RU` | pack fourni |
+| Turc | `tr-TR` | pack fourni |
+| Arabe | `ar-SA` | pack fourni |
+| Hindi | `hi-IN` | pack fourni |
+| Chinois (mandarin simplifié) | `zh-CN` | pack fourni |
+| Japonais | `ja-JP` | pack fourni |
+| Coréen | `ko-KR` | pack fourni |
 
-**Utiliser VoiceWake en anglais** : sur un Mac en anglais, `./install.sh` installe directement la configuration anglaise. Sinon, copiez `config.example.en.json` vers `~/.config/voicewake/config.json` et relancez le service. On dit alors « Hey Claude », « OK send it », « next session », « open <project> », « where are we ».
+Les packs fournis sont des traductions complètes (commandes, navigation, réponses aux questions, annonces, mots d'actions sensibles), vérifiées par les tests du projet, mais **pas encore rodées à la voix** par des personnes qui parlent ces langues. Le moteur vocal déforme souvent les noms et certains mots : si une commande ne passe pas chez vous, activez `"debug": true`, regardez ce qu'il a écrit, et ajoutez cette variante (voir plus bas). Vos retours sont précieux.
+
+**Choisir sa langue.** À l'installation, `./install.sh` prend la langue du Mac : s'il existe un pack, la configuration de départ est écrite dans cette langue (« Hey Claude », « OK send it », « next session »…), sinon en français. Pour changer de langue ensuite :
+
+```bash
+voicewake exemple es --config config.example.json > ~/.config/voicewake/config.json
+```
+
+puis relancez le service. Cette commande réécrit la configuration : sauvegardez la vôtre avant si vous l'avez modifiée.
+
+**Japonais, coréen, turc, hindi** : dans ces langues le verbe vient à la fin (« VoxTV を開いて »), alors que les commandes suivies d'un nom (ouvrir un projet, cliquer un bouton, choisir un menu, lancer un skill) doivent commencer par le mot-clé. Le pack donne donc une forme mot-clé d'abord (« 開く VoxTV »). Les commandes sans nom se disent normalement.
 
 **Ce qui change avec la langue**
 
 1. `locale` : la langue écoutée (`en-US`, `es-ES`, `de-DE`, `pt-BR`, `zh-CN`…).
-2. Dans la configuration, vos phrases : `phrases` de chaque assistant, `frontmostPhrases`, `sendPhrases`, `stopPhrases`, `interruptPhrases`, `readPausePhrases`, `readResumePhrases`, `readFromPhrases`, `readAloudPhrases`.
-3. Le **pack de langue** : toutes les commandes intégrées (navigation, « clique sur… », « menu… », skills, réponses aux questions, lecteur), les mots qui annoncent qu'une phrase n'est pas finie, et ce que VoiceWake dit à voix haute.
+2. Dans la configuration, vos phrases (remplies d'office par `voicewake exemple`) : `phrases` de chaque assistant, `frontmostPhrases`, `sendPhrases`, `stopPhrases`, `interruptPhrases`, `readPausePhrases`, `readResumePhrases`, `readFromPhrases`, `readAloudPhrases`.
+3. Le **pack de langue** : les mots des actions sensibles (supprimer, quitter, payer… qui demandent toujours une confirmation, dans toutes les langues à la fois), toutes les commandes intégrées (navigation, « clique sur… », « menu… », skills, réponses aux questions, lecteur), les mots qui annoncent qu'une phrase n'est pas finie, et ce que VoiceWake dit à voix haute.
 4. Les libellés `button:` suivent la langue de l'interface des applications : ajoutez les vôtres en alternative avec `|` (`button:Envoyer|Send`).
 
 **Ajouter une langue**
@@ -643,10 +665,10 @@ VoiceWake écoute **une langue à la fois**, celle de `locale` : le moteur vocal
 voicewake langue es
 ```
 
-Cette commande liste tout ce qu'un pack doit fournir (190 éléments) et ce qu'il reste à traduire. Deux façons de l'écrire :
+Cette commande liste tout ce qu'un pack doit fournir (environ 200 éléments) et ce qu'il reste à traduire. Elle refuse aussi un pack dangereux : une confirmation d'un seul mot, ou une annonce dont les valeurs ne correspondent plus. Deux façons de l'écrire :
 
 - sans recompiler : `~/.config/voicewake/lang/es.json`, avec les clés `phrases`, `lists`, `maps`, `speech` ;
-- dans le projet : `src/Lang+es.swift`, sur le modèle de `src/Lang+en.swift`, puis une ligne dans `Lang.builtIn` et un `config.example.es.json`.
+- dans le projet : `src/Lang+xx.swift`, sur le modèle de `src/Lang+en.swift`, puis une ligne dans `Lang.builtIn`. `bash tests/langues.sh ~/.local/bin/voicewake` vérifie tous les packs.
 
 Chaque phrase française est une clé, sa valeur est la liste de ce qu'on dit dans votre langue (plusieurs variantes possibles, liste vide si la phrase n'a pas d'équivalent). Le moteur vocal déforme souvent les noms (« Claude » entendu « clawed ») : activez `"debug": true`, regardez ce qu'il écrit dans le journal et ajoutez ces variantes. Vérifiez avec `voicewake route "hey claude"`.
 
@@ -661,7 +683,7 @@ Si votre langue n'est pas reconnue localement par macOS, passez `"requireOnDevic
 Le projet est ouvert à tous : nouvelles langues, nouveaux assistants, autres éditeurs, version Linux, corrections.
 
 1. Forkez le dépôt et créez une branche.
-2. Vérifiez vos changements : `./install.sh`, `voicewake check`, puis `bash tests/route.sh ~/.local/bin/voicewake` et `bash tests/route-en.sh ~/.local/bin/voicewake`. Les autres tests (`tests/conversation.swift`, `tests/silence.swift`, `tests/reader.swift`) se compilent avec la commande indiquée en tête de `tests/reader.swift`.
+2. Vérifiez vos changements : `./install.sh`, `voicewake check`, puis `bash tests/route.sh ~/.local/bin/voicewake`, `bash tests/route-en.sh ~/.local/bin/voicewake` et `bash tests/langues.sh ~/.local/bin/voicewake`. Les autres tests (`tests/conversation.swift`, `tests/silence.swift`, `tests/reader.swift`) se compilent avec la commande indiquée en tête de `tests/reader.swift`.
 3. Ouvrez une pull request en décrivant ce que vous avez testé (application, langue, version de macOS).
 
 Un bug ou une idée ? Ouvrez une [issue](https://github.com/RychTwins/voicewake/issues) avec l'extrait utile du journal `~/Library/Logs/voicewake.log` (en mode `debug`, il contient vos paroles : relisez-le avant de le partager).
