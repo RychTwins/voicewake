@@ -262,6 +262,31 @@ Do not let two coding agents modify and reinstall VoiceWake at the same time: ea
 
 ---
 
+## Windows
+
+> **Preliminary version, not tested on a Windows machine.**
+
+Same behaviour and same configuration file. Code in [`windows/`](../windows) (C# / .NET 8).
+
+```powershell
+git clone https://github.com/RychTwins/voicewake.git
+cd voicewake\windows
+.\install.ps1           # builds, installs into %LOCALAPPDATA%\VoiceWake, starts with your session
+.\install.ps1 -Restart  # after changing the configuration
+```
+
+**Requirements**: .NET 8 SDK (`winget install Microsoft.DotNet.SDK.8`), the **French** language installed with its **Speech recognition** option (the Windows version only understands the French commands for now), and "Let desktop apps access your microphone" turned on.
+
+| macOS | Windows |
+| --- | --- |
+| `~/.config/voicewake/config.json` | `%APPDATA%\voicewake\config.json` |
+| `~/Library/Logs/voicewake.log` | `%LOCALAPPDATA%\VoiceWake\voicewake.log` |
+| Apple recognition, free text | Windows recognition on a closed list, offline |
+| Accessibility (`button:`) | UI Automation (`button:`, same labels) |
+| macOS Dictation (`ctrl+option+d`) | Windows voice typing (`win+h`) |
+
+Not supported on Windows yet: `record`, code editors, reading commands. To remove it: `.\uninstall.ps1`.
+
 ## Uninstall
 
 ```bash

@@ -38,7 +38,7 @@ cd voicewake\windows
 .\install.ps1
 ```
 
-Preliminary version, not yet tested on a real machine: see the [Windows requirements](docs/guide.en.md#windows).
+Preliminary version, French commands only, not yet tested on a real machine: see the [Windows requirements](docs/guide.en.md#windows).
 
 ## Commands to know
 
