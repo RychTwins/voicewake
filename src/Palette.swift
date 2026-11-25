@@ -2,7 +2,7 @@ import AppKit
 
 /// Palettes de commandes des éditeurs (VS Code, Zed, Cursor…) et de Claude, et touches à la voix.
 enum Palette {
-    static let defaultPhrases = ["palette", "commande palette", "dans la palette"]
+    static var defaultPhrases: [String] { Lang.t(["palette", "commande palette", "dans la palette"]) }
 
     /// Raccourci qui ouvre la palette, par application (configurable avec `paletteShortcuts`).
     static let defaultShortcuts: [String: String] = [
@@ -24,7 +24,7 @@ enum Palette {
             let pw = p.split(separator: " ").map(String.init)
             guard words.count > pw.count, Array(words.prefix(pw.count)) == pw else { continue }
             words.removeFirst(pw.count)
-            let validate = words.count >= 2 && ["valide", "execute", "lance"].contains(words.last!) && words[words.count - 2] == "et"
+            let validate = words.count >= 2 && Lang.list("palette.validate", ["valide", "execute", "lance"]).contains(words.last!) && Lang.list("and", ["et"]).contains(words[words.count - 2])
             if validate { words.removeLast(2) }
             return words.isEmpty || words.count > 10 ? nil : (words, pw.count, validate)
         }
@@ -32,15 +32,17 @@ enum Palette {
     }
 
     /// Touches, dites seules (énoncé entier), sous une forme explicite : un mot courant isolé ne suffit pas.
-    static let keys: [(phrases: [String], spec: String)] = [
-        (["touche entrée", "appuie sur entrée"], "return"),
-        (["touche échap", "appuie sur échap", "ferme la palette"], "escape"),
-        (["touche tab"], "tab"),
-        (["flèche bas"], "down"),
-        (["flèche haut"], "up"),
-    ]
+    static var keys: [(phrases: [String], spec: String)] {
+        [
+            (Lang.t(["touche entrée", "appuie sur entrée"]), "return"),
+            (Lang.t(["touche échap", "appuie sur échap", "ferme la palette"]), "escape"),
+            (Lang.t(["touche tab"]), "tab"),
+            (Lang.t(["flèche bas"]), "down"),
+            (Lang.t(["flèche haut"]), "up"),
+        ]
+    }
     /// « Valide » seul n'est accepté que juste après « palette … » (commande tapée, en attente).
-    static let validateWords = ["valide", "execute"]
+    static var validateWords: [String] { Lang.list("palette.validateAlone", ["valide", "execute"]) }
     static let paletteWindow: TimeInterval = 20
 
     static func key(_ text: String, paletteOpen: Bool) -> String? {

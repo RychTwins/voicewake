@@ -21,16 +21,20 @@ enum DictatedContent {
 /// laisse le temps de réfléchir.
 enum TurnEnd {
     /// Mots après lesquels la phrase n'est manifestement pas finie.
-    static let continuation: Set<String> = [
+    static var continuation: Set<String> {
+        Set(Lang.list("turnEnd.continuation", [
         "et", "ou", "mais", "donc", "alors", "puis", "ensuite", "car", "parce", "que", "qui", "dont", "si",
         "euh", "heu", "bah", "ben", "genre", "enfin", "bref", "comme", "quand", "pour", "avec", "sans", "dans", "sur",
         "de", "du", "des", "le", "la", "les", "l", "un", "une", "au", "aux", "ce", "cette", "ces", "mon", "ma", "mes",
         "ton", "ta", "tes", "son", "sa", "ses", "notre", "votre", "leur", "leurs", "je", "tu", "il", "elle", "on",
         "nous", "vous", "ils", "elles", "est", "sont", "c", "d", "j", "qu", "s", "n", "m", "t", "à", "a", "en", "par",
-    ]
-    static let questionStarts = ["est ce que", "est ce qu", "comment", "pourquoi", "quand", "qui", "quel", "quelle",
+    ]))
+    }
+    static var questionStarts: [String] {
+        Lang.list("turnEnd.questionStarts", ["est ce que", "est ce qu", "comment", "pourquoi", "quand", "qui", "quel", "quelle",
                                  "quels", "quelles", "combien", "ou est", "peux tu", "tu peux", "pourrais tu",
-                                 "tu pourrais", "c est quoi", "qu est ce"]
+                                 "tu pourrais", "c est quoi", "qu est ce"])
+    }
 
     enum Kind: Equatable { case question, complete, unfinished }
 

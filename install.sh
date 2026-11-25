@@ -69,8 +69,12 @@ fi
 
 echo "→ Configuration"
 if [[ ! -f "$CONFIG_DIR/config.json" ]]; then
-  cp "$ROOT/config.example.json" "$CONFIG_DIR/config.json"
-  echo "  Créée : $CONFIG_DIR/config.json"
+  # Configuration d'exemple dans la langue du Mac si elle existe (config.example.en.json…), sinon en français.
+  SYSTEM_LANG="$(defaults read -g AppleLocale 2>/dev/null | cut -c1-2)"
+  EXAMPLE="$ROOT/config.example.$SYSTEM_LANG.json"
+  [[ -f "$EXAMPLE" ]] || EXAMPLE="$ROOT/config.example.json"
+  cp "$EXAMPLE" "$CONFIG_DIR/config.json"
+  echo "  Créée : $CONFIG_DIR/config.json ($(basename "$EXAMPLE"))"
 else
   echo "  Conservée : $CONFIG_DIR/config.json"
 fi

@@ -141,8 +141,10 @@ enum SkillCatalog {
         return (best.entry, best.score.consumed)
     }
 
-    static let defaultPhrases = ["lance le skill", "utilise le skill", "lance la compétence", "lance la commande",
-                                 "commande slash", "skill", "compétence", "slash"]
+    static var defaultPhrases: [String] {
+        Lang.t(["lance le skill", "utilise le skill", "lance la compétence", "lance la commande",
+                "commande slash", "skill", "compétence", "slash"])
+    }
 
     /// « Lance le skill code review sur ce fichier » → (mots du nom et des arguments, texte d'origine des arguments
     /// à partir de l'indice de mot normalisé `n`). Phrase en début d'énoncé.

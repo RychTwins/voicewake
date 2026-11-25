@@ -6,8 +6,8 @@ import AppKit
 enum Universal {
     enum Kind { case menu, click }
 
-    static let defaultMenuPhrases = ["choisis le menu", "ouvre le menu", "menu"]
-    static let defaultClickPhrases = ["appuie sur le bouton", "clique sur le bouton", "clique sur", "appuie sur", "clique"]
+    static var defaultMenuPhrases: [String] { Lang.t(["choisis le menu", "ouvre le menu", "menu"]) }
+    static var defaultClickPhrases: [String] { Lang.t(["appuie sur le bouton", "clique sur le bouton", "clique sur", "appuie sur", "clique"]) }
     /// Libellé cité : au plus ce nombre de mots.
     static let maxWords = 8
 
@@ -28,8 +28,8 @@ enum Universal {
 
     /// Confirmation volontairement explicite : un simple « oui » (fréquent dans une conversation ou une lecture)
     /// ne suffit jamais.
-    static let defaultConfirmPhrases = ["je confirme", "oui je confirme", "confirme l action"]
-    static let defaultCancelPhrases = ["non", "annule", "laisse tomber", "non merci"]
+    static var defaultConfirmPhrases: [String] { Lang.t(["je confirme", "oui je confirme", "confirme l action"]) }
+    static var defaultCancelPhrases: [String] { Lang.t(["non", "annule", "laisse tomber", "non merci"]) }
     /// Délai pour confirmer une action sensible.
     static let confirmSeconds: TimeInterval = 8
 
@@ -46,8 +46,8 @@ enum Universal {
     /// Question posée à voix haute : jamais de phrase de réponse dedans (VoiceWake entend sa propre annonce).
     static func confirmationPrompt(_ title: String, config: Config) -> String {
         let answers = Set(((config.confirmPhrases ?? defaultConfirmPhrases) + (config.cancelPhrases ?? defaultCancelPhrases)).map(normalize))
-        let safe = normalize(title).split(separator: " ").contains { answers.contains(String($0)) } ? "cette action" : "« \(title) »"
-        return "Confirmer \(safe) ?"
+        let safe = normalize(title).split(separator: " ").contains { answers.contains(String($0)) } ? Lang.say(Spoken.thisAction) : "« \(title) »"
+        return Lang.say(Spoken.confirm, safe)
     }
 
     /// Phrase universelle en début d'énoncé : (type, mots du libellé), ou nil.
@@ -67,7 +67,7 @@ enum Universal {
         return nil
     }
 
-    private static let fillers: Set<String> = ["le", "la", "les", "l", "un", "une", "de", "du", "des", "d", "sur", "bouton", "menu"]
+    private static var fillers: Set<String> { Set(Lang.list("universal.fillers", ["le", "la", "les", "l", "un", "une", "de", "du", "des", "d", "sur", "bouton", "menu"])) }
 
     private static func same(_ a: String, _ b: String) -> Bool {
         if a == b { return true }

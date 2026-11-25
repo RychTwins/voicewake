@@ -108,7 +108,7 @@ extension Coordinator {
             Feedback.play(.failed); Bilan.record(.skill, "aucun assistant au premier plan"); return log("Skill : aucun assistant au premier plan.")
         }
         var q = query
-        let sendNow = q.count >= 2 && ["envoie", "envoyer"].contains(q.last!) && ["et", "puis"].contains(q[q.count - 2])
+        let sendNow = q.count >= 2 && Lang.list("skill.send", ["envoie", "envoyer"]).contains(q.last!) && Lang.list("andThen", ["et", "puis"]).contains(q[q.count - 2])
         if sendNow { q.removeLast(2) }
         DispatchQueue.global().async { [weak self] in
             let entries = SkillCatalog.entries(for: t)

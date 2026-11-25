@@ -20,11 +20,18 @@ enum QuestionAnswer {
 
     static let otherLabels = ["autre", "other"]
     static let skipLabels = ["passer", "skip"]
-    static let ordinals: [String: Int] = [
-        "premiere": 0, "premier": 0, "un": 0, "une": 0, "1": 0, "deuxieme": 1, "seconde": 1, "second": 1, "deux": 1, "2": 1,
-        "troisieme": 2, "trois": 2, "3": 2, "quatrieme": 3, "quatre": 3, "4": 3,
-    ]
-    static let freePrefixes = ["reponds", "reponse", "ma reponse est", "ma reponse"]
+    /// Rang dit → indice de l'option (mots déjà normalisés).
+    static var ordinals: [String: Int] {
+        Lang.map("question.ordinals", [
+            "premiere": "0", "premier": "0", "un": "0", "une": "0", "1": "0", "deuxieme": "1", "seconde": "1", "second": "1",
+            "deux": "1", "2": "1", "troisieme": "2", "trois": "2", "3": "2", "quatrieme": "3", "quatre": "3", "4": "3",
+        ]).compactMapValues { Int($0) }
+    }
+    static var freePrefixes: [String] { Lang.list("question.freePrefixes", ["reponds", "reponse", "ma reponse est", "ma reponse"]) }
+    /// Rang qui suffit dit seul (« deuxième ») ; un chiffre seul (« deux ») demande un mot de plus (« option deux »).
+    static func standsAlone(_ word: String) -> Bool {
+        Lang.isSource ? word.hasSuffix("ieme") || word == "premiere" : Lang.list("question.aloneOrdinals", []).contains(word)
+    }
 
     /// Réponse dite pour cette carte, sinon nil. Option : libellé exact (ou début de titre propre à une seule option).
     static func match(_ text: String, card: QuestionCard) -> Reply? {
@@ -38,10 +45,11 @@ enum QuestionAnswer {
                 .trimmingCharacters(in: CharacterSet(charactersIn: " :,"))
             return card.hasOther && !free.isEmpty ? .free(free) : nil
         }
-        if ["passe", "passer", "passe la question", "saute la question"].contains(s) { return .skip }
+        if Lang.list("question.skip", ["passe", "passer", "passe la question", "saute la question"]).contains(s) { return .skip }
         // Rang : « la deuxième », « option deux », « la première option », « choix trois ».
-        let core = words.filter { !["la", "le", "l", "option", "choix", "reponse", "numero"].contains($0) }
-        if core.count == 1, let i = ordinals[core[0]], words.count >= 2 || words[0].hasSuffix("ieme") || words[0] == "premiere",
+        let noise = Lang.list("question.fillers", ["la", "le", "l", "option", "choix", "reponse", "numero"])
+        let core = words.filter { !noise.contains($0) }
+        if core.count == 1, let i = ordinals[core[0]], words.count >= 2 || standsAlone(words[0]),
            i < card.options.count { return .option(i) }
         let titles = card.options.map(normalize)
         if let i = titles.firstIndex(of: s) { return .option(i) }

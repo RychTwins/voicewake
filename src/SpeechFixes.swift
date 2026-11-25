@@ -12,7 +12,7 @@ enum SpeechFixes {
 
     static func apply(_ text: String) -> String {
         var s = text
-        for r in rules {
+        for r in Lang.fixes ?? rules {
             guard let re = try? NSRegularExpression(pattern: r.pattern, options: [.caseInsensitive]) else { continue }
             s = re.stringByReplacingMatches(in: s, range: NSRange(s.startIndex..., in: s), withTemplate: r.replacement)
         }

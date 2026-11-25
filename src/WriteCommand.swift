@@ -4,7 +4,7 @@ import Foundation
 /// (cibles, éditeurs, `universalApps`), sans ouvrir le micro d'un assistant.
 enum WriteCommand {
     /// « écrit » : le moteur transcrit souvent « écris » ainsi.
-    static let defaultPhrases = ["écris", "écrit", "tape le texte"]
+    static var defaultPhrases: [String] { Lang.t(["écris", "écrit", "tape le texte"]) }
 
     /// Nombre de mots normalisés de la phrase d'activation (en début d'énoncé, suivie d'au moins un mot), sinon nil.
     static func request(_ text: String, config: Config) -> Int? {

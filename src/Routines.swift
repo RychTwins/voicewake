@@ -32,7 +32,7 @@ enum Routines {
         guard !said.isEmpty else { return nil }
         return (config.routines ?? []).first { r in
             var phrases = r.phrases ?? []
-            if let name = r.name { phrases += ["routine \(name)", "lance la routine \(name)"] }
+            if let name = r.name { phrases += Lang.list("routine.call", ["routine %@", "lance la routine %@"]).map { $0.replacingOccurrences(of: "%@", with: name) } }
             return phrases.contains { normalize($0) == said }
         }
     }

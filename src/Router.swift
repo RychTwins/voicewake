@@ -18,20 +18,22 @@ struct Router {
 
     /// Mots soufflés au moteur pour mieux reconnaître les noms propres.
     var hints: [String] {
-        let conversation = config.continuousConversation == true ? ["attends je réfléchis", "garde le brouillon"] : []
+        let conversation = config.continuousConversation == true ? Lang.t(["attends je réfléchis", "garde le brouillon"]) : []
         let names = (config.bareNames ?? true) ? ["Claude", "Codex", "Gemini", "ChatGPT", "Antigravity", "assistant"] : []
         return Array(Set(config.targets.flatMap(\.phrases) + config.frontmostPhrases + conversation + names))
     }
 
     /// Nom dit seul (« Claude. ») et ses déformations courantes → identifiant de la cible ; "" = app au premier plan.
-    static let bareNames: [String: String] = [
-        "claude": "claude", "clode": "claude", "clod": "claude", "glode": "claude", "claud": "claude",
-        "codex": "codex", "codecs": "codex", "code x": "codex", "codeks": "codex",
-        "gemini": "gemini", "jemini": "gemini", "jimini": "gemini", "jeminy": "gemini", "gemmini": "gemini",
-        "chatgpt": "chatgpt", "chat gpt": "chatgpt", "chat gbt": "chatgpt", "chat jpt": "chatgpt",
-        "antigravity": "antigravity", "anti gravity": "antigravity", "antigravite": "antigravity",
-        "assistant": "",
-    ]
+    static var bareNames: [String: String] {
+        Lang.map("router.bareNames", [
+            "claude": "claude", "clode": "claude", "clod": "claude", "glode": "claude", "claud": "claude",
+            "codex": "codex", "codecs": "codex", "code x": "codex", "codeks": "codex",
+            "gemini": "gemini", "jemini": "gemini", "jimini": "gemini", "jeminy": "gemini", "gemmini": "gemini",
+            "chatgpt": "chatgpt", "chat gpt": "chatgpt", "chat gbt": "chatgpt", "chat jpt": "chatgpt",
+            "antigravity": "antigravity", "anti gravity": "antigravity", "antigravite": "antigravity",
+            "assistant": "",
+        ])
+    }
 
     /// Cible appelée par son nom dit seul, sans rien avant ni après (en veille seulement : une dictée n'est
     /// jamais concernée). Le filtre de voix garantit que c'est bien l'utilisateur qui l'a dit.
@@ -62,7 +64,7 @@ struct Router {
 
     private var sendCommands: Set<String> {
         guard let phrases = config.sendPhrases, !phrases.isEmpty else { return [] }
-        let explicit = ["ok tu peux envoyer", "c est bon tu peux envoyer"]
+        let explicit = Lang.t(["ok tu peux envoyer", "c est bon tu peux envoyer"])
         // Toute phrase de `sendPhrases` compte : c'est l'utilisateur qui choisit les siennes (« ok on voit »).
         return Set(phrases.map(normalize) + explicit).subtracting([""])
     }
@@ -75,7 +77,7 @@ struct Router {
     func endsWithStopPhrase(_ text: String) -> Bool { endsWith(text, stopCommands) }
 
     private var stopCommands: [String] {
-        (config.stopPhrases ?? []) + (config.continuousConversation == true ? ["garde le brouillon"] : [])
+        (config.stopPhrases ?? []) + (config.continuousConversation == true ? Lang.t(["garde le brouillon"]) : [])
     }
 
     func isStandaloneStop(_ text: String) -> Bool {
@@ -84,7 +86,7 @@ struct Router {
     }
 
     func isThoughtPause(_ text: String) -> Bool {
-        config.continuousConversation == true && normalize(text) == "attends je reflechis"
+        config.continuousConversation == true && Lang.t(["attends je réfléchis"]).map(normalize).contains(normalize(text))
     }
 
     /// Dernière phrase de `phrases` présente dans le texte, avec le mot qui la précède (texte normalisé).
@@ -129,7 +131,8 @@ struct Router {
         if let custom = config.strongInterruptPhrases { return custom }
         let names = Set(config.targets.map { normalize($0.id) } + ["claude", "codex", "gemini", "chatgpt", "assistant"])
             .filter { $0.count >= 4 && !$0.contains(" ") }
-        return names.flatMap { ["stop \($0)", "\($0) stop", "écoute \($0)", "\($0) écoute", "écoute moi \($0)", "attends \($0)"] }
+        let patterns = Lang.list("router.strongInterrupts", ["stop %@", "%@ stop", "écoute %@", "%@ écoute", "écoute moi %@", "attends %@"])
+        return names.flatMap { name in patterns.map { $0.replacingOccurrences(of: "%@", with: name) } }
     }
 
     /// Interruption nommée entendue, sauf si `shown` (texte affiché ou lu) la contient aussi : la voix de lecture
@@ -137,7 +140,7 @@ struct Router {
     /// Phrases retirées du texte tapé par VoiceWake.
     var sendPhrasesForTyping: [String] { Array(sendCommands) + (config.sendPhrases ?? []) }
     var stopPhrasesForTyping: [String] { stopCommands }
-    var thoughtPausePhrases: [String] { ["attends je réfléchis", "attends", "je réfléchis", "garde le brouillon"] }
+    var thoughtPausePhrases: [String] { Lang.t(["attends je réfléchis", "attends", "je réfléchis", "garde le brouillon"]) }
 
     /// Texte d'origine sans la phrase finale (la plus longue qui le termine) parmi `phrases`.
     func withoutTrailing(_ text: String, _ phrases: [String]) -> String {

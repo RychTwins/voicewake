@@ -22,10 +22,10 @@ enum NavRequest {
 /// Les phrases doivent terminer la transcription (dites seules) : une phrase ordinaire qui les contient
 /// au milieu ne déclenche rien.
 enum NavCommands {
-    static let defaultOpenPhrases = ["ouvre le projet", "ouvre la session", "ouvre la conversation", "va dans le projet", "ouvre"]
+    static var defaultOpenPhrases: [String] { Lang.t(["ouvre le projet", "ouvre la session", "ouvre la conversation", "va dans le projet", "ouvre"]) }
     /// Nom cité après « ouvre » : au plus ce nombre de mots.
     static let maxNameWords = 8
-    static let defaultNewSessionInPhrases = ["nouvelle session dans", "nouvelle conversation dans", "nouvelle session pour"]
+    static var defaultNewSessionInPhrases: [String] { Lang.t(["nouvelle session dans", "nouvelle conversation dans", "nouvelle session pour"]) }
 
     /// Commandes de l'application Claude (libellés relevés dans ses menus et sa barre latérale, FR et EN).
     static let claude: [VoiceCommand] = [
@@ -107,11 +107,24 @@ enum NavCommands {
         VoiceCommand(phrases: ["plein écran"], menu: ["Activer le mode plein écran"]),
     ]
 
-    static let builtIn: [String: [VoiceCommand]] = [
+    /// Commandes en français (langue source), par application.
+    static let source: [String: [VoiceCommand]] = [
         "com.anthropic.claudefordesktop": claude,
         "com.openai.codex": codex,
         "com.google.GeminiMacOS": gemini,
     ]
+
+    /// Les mêmes commandes dans la langue active : seules les phrases changent, les libellés de menus et de
+    /// boutons (déjà en plusieurs langues) restent. Une commande sans traduction n'existe pas dans cette langue.
+    static var builtIn: [String: [VoiceCommand]] {
+        source.mapValues { commands in
+            commands.compactMap { c in
+                var out = c
+                out.phrases = Lang.t(c.phrases)
+                return out.phrases.isEmpty ? nil : out
+            }
+        }
+    }
 
     /// Menus de la barre de menus qui listent les conversations récentes (Gemini : « Discussions »).
     static let conversationMenus = ["Discussions", "Chats", "Conversations"]
@@ -164,8 +177,10 @@ enum NavCommands {
     }
 
     /// Mots vides retirés du nom cité (« ouvre le projet VoxTV » → « voxtv »).
-    static let fillers: Set<String> = ["le", "la", "les", "l", "de", "du", "des", "d", "un", "une", "mon", "ma", "mes",
-                                       "projet", "session", "conversation", "discussion", "dossier", "s'il", "te", "plait"]
+    static var fillers: Set<String> {
+        Set(Lang.list("nav.fillers", ["le", "la", "les", "l", "de", "du", "des", "d", "un", "une", "mon", "ma", "mes",
+                                      "projet", "session", "conversation", "discussion", "dossier", "s'il", "te", "plait"]))
+    }
 
     private static func same(_ a: String, _ b: String) -> Bool {
         if a == b { return true }

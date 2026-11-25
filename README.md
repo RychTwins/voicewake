@@ -23,6 +23,8 @@ Tout le reste (naviguer, cliquer un bouton, lancer un skill, répondre à une qu
 
 > **Open source et gratuit.** Téléchargez-le, testez-le sur votre Mac, améliorez-le et adaptez-le à votre façon de travailler. La version actuelle est en **français** ; elle s'adapte à n'importe quelle langue (voir [Adapter à votre langue](#adapter-à-votre-langue)). Les contributions sont les bienvenues.
 
+> **English speakers:** VoiceWake also works in English. Say "Hey Claude", talk, stay silent or say "OK send it", and the answer is read aloud. On a Mac set to English, `./install.sh` installs the English configuration (`config.example.en.json`); the built-in commands follow. This README is in French; see [Adapter à votre langue](#adapter-à-votre-langue) to add another language (`voicewake langue <code>`). The English pack has not been voice-tested yet: please report what the recognizer mishears.
+
 > Projet indépendant, sans lien avec Anthropic, OpenAI ou Google.
 
 ---
@@ -522,6 +524,7 @@ voicewake boutons <bundle-id>      # boutons visibles (ce que « clique sur … 
 voicewake question <bundle-id> "la deuxième"   # question affichée et réponse reconnue, sans cliquer
 voicewake voix apprends | test | efface        # empreinte du filtre « ma voix uniquement »
 voicewake diagnostic                           # autorisations, apps, modèles
+voicewake langue en                            # pack de langue : ce qui est traduit, ce qui manque
 voicewake ia "phrase"                          # commande que l'interpréteur local tirerait de la phrase
 tail -f ~/Library/Logs/voicewake.log   # archivé en voicewake.log.1 au-delà de 5 Mo
 ```
@@ -617,12 +620,37 @@ Windows : `.\uninstall.ps1` (`-Purge` pour supprimer aussi la configuration).
 
 ## Adapter à votre langue
 
-Seule la configuration change, le code reste identique :
+VoiceWake écoute **une langue à la fois**, celle de `locale` : le moteur vocal d'Apple ne sait pas en suivre deux en même temps. Toutes les commandes se disent dans cette langue.
 
-1. `locale` : votre langue de reconnaissance, par exemple `en-US`, `es-ES`, `de-DE`, `pt-BR`.
-2. `phrases`, `frontmostPhrases`, `sendPhrases`, `stopPhrases`, `readPausePhrases`, `readResumePhrases`, `interruptPhrases` : vos commandes dans cette langue (« Hey Claude », « OK send »…).
-3. Les libellés `button:` suivent la langue de l'interface des applications : relevez-les avec Accessibility Inspector, ou ajoutez-les en alternative avec `|` (`button:Envoyer|Send`).
-4. Relancez le service, puis vérifiez avec `voicewake route "hey claude"`.
+| Langue | État |
+| --- | --- |
+| Français (`fr-FR`) | langue d'origine, complète |
+| Anglais (`en-US`, `en-GB`…) | pack fourni : commandes, navigation, annonces. Traduction non encore rodée à la voix |
+| Autres | à ajouter : un fichier par langue (voir plus bas) |
+
+**Utiliser VoiceWake en anglais** : sur un Mac en anglais, `./install.sh` installe directement la configuration anglaise. Sinon, copiez `config.example.en.json` vers `~/.config/voicewake/config.json` et relancez le service. On dit alors « Hey Claude », « OK send it », « next session », « open <project> », « where are we ».
+
+**Ce qui change avec la langue**
+
+1. `locale` : la langue écoutée (`en-US`, `es-ES`, `de-DE`, `pt-BR`, `zh-CN`…).
+2. Dans la configuration, vos phrases : `phrases` de chaque assistant, `frontmostPhrases`, `sendPhrases`, `stopPhrases`, `interruptPhrases`, `readPausePhrases`, `readResumePhrases`, `readFromPhrases`, `readAloudPhrases`.
+3. Le **pack de langue** : toutes les commandes intégrées (navigation, « clique sur… », « menu… », skills, réponses aux questions, lecteur), les mots qui annoncent qu'une phrase n'est pas finie, et ce que VoiceWake dit à voix haute.
+4. Les libellés `button:` suivent la langue de l'interface des applications : ajoutez les vôtres en alternative avec `|` (`button:Envoyer|Send`).
+
+**Ajouter une langue**
+
+```bash
+voicewake langue es
+```
+
+Cette commande liste tout ce qu'un pack doit fournir (190 éléments) et ce qu'il reste à traduire. Deux façons de l'écrire :
+
+- sans recompiler : `~/.config/voicewake/lang/es.json`, avec les clés `phrases`, `lists`, `maps`, `speech` ;
+- dans le projet : `src/Lang+es.swift`, sur le modèle de `src/Lang+en.swift`, puis une ligne dans `Lang.builtIn` et un `config.example.es.json`.
+
+Chaque phrase française est une clé, sa valeur est la liste de ce qu'on dit dans votre langue (plusieurs variantes possibles, liste vide si la phrase n'a pas d'équivalent). Le moteur vocal déforme souvent les noms (« Claude » entendu « clawed ») : activez `"debug": true`, regardez ce qu'il écrit dans le journal et ajoutez ces variantes. Vérifiez avec `voicewake route "hey claude"`.
+
+**Limites actuelles hors du français** : l'interpréteur de phrases libres, les commandes du Mac (mode Jarvis), le diagnostic parlé et les messages du journal restent en français.
 
 Si votre langue n'est pas reconnue localement par macOS, passez `"requireOnDevice": false`.
 
@@ -633,7 +661,7 @@ Si votre langue n'est pas reconnue localement par macOS, passez `"requireOnDevic
 Le projet est ouvert à tous : nouvelles langues, nouveaux assistants, autres éditeurs, version Linux, corrections.
 
 1. Forkez le dépôt et créez une branche.
-2. Vérifiez vos changements : `./install.sh`, `voicewake check`, puis `bash tests/route.sh ~/.local/bin/voicewake`. Les autres tests (`tests/conversation.swift`, `tests/silence.swift`, `tests/reader.swift`) se compilent avec la commande indiquée en tête de `tests/reader.swift`.
+2. Vérifiez vos changements : `./install.sh`, `voicewake check`, puis `bash tests/route.sh ~/.local/bin/voicewake` et `bash tests/route-en.sh ~/.local/bin/voicewake`. Les autres tests (`tests/conversation.swift`, `tests/silence.swift`, `tests/reader.swift`) se compilent avec la commande indiquée en tête de `tests/reader.swift`.
 3. Ouvrez une pull request en décrivant ce que vous avez testé (application, langue, version de macOS).
 
 Un bug ou une idée ? Ouvrez une [issue](https://github.com/RychTwins/voicewake/issues) avec l'extrait utile du journal `~/Library/Logs/voicewake.log` (en mode `debug`, il contient vos paroles : relisez-le avant de le partager).

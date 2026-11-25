@@ -22,7 +22,7 @@ enum AppCommand: String, CaseIterable {
         case .status: custom = c.statusPhrases
         case .help: custom = c.helpPhrases
         }
-        return custom ?? Self.defaultPhrases[self] ?? []
+        return custom ?? Lang.t(Self.defaultPhrases[self] ?? [])
     }
 
     /// Commande présente dans la transcription (la plus récente si plusieurs), ou nil.
@@ -59,7 +59,7 @@ enum ReaderNav: String, CaseIterable {
         case .repeatSentence: custom = c.readRepeatPhrases
         case .nextSentence: custom = c.readNextPhrases
         }
-        return custom ?? Self.defaultPhrases[self] ?? []
+        return custom ?? Lang.t(Self.defaultPhrases[self] ?? [])
     }
 
     static func allPhrases(_ c: Config) -> [String] { allCases.flatMap { $0.phrases(c) } }

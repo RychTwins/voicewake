@@ -20,7 +20,7 @@ final class Coordinator {
         }
         Feedback.configure(config)
         Bilan.configure(config)
-        if config.interpreter?.enabled ?? true {
+        if config.interpreter?.enabled ?? true, Lang.isSource {
             if Interpreter.isAvailable { DispatchQueue.global().async { Interpreter.prewarm() } }
             else { log("Interpréteur local : \(Interpreter.unavailableReason).") }
         }
@@ -169,7 +169,7 @@ final class Coordinator {
         // Phrase libre adressée à un assistant (« Claude, tu peux me lire sa réponse ? ») ou après « Jarvis » :
         // interpréteur local (modèle d'Apple sur le Mac).
         // « Claude… » (nom seul, en attente) qui continue en demande : la demande l'emporte.
-        if active == nil, config.interpreter?.enabled ?? true,
+        if active == nil, config.interpreter?.enabled ?? true, Lang.isSource,
            named != nil || Interpreter.addressed(text), wakeKey(text) == nil {
             pendingWake?.cancel()
             pendingWake = nil
@@ -288,7 +288,8 @@ final class Coordinator {
         }
         base.forEach(add)
         if config.jarvisEnabled { (config.wakeNames ?? WakeName.defaults).forEach(add) }
-        for n in names.prefix(30) where n.count <= 60 { add("ouvre \(n)"); add(n) }
+        let open = NavCommands.defaultOpenPhrases.last ?? ""
+        for n in names.prefix(30) where n.count <= 60 { if !open.isEmpty { add("\(open) \(n)") }; add(n) }
         let commands = target.map(NavCommands.commands(for:)) ?? []
         (commands.flatMap(\.phrases) + AppCommand.allCases.flatMap { $0.phrases(config) }
             + (config.readPausePhrases ?? []) + (config.readResumePhrases ?? []) + (config.readFromPhrases ?? [])
@@ -312,25 +313,25 @@ final class Coordinator {
             let raw = app?.localizedName ?? ""
             let risky = raw.isEmpty || Universal.match(raw, config: self.config) != nil || Palette.request(raw, config: self.config) != nil
                 || SkillCatalog.request(raw, config: self.config) != nil || self.wakeKey(raw) != nil
-            let name = risky ? "cette application" : raw
+            let name = risky ? Lang.say(Spoken.thisApp) : raw
             if let app, allowed {
                 let menus = AXButtonPresser.allMenuBarItems(in: app).count
                 let buttons = AXButtonPresser.visibleButtons(in: app).count
-                parts.append("Dans \(name), on peut choisir l'une des \(menus) options de menu en disant le mot menu puis son nom, ou l'un des \(buttons) boutons visibles avec clique sur.")
+                parts.append(Lang.say(Spoken.helpApp, name, "\(menus)", "\(buttons)"))
                 if let bid = app.bundleIdentifier, Palette.shortcut(for: bid, config: self.config) != nil {
-                    parts.append("La palette de commandes s'utilise en disant palette puis la commande.")
+                    parts.append(Lang.say(Spoken.helpPalette))
                 }
             } else {
-                parts.append("\(name) n'est pas une application pilotée.")
+                parts.append(Lang.say(Spoken.helpNotDriven, name))
             }
             if let t = target {
                 let skills = SkillCatalog.entries(for: t).count
-                if skills > 0 { parts.append("\(skills) skills et commandes slash se lancent avec lance le skill puis leur nom.") }
+                if skills > 0 { parts.append(Lang.say(Spoken.helpSkills, "\(skills)")) }
                 if let assistant = ShortcutTrigger.runningApp(for: t), !AXButtonPresser.sidebarEntries(in: assistant).isEmpty {
-                    parts.append("Un projet de la barre latérale s'ouvre avec ouvre puis son nom.")
+                    parts.append(Lang.say(Spoken.helpSidebar))
                 }
             }
-            parts.append("La liste complète est dans le fichier lisez-moi.")
+            parts.append(Lang.say(Spoken.helpReadme))
             let message = parts.joined(separator: " ")
             DispatchQueue.main.async {
                 log("Aide vocale : \(name).")
@@ -388,19 +389,19 @@ final class Coordinator {
         let name = { (t: Target) in t.appName ?? t.id.capitalized }
         let message: String
         if let t = active, let until = reviewUntil {
-            message = "Brouillon gardé pour \(name(t)), en attente d'envoi encore \(max(0, Int(until.timeIntervalSinceNow))) secondes."
+            message = Lang.say(Spoken.statusDraft, name(t), "\(max(0, Int(until.timeIntervalSinceNow)))")
         } else if let t = active {
-            message = "Dictée en cours vers \(name(t))."
+            message = Lang.say(Spoken.statusDictating, name(t))
         } else if reader.isActive {
-            message = reader.isPaused ? "Lecteur intégré en pause." : "Lecteur intégré en cours."
+            message = Lang.say(reader.isPaused ? Spoken.statusReaderPaused : Spoken.statusReaderOn)
         } else if let t = trigger.readingTarget() {
-            message = "Lecture à voix haute de \(name(t)) en cours."
+            message = Lang.say(Spoken.statusReading, name(t))
         } else if let t = trigger.pausedTarget() {
-            message = "Lecture de \(name(t)) en pause."
+            message = Lang.say(Spoken.statusReadingPaused, name(t))
         } else if let t = router.frontmostTarget(), let app = ShortcutTrigger.runningApp(for: t), AXButtonPresser.isFrontmost(app) {
-            message = "En veille, prêt. \(name(t)) est au premier plan."
+            message = Lang.say(Spoken.statusIdleFront, name(t))
         } else {
-            message = "En veille, prêt."
+            message = Lang.say(Spoken.statusIdle)
         }
         log("État : \(message)")
         speak(message)

@@ -300,6 +300,26 @@ case "skill":
         print("→ « \(hit.entry.text)\(args2.isEmpty ? "" : " " + args2) » (\(entries.count) connus)")
     } else { print("→ aucun skill ne correspond (\(entries.count) connus)") }
 
+case "langue":
+    // voicewake langue [code] : ce qu'il reste à traduire dans un pack de langue (défaut : langue de `locale`).
+    let wanted = args.count > 1 ? args[1].lowercased() : String(config.locale.prefix(2)).lowercased()
+    let inventory = Lang.inventory(config: config)
+    let total = inventory.phrases.count + inventory.lists.count + inventory.maps.count + inventory.speech.count
+    print("Langue active : \(Lang.code) (locale \(config.locale)). Packs fournis : fr (source), \(Lang.builtIn.keys.sorted().joined(separator: ", ")).")
+    if wanted == "fr" { print("Le français est la langue source : \(total) éléments, rien à traduire."); exit(0) }
+    guard let missing = Lang.missing(in: wanted, inventory: inventory) else {
+        print("Aucun pack « \(wanted) ». Créez \(Lang.externalPath(wanted)) ou src/Lang+\(wanted).swift (modèle : src/Lang+en.swift).")
+        print("\(total) éléments à traduire : \(inventory.phrases.count) phrases, \(inventory.lists.count) listes, \(inventory.maps.count) tables, \(inventory.speech.count) annonces.")
+        exit(1)
+    }
+    let left = missing.phrases.count + missing.lists.count + missing.maps.count + missing.speech.count
+    print("Pack « \(wanted) » : \(total - left) éléments traduits sur \(total).")
+    for p in missing.phrases { print("  phrase à traduire : \(p)") }
+    for l in missing.lists { print("  liste à fournir : \(l)") }
+    for m in missing.maps { print("  table à fournir : \(m)") }
+    for s in missing.speech { print("  annonce à traduire : \(s)") }
+    exit(left == 0 ? 0 : 1)
+
 case "diagnostic":
     // voicewake diagnostic : autorisations, apps, modèles.
     let checks = Diagnostic.run(config)

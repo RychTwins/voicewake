@@ -264,6 +264,7 @@ struct Config: Codable {
     static func load(path: String) throws -> Config {
         let data = try Data(contentsOf: URL(fileURLWithPath: path))
         let config = try JSONDecoder().decode(Config.self, from: data)
+        Lang.configure(locale: config.locale)
         try config.validate()
         return config
     }
