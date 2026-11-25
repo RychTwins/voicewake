@@ -302,7 +302,7 @@ L'envoi automatique exige un bouton d'envoi actif lié au composeur. VoiceWake v
 
 Dans Codex, si la réponse terminée est identifiable et que le contrôle de lecture est absent, le lecteur VoiceWake prend le relais, puis rouvre le micro dans le même chat en conversation continue.
 
-Sans casque, la voix de lecture peut laisser un écho : la reprise attend 3 s de silence après la fin de la lecture.
+Le micro se rouvre dès la fin de la lecture : environ une demi-seconde après le dernier mot quand l'application affiche un bouton de pause (Claude, Gemini), un peu plus d'une seconde quand VoiceWake se fie au son de l'application (Codex).
 
 ### Voix ElevenLabs (optionnel)
 

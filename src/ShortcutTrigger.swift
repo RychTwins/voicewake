@@ -373,8 +373,9 @@ final class ShortcutTrigger {
         return r.target
     }
 
-    /// Lecture lancée : surveille le son de l'app et ne considère la lecture finie qu'après
-    /// 3 s de silence continu (les pauses entre phrases ne lèvent pas la protection).
+    /// Lecture lancée : surveille la lecture de l'app et la considère finie dès que le signal disparaît :
+    /// 0,4 s sans bouton de pause (signal fiable, présent pendant toute la lecture), ou 1,2 s sans son de
+    /// l'app (les pauses entre phrases ne doivent pas passer pour la fin). Le micro se rouvre aussitôt.
     private func startReading(_ t: Target, app: NSRunningApplication, in window: DictationWindow? = nil) {
         reading = (t, Date())
         let origin = window ?? Self.dictationWindow(for: t)
@@ -385,7 +386,7 @@ final class ShortcutTrigger {
             var heardPlayback = false
             let startedAt = ProcessInfo.processInfo.systemUptime
             while true {
-                usleep(500_000)
+                usleep(200_000)
                 // Signal le plus fiable : le bouton de pause, visible seulement pendant la lecture (Claude).
                 // Sinon, le son de l'app.
                 let pauseLabels = t.pauseReadShortcut?.buttons ?? []
@@ -399,7 +400,8 @@ final class ShortcutTrigger {
                 } else if !heardPlayback {
                     done = ProcessInfo.processInfo.systemUptime - startedAt >= 15
                 } else if let s = silentSince {
-                    done = Date().timeIntervalSince(s) >= 3
+                    let byButton = !pauseLabels.isEmpty && bundle != "com.openai.codex"
+                    done = Date().timeIntervalSince(s) >= (byButton ? 0.4 : 1.2)
                 } else { silentSince = Date() }
                 let stop: Bool = DispatchQueue.main.sync {
                     guard gen == self.readGeneration, self.reading != nil else { return true }
