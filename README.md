@@ -642,7 +642,11 @@ VoiceWake écoute **une langue à la fois**, celle de `locale` : le moteur vocal
 
 Les packs fournis sont des traductions complètes (commandes, navigation, réponses aux questions, annonces, mots d'actions sensibles), vérifiées par les tests du projet, mais **pas encore rodées à la voix** par des personnes qui parlent ces langues. Le moteur vocal déforme souvent les noms et certains mots : si une commande ne passe pas chez vous, activez `"debug": true`, regardez ce qu'il a écrit, et ajoutez cette variante (voir plus bas). Vos retours sont précieux.
 
-**Choisir sa langue.** À l'installation, `./install.sh` prend la langue du Mac : s'il existe un pack, la configuration de départ est écrite dans cette langue (« Hey Claude », « OK send it », « next session »…), sinon en français. Pour changer de langue ensuite :
+**La langue se choisit toute seule.** À l'installation, `./install.sh` lit la langue du Mac et écrit la configuration dans cette langue, avec sa variante régionale quand le moteur vocal la connaît (`en-GB`, `es-MX`, `pt-PT`…) : on dit tout de suite « Hey Claude », « Hola Claude », « 嘿 Claude ». Un Mac en français reste en français ; une langue sans pack donne l'anglais. La configuration produite est vérifiée avant d'être mise en place.
+
+Hors du français, `requireOnDevice` vaut `false` : si macOS n'a pas de modèle vocal local pour la langue, VoiceWake démarre quand même en passant par la reconnaissance en ligne d'Apple (votre voix est alors envoyée à Apple). Dès qu'un modèle local existe, c'est lui qui sert. Remettez `true` pour interdire tout envoi.
+
+Pour changer de langue ensuite (`auto` = langue du Mac) :
 
 ```bash
 voicewake exemple es --config config.example.json > ~/.config/voicewake/config.json

@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import Speech
 
 setvbuf(stdout, nil, _IOLBF, 0)
 
@@ -302,10 +303,14 @@ case "skill":
 
 case "exemple":
     // voicewake exemple [code] --config config.example.json : configuration de départ dans une langue.
-    let wanted = args.count > 1 ? args[1].lowercased() : Lang.systemCode
+    // Sans code (ou « auto ») : la langue du Mac si VoiceWake la connaît, sinon l'anglais.
+    let wanted = args.count > 1 && args[1].lowercased() != "auto" ? args[1].lowercased() : Lang.installCode
     guard let example = FileManager.default.contents(atPath: configPath) else { print("Configuration illisible : \(configPath)"); exit(1) }
+    FileHandle.standardError.write(Data("Langue : \(wanted) (langue du Mac : \(Lang.systemCode))\n".utf8))
     if wanted == "fr" { FileHandle.standardOutput.write(example); exit(0) }
-    guard let pack = Lang.load(wanted), let data = pack.configuration(from: example, code: wanted) else {
+    let supported = Set(SFSpeechRecognizer.supportedLocales().map { $0.identifier.replacingOccurrences(of: "_", with: "-") })
+    guard let pack = Lang.load(wanted),
+          let data = pack.configuration(from: example, code: wanted, locale: Lang.systemLocale(for: wanted, supported: supported)) else {
         FileHandle.standardError.write(Data("Aucun pack « \(wanted) » : voicewake langue \(wanted)\n".utf8)); exit(1)
     }
     FileHandle.standardOutput.write(data)

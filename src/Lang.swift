@@ -69,10 +69,13 @@ struct LanguagePack: Codable {
 
     /// Configuration de départ dans cette langue, à partir de la configuration d'exemple (JSON) : mêmes réglages
     /// et mêmes applications, phrases remplacées. nil si l'exemple est illisible.
-    func configuration(from example: Data, code: String) -> Data? {
+    func configuration(from example: Data, code: String, locale chosen: String? = nil) -> Data? {
         guard var root = (try? JSONSerialization.jsonObject(with: example)) as? [String: Any] else { return nil }
         for key in root.keys where key.hasPrefix("_note") { root[key] = nil }
-        root["locale"] = locale ?? code
+        root["locale"] = chosen ?? locale ?? code
+        // Toutes les langues n'ont pas de modèle vocal installé sur le Mac : plutôt que de refuser de démarrer,
+        // VoiceWake passe alors par la reconnaissance en ligne d'Apple (le local reste utilisé dès qu'il existe).
+        root["requireOnDevice"] = false
         for key in Self.configKeys { root[key] = config[key] ?? [] }
         root["routines"] = nil
         if var targets = root["targets"] as? [[String: Any]] {
@@ -107,6 +110,26 @@ enum Lang {
     /// Langue du Mac (« en », « es »…), pour proposer la bonne configuration à l'installation.
     static var systemCode: String {
         String((Locale.preferredLanguages.first ?? "fr").prefix(2)).lowercased()
+    }
+
+    /// Langue à installer sur ce Mac : celle du système si VoiceWake la connaît, sinon l'anglais (plus de monde
+    /// le comprend que le français).
+    static var installCode: String {
+        let code = systemCode
+        return code == "fr" || builtIn[code] != nil || FileManager.default.fileExists(atPath: externalPath(code)) ? code : "en"
+    }
+
+    /// Variante régionale du Mac (« en-GB », « es-MX », « pt-PT ») si elle est dans la langue voulue et si le
+    /// moteur vocal la connaît (`supported`) ; sinon nil, et la variante par défaut du pack s'applique.
+    static func systemLocale(for code: String, supported: Set<String>) -> String? {
+        for preferred in Locale.preferredLanguages where preferred.lowercased().hasPrefix(code) {
+            let parts = preferred.split(separator: "-").map(String.init)
+            // « zh-Hans-CN » → « zh-CN » ; « en-GB » reste tel quel ; « es-419 » n'est pas une région du moteur.
+            guard let region = parts.last, parts.count >= 2, region.count == 2, region.uppercased() == region else { continue }
+            let candidate = "\(code)-\(region)"
+            if supported.contains(candidate) { return candidate }
+        }
+        return nil
     }
 
     static func externalPath(_ code: String) -> String {

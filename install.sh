@@ -69,17 +69,18 @@ fi
 
 echo "→ Configuration"
 if [[ ! -f "$CONFIG_DIR/config.json" ]]; then
-  # Configuration de départ dans la langue du Mac si VoiceWake a un pack pour elle, sinon en français.
+  # Configuration de départ dans la langue du Mac : VoiceWake la détecte lui-même (français, l'une des langues
+  # fournies, sinon anglais). Elle est vérifiée avant d'être mise en place ; au moindre doute, le français.
   # Changer de langue ensuite : voicewake exemple <code> --config config.example.json > ~/.config/voicewake/config.json
-  SYSTEM_LANG="$(defaults read -g AppleLanguages 2>/dev/null | tr -d ' ()",\n' | cut -c1-2)"
-  if [[ -n "$SYSTEM_LANG" && "$SYSTEM_LANG" != "fr" ]] &&
-     "$BIN" exemple "$SYSTEM_LANG" --config "$ROOT/config.example.json" > "$CONFIG_DIR/config.json.new" 2>/dev/null; then
-    mv "$CONFIG_DIR/config.json.new" "$CONFIG_DIR/config.json"
-    echo "  Créée : $CONFIG_DIR/config.json (langue : $SYSTEM_LANG)"
+  NEW="$CONFIG_DIR/config.json.new"
+  if DETECTED="$("$BIN" exemple auto --config "$ROOT/config.example.json" 2>&1 >"$NEW" | sed -n 's/^Langue : //p')" &&
+     [[ -s "$NEW" ]] && "$BIN" check --config "$NEW" >/dev/null 2>&1; then
+    mv "$NEW" "$CONFIG_DIR/config.json"
+    echo "  Créée : $CONFIG_DIR/config.json — langue : ${DETECTED:-français}"
   else
-    rm -f "$CONFIG_DIR/config.json.new"
+    rm -f "$NEW"
     cp "$ROOT/config.example.json" "$CONFIG_DIR/config.json"
-    echo "  Créée : $CONFIG_DIR/config.json (français)"
+    echo "  Créée : $CONFIG_DIR/config.json — français (langue du Mac non détectée)"
   fi
 else
   echo "  Conservée : $CONFIG_DIR/config.json"
