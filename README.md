@@ -11,6 +11,16 @@ Dites « Dis Claude » : VoiceWake ouvre l'application, active son micro intégr
 
 - **Sans interface** : tout s'installe et se règle en ligne de commande.
 
+### Comment ça marche, en cinq étapes
+
+1. Vous dites « **Dis Claude** » (ou « Dis Codex », « Dis Gemini »…) : le micro de l'assistant s'ouvre.
+2. Vous parlez normalement.
+3. Vous vous taisez quelques secondes, ou vous dites « **OK envoie** » : le message part.
+4. À la fin de la réponse, elle est lue à voix haute.
+5. Après la lecture, le micro se rouvre : la conversation continue sans rien toucher.
+
+Tout le reste (naviguer, cliquer un bouton, lancer un skill, répondre à une question) se fait aussi à la voix : voir [Commandes vocales](#commandes-vocales).
+
 > **Open source et gratuit.** Téléchargez-le, testez-le sur votre Mac, améliorez-le et adaptez-le à votre façon de travailler. La version actuelle est en **français** ; elle s'adapte à n'importe quelle langue (voir [Adapter à votre langue](#adapter-à-votre-langue)). Les contributions sont les bienvenues.
 
 > Projet indépendant, sans lien avec Anthropic, OpenAI ou Google.
@@ -83,7 +93,9 @@ Pendant une dictée, une phrase d'activation dite seule (« Salut Gemini ») arr
 
 **Fin de tour naturelle** (avec `autoSendSilenceSeconds`, ici 1,5 s) : VoiceWake regarde comment votre phrase se termine. Une question (« tu peux corriger ça ? ») part après environ 0,9 s ; une phrase finie après le délai réglé ; une phrase en suspens (« … et », « euh », « parce que ») attend au moins 3,5 s, le temps de réfléchir. `"naturalTurnEnd": false` revient à un délai fixe.
 
-Gardez l'application au premier plan jusqu'à l'envoi : si une autre application passe devant, l'envoi est annulé.
+Gardez l'application au premier plan jusqu'à l'envoi : si une autre application reste devant plus de 2 secondes, l'envoi est annulé (un passage bref, le temps qu'une fenêtre s'affiche, ne compte pas).
+
+Toutes les phrases de `sendPhrases` sont prises en compte : ajoutez les vôtres (par exemple « ok on voit »). Tant que des mots sont reconnus, VoiceWake considère que vous parlez : le compte à rebours du silence ne démarre qu'après le dernier mot, même si le micro est réglé bas.
 
 ### Pendant la lecture à voix haute
 
@@ -286,7 +298,7 @@ Avec `"continuousConversation": true`, VoiceWake envoie la dictée après 5 s de
 - **« Attends, je réfléchis »** suspend l'envoi jusqu'à ce que vous repreniez la parole.
 - **« Garde le brouillon »** ou **« OK arrête »** coupe le micro et laisse le texte dans le composeur.
 
-L'envoi automatique exige un bouton d'envoi actif lié au composeur. L'envoi automatique et la réouverture du micro exigent que VoiceWake reconnaisse toujours le chat de départ. Changer de chat, même dans la même fenêtre, annule le tour en cours. Dans une conversation vide ou si l'application n'expose aucun repère de chat, utilisez « OK envoie ». Après une réouverture sans parole pendant `continueSilenceSeconds` (10 s par défaut), le micro se referme et VoiceWake repasse en veille.
+L'envoi automatique exige un bouton d'envoi actif lié au composeur. VoiceWake vérifie que le chat de départ est toujours affiché : passer à un autre chat qu'il reconnaît, même dans la même fenêtre, annule le tour en cours, et le journal en donne la raison. Un chat tout neuf (sans identifiant) et un assistant intégré à un éditeur fonctionnent aussi : VoiceWake prend un repère provisoire, remplacé par le vrai après le premier envoi. Dans une fenêtre trop chargée pour être relue en entier (très longue conversation), le chat ne peut pas être vérifié : l'envoi reste autorisé tant que la fenêtre est au premier plan, donc ne changez pas de chat en pleine dictée. Après une réouverture sans parole pendant `continueSilenceSeconds` (10 s par défaut), le micro se referme et VoiceWake repasse en veille.
 
 Dans Codex, si la réponse terminée est identifiable et que le contrôle de lecture est absent, le lecteur VoiceWake prend le relais, puis rouvre le micro dans le même chat en conversation continue.
 
@@ -294,7 +306,7 @@ Sans casque, la voix de lecture peut laisser un écho : la reprise attend 3 s de
 
 ### Voix ElevenLabs (optionnel)
 
-Par défaut, VoiceWake n'appelle aucun service en ligne. Si vous avez un compte ElevenLabs, vous pouvez remplacer la voix du Mac pour « lis à partir de… » :
+Par défaut, VoiceWake n'appelle aucun service en ligne et parle avec une voix du Mac. Si vous avez un compte ElevenLabs, sa voix remplace celle du Mac partout où VoiceWake parle lui-même : « lis à partir de… », « Où on en est ? », « Quelles commandes ? » et les demandes de confirmation.
 
 ```json
 "elevenLabs": { "enabled": true, "voiceID": "JBFqnCBsd6RMkjVDRZzb", "model": "eleven_flash_v2_5" }
@@ -302,7 +314,9 @@ Par défaut, VoiceWake n'appelle aucun service en ligne. Si vous avez un compte 
 
 La lecture démarre en une seconde environ : une première phrase courte est synthétisée seule, le reste pendant qu'elle est lue. Les derniers extraits restent en mémoire (relire un passage ne consomme pas de quota). Essai : `voicewake lecteur "un texte"`. VoiceWake demande à ElevenLabs l'instant où chaque caractère est prononcé : la voix ne déclenche donc pas ses propres commandes. La lecture s'arrête à la fin de la réponse citée, sans lire les boutons de l'application.
 
-Placez la clé dans `~/.config/voicewake/elevenlabs.env` (une ligne `ELEVENLABS_API_KEY=…`, droits `600`), jamais dans la configuration ni dans le dépôt. Le texte à dire est alors envoyé à ElevenLabs et compte dans votre quota. En cas d'erreur, la voix du Mac prend le relais. Claude, Gemini et Codex gardent leur propre voix.
+Placez la clé dans `~/.config/voicewake/elevenlabs.env` (une ligne `ELEVENLABS_API_KEY=…`, droits `600`), jamais dans la configuration ni dans le dépôt. Le texte à dire est alors envoyé à ElevenLabs et compte dans votre quota. En cas d'erreur (pas de clé, quota épuisé, hors ligne), la voix du Mac prend le relais. Claude, Gemini et Codex gardent leur propre voix.
+
+**Choisissez une voix française native.** Les voix proposées par défaut par ElevenLabs sont anglophones : elles lisent le français avec un accent. Prenez l'identifiant d'une voix française dans la bibliothèque de voix d'ElevenLabs (filtre « French ») et mettez-le dans `voiceID` ; une voix de la bibliothèque s'utilise directement, sans l'ajouter à votre compte.
 
 ### Filtre « ma voix uniquement » (optionnel)
 
@@ -528,9 +542,14 @@ Le journal `~/Library/Logs/voicewake.log` indique chaque étape. Pour y voir aus
 | Dictée macOS au lieu du micro de l'application | `externalDictation` actif | `"externalDictation": null` |
 | « Autoriser VoiceWake » au démarrage | Accessibilité refusée | Réglages Système > Confidentialité et sécurité > Accessibilité |
 | « impossible de mettre l'app au premier plan » | écran verrouillé, ou une fenêtre système au premier plan | déverrouillez le Mac |
+| L'envoi part alors que vous parlez encore, ou « score aucune parole » | volume d'entrée du micro trop bas | Réglages Système > Son > Entrée : montez le volume (75 % environ) |
+| « envoi automatique annulé, chat ou fenêtre changé (…) » | une autre fenêtre ou un autre chat est resté devant plus de 2 s | la parenthèse dit lequel ; gardez le chat de départ affiché |
+| « Micro muet depuis … s : redémarrage de l'écoute » | le micro ne livre plus de son (changement de périphérique) | rien à faire, VoiceWake relance l'écoute |
+| « Écoute sourde : 2 min de son sans aucun mot reconnu » | moteur vocal bloqué, ou bruit continu sans parole | rien à faire : le service se relance seul (au plus une fois toutes les 6 h, jamais pendant une dictée) |
+| « Reconnaissance vocale : erreur … » | panne du moteur vocal d'Apple | si elle se répète, redémarrez le service ou le Mac |
 | « Modèle vocal fr-FR pas encore prêt » | juste après le démarrage du Mac | rien à faire, VoiceWake réessaie toutes les 5 s |
 
-`voicewake check` affiche l'Accessibilité de l'application qui lance la commande (le Terminal), pas celle du service : pour le service, fiez-vous au log. Évitez de faire modifier la configuration par un autre outil pendant une dictée : chaque redémarrage du service interrompt la dictée en cours.
+`voicewake check` affiche l'Accessibilité de l'application qui lance la commande (le Terminal), pas celle du service : pour le service, fiez-vous au log. Évitez de faire modifier la configuration par un autre outil pendant une dictée : chaque redémarrage du service interrompt la dictée en cours. Ne laissez pas deux agents de code modifier et réinstaller VoiceWake en même temps : chacun écrase la version de l'autre et le comportement change sans prévenir.
 
 ---
 
@@ -614,7 +633,7 @@ Si votre langue n'est pas reconnue localement par macOS, passez `"requireOnDevic
 Le projet est ouvert à tous : nouvelles langues, nouveaux assistants, autres éditeurs, version Linux, corrections.
 
 1. Forkez le dépôt et créez une branche.
-2. Vérifiez vos changements : `./install.sh`, `voicewake check`, puis `bash tests/route.sh ~/.local/bin/voicewake`.
+2. Vérifiez vos changements : `./install.sh`, `voicewake check`, puis `bash tests/route.sh ~/.local/bin/voicewake`. Les autres tests (`tests/conversation.swift`, `tests/silence.swift`, `tests/reader.swift`) se compilent avec la commande indiquée en tête de `tests/reader.swift`.
 3. Ouvrez une pull request en décrivant ce que vous avez testé (application, langue, version de macOS).
 
 Un bug ou une idée ? Ouvrez une [issue](https://github.com/RychTwins/voicewake/issues) avec l'extrait utile du journal `~/Library/Logs/voicewake.log` (en mode `debug`, il contient vos paroles : relisez-le avant de le partager).

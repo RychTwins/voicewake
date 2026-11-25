@@ -140,7 +140,9 @@ final class Announcer: NSObject, AVSpeechSynthesizerDelegate {
         synth.delegate = self
     }
 
-    var isSpeaking: Bool { synth.isSpeaking }
+    /// Vrai pendant une annonce dite par une autre voix que celle du Mac (ElevenLabs).
+    var external = false
+    var isSpeaking: Bool { synth.isSpeaking || external }
 
     func say(_ text: String, locale: String, voice: String?, onFinish: @escaping () -> Void) {
         synth.stopSpeaking(at: .immediate)

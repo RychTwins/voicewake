@@ -345,9 +345,20 @@ final class Coordinator {
     /// puis relancé avec une transcription vide.
     func speak(_ message: String, then: (() -> Void)? = nil) {
         detector.stop()
-        announcer.say(message, locale: config.locale, voice: config.readerVoice) { [weak self] in
+        let finish = { [weak self] in
             self?.detector.start()
             then?()
+        }
+        // Voix ElevenLabs si elle est configurée ; la voix du Mac seulement en secours (pas de clé, panne, hors ligne).
+        guard config.elevenLabs?.enabled == true else {
+            return announcer.say(message, locale: config.locale, voice: config.readerVoice, onFinish: finish)
+        }
+        announcer.external = true
+        ElevenLabs.say(message, config: config) { [weak self] said in
+            guard let self else { return }
+            self.announcer.external = false
+            if said { return finish() }
+            self.announcer.say(message, locale: self.config.locale, voice: self.config.readerVoice, onFinish: finish)
         }
     }
     var lastStatus = Date.distantPast
