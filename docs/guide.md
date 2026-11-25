@@ -1,0 +1,708 @@
+# VoiceWake — guide complet
+
+🇫🇷 **Français** · 🇬🇧 [English](guide.en.md) · [← Retour à la présentation](../README.md)
+
+**Pilotez Claude, Codex, Gemini et ChatGPT à la voix, sans toucher au clavier.**
+
+Dites « Dis Claude » : VoiceWake ouvre l'application, active son micro intégré, vous dictez votre demande, puis « OK envoie » l'envoie. La réponse est ensuite lue à voix haute. Le tout fonctionne aussi dans VS Code et les éditeurs dérivés.
+
+- **Local et gratuit** : reconnaissance vocale d'Apple exécutée sur le Mac, sans API ni abonnement.
+- **Invisible** : un service en arrière-plan, sans fenêtre ni icône, lancé à l'ouverture de session.
+- **Contextuel** : la fenêtre au premier plan décide. Dans VS Code, « Dis Claude » vise l'extension Claude Code ; ailleurs, l'application Claude.
+- **Mains libres de bout en bout** : activation, dictée, envoi, lecture de la réponse et interruption de la lecture.
+
+- **Sans interface** : tout s'installe et se règle en ligne de commande.
+
+### Comment ça marche, en cinq étapes
+
+1. Vous dites « **Dis Claude** » (ou « Dis Codex », « Dis Gemini »…) : le micro de l'assistant s'ouvre.
+2. Vous parlez normalement.
+3. Vous vous taisez quelques secondes, ou vous dites « **OK envoie** » : le message part.
+4. À la fin de la réponse, elle est lue à voix haute.
+5. Après la lecture, le micro se rouvre : la conversation continue sans rien toucher.
+
+Tout le reste (naviguer, cliquer un bouton, lancer un skill, répondre à une question) se fait aussi à la voix : voir [Commandes vocales](#commandes-vocales).
+
+> **Open source et gratuit.** Téléchargez-le, testez-le sur votre Mac, améliorez-le et adaptez-le à votre façon de travailler. La version actuelle est en **français** ; elle s'adapte à n'importe quelle langue (voir [Adapter à votre langue](#adapter-à-votre-langue)). Les contributions sont les bienvenues.
+
+> **Not a French speaker?** Read the [English guide](guide.en.md). VoiceWake ships with 14 languages and installs in your Mac's language.
+
+> Projet indépendant, sans lien avec Anthropic, OpenAI ou Google.
+
+---
+
+## Sommaire
+
+1. [Démarrage rapide](#démarrage-rapide)
+2. [Commandes vocales](#commandes-vocales)
+3. [Applications prises en charge](#applications-prises-en-charge)
+4. [Éditeurs de code](#éditeurs-de-code)
+5. [Configuration](#configuration)
+6. [Application de dictée externe](#application-de-dictée-externe)
+7. [Commandes du terminal](#commandes-du-terminal)
+8. [Dépannage](#dépannage)
+9. [Limites connues](#limites-connues)
+10. [Windows](#windows)
+11. [Désinstallation](#désinstallation)
+12. [Adapter à votre langue](#adapter-à-votre-langue)
+13. [Contribuer](#contribuer)
+
+---
+
+## Démarrage rapide
+
+**Prérequis** : macOS 13 ou plus récent, outils de compilation Apple (`xcode-select --install`).
+
+```bash
+git clone https://github.com/RychTwins/voicewake.git
+cd voicewake
+./install.sh
+```
+
+1. Acceptez les trois autorisations demandées par macOS : **Micro**, **Reconnaissance vocale** et **Accessibilité** (VoiceWake clique les boutons des applications).
+2. Vérifiez l'installation : `voicewake check`.
+3. Ouvrez Claude et dites « **Dis Claude** », puis votre demande, puis « **OK envoie** ».
+
+`install.sh` compile le programme, le signe avec un certificat local créé une seule fois (macOS conserve ainsi les autorisations d'une version à l'autre), installe `~/Applications/VoiceWake.app`, crée la configuration et démarre le service. La commande `voicewake` est installée dans `~/.local/bin`.
+
+---
+
+## Commandes vocales
+
+Chaque commande se dit **seule**, avec une courte pause avant et environ une seconde de silence après.
+
+### Activer un assistant
+
+| Phrase | Effet |
+| --- | --- |
+| « Dis Claude », « Salut Claude », « Hey Claude » | micro de Claude |
+| « Dis Codex », « Salut Codex » | micro de Codex |
+| « Dis Gemini », « Salut Gemini » | micro de Gemini |
+| « Salut ChatGPT » | dictée dans ChatGPT |
+| « Salut Antigravity », « Antigravity. » | agent d'Antigravity : VoiceWake écoute lui-même (l'agent n'a pas de micro), tape le texte dans sa zone de saisie et l'envoie sur « OK envoie » ou en fin de phrase |
+| « Salut assistant », « Dis assistant » | assistant de l'application au premier plan, sinon `defaultTarget` |
+| « Claude. », « Codex. », « Gemini. », « ChatGPT. », « Assistant. » (le nom **seul**, puis silence) | même effet ; jamais quand le nom est au milieu d'une phrase, ni pendant une dictée. Pensé pour le filtre de voix (seule votre voix compte). `"bareNames": false` désactive |
+
+L'application est lancée si elle est fermée, puis mise au premier plan. VoiceWake attend le résultat définitif de la reconnaissance (environ une seconde après la fin de la phrase) avant d'agir : le moteur corrige souvent sa première hypothèse, par exemple « Salut Claude » en « Salut Codex ». « Salut … » est la forme la mieux reconnue.
+
+Pendant une dictée, une phrase d'activation dite seule (« Salut Gemini ») arrête la dictée en cours sans l'envoyer et ouvre l'autre assistant.
+
+### Pendant la dictée
+
+| Phrase | Effet |
+| --- | --- |
+| « OK envoie », « OK tu peux envoyer », « Vas-y, envoie », « Bon, tu envoies »… | coupe le micro, laisse le texte s'afficher, puis envoie |
+| « OK arrête », « OK stop », « Annule », « Laisse tomber » | coupe seulement le micro, sans envoyer ; dites ensuite « OK envoie » pour envoyer quand même (3 min max) |
+| 5 s de silence après avoir parlé | envoie, si `"autoSendSilenceSeconds": 5` est réglé (désactivé par défaut) |
+
+**Fin de tour naturelle** (avec `autoSendSilenceSeconds`, ici 1,5 s) : VoiceWake regarde comment votre phrase se termine. Une question (« tu peux corriger ça ? ») part après environ 0,9 s ; une phrase finie après le délai réglé ; une phrase en suspens (« … et », « euh », « parce que ») attend au moins 3,5 s, le temps de réfléchir. `"naturalTurnEnd": false` revient à un délai fixe.
+
+Gardez l'application au premier plan jusqu'à l'envoi : si une autre application reste devant plus de 2 secondes, l'envoi est annulé (un passage bref, le temps qu'une fenêtre s'affiche, ne compte pas).
+
+Toutes les phrases de `sendPhrases` sont prises en compte : ajoutez les vôtres (par exemple « ok on voit »). Tant que des mots sont reconnus, VoiceWake considère que vous parlez : le compte à rebours du silence ne démarre qu'après le dernier mot, même si le micro est réglé bas.
+
+### Pendant la lecture à voix haute
+
+Après un envoi vocal, VoiceWake attend la fin de la réponse puis lance la lecture à voix haute.
+
+| Phrase | Effet |
+| --- | --- |
+| « Arrête la lecture », « Stop la lecture » | pause |
+| « Reprends la lecture », « Continue la lecture » | reprise là où elle s'était arrêtée (10 min max) ; sans lecture en pause, lit la dernière réponse |
+| « Écoute » | pause et micro rouvert pour une nouvelle demande |
+| « Stop Claude », « Claude, écoute », « Écoute-moi Codex » | comme « Écoute », mais passe du premier coup, sauf si la réponse affichée contient elle-même la phrase (`strongInterruptPhrases`, liste vide = désactivé) |
+| « Fais la lecture », « Lis la réponse », « Relis la réponse » | en veille : lit la dernière réponse de l'assistant au premier plan, même ancienne (bouton de lecture de l'application) |
+
+| « Lis à partir de … » suivi de quelques mots du passage | le lecteur intégré reprend la lecture à cet endroit |
+
+La voix de lecture ne déclenche pas ses propres commandes : une commande entendue pendant une lecture est ignorée si le texte affiché par l'assistant la contient, précédée du même mot. Pendant une lecture lancée par VoiceWake, les phrases d'activation sont ignorées.
+
+**Suivi de la lecture** : pendant la lecture à voix haute d'une application (lancée par VoiceWake), un bandeau en bas de l'écran affiche le passage en cours, mot surligné. VoiceWake suit la lecture en l'écoutant au micro : il faut donc que le son sorte des haut-parleurs (pas d'un casque), et l'affichage a une à deux secondes de retard. À activer avec `"showReadingProgress": true` (désactivé par défaut : le bandeau affiche à l'écran le texte de la réponse). Une commande ignorée parce qu'attribuée à la voix de lecture passe si vous la redites dans les 6 secondes (à la troisième fois au plus tard).
+
+**Surlignage dans l'application (expérimental, peu fiable)** : le suivi à l'oreille décroche souvent en conditions réelles ; désactivé par défaut.  avec `"highlightReadingInApp": true`, VoiceWake pose un rectangle jaune transparent sur le bloc de texte en cours de lecture, directement dans la réponse de l'assistant, et fait défiler la conversation pour le garder visible. Il fonctionne aussi pour une lecture lancée à la main. Par bloc de texte, pas mot par mot. Vérifier sans lecture : `voicewake highlight claude "quelques mots visibles"`.
+
+**Lecteur intégré** : les applications ne savent pas démarrer leur lecture au milieu d'une réponse. « Lis à partir de … » fait donc lire le texte affiché par VoiceWake lui-même, avec une voix du Mac, depuis la dernière occurrence des mots cités (deux mots au moins, petites différences tolérées). Aucun bandeau ne s'affiche : seule la voix lit. « Arrête la lecture », « Reprends la lecture » et « Écoute » s'appliquent aussi à ce lecteur. Pour une meilleure voix : Réglages Système > Accessibilité > Contenu énoncé > Voix du système > Gérer les voix (voix « Premium » ou « Améliorée »), ou `"readerVoice": "Thomas"`. Vérifier sans parler : `voicewake passage claude "quelques mots"`.
+
+---
+
+### Gestion de l'assistant
+
+En veille, l'assistant au premier plan :
+
+| Phrase | Effet |
+| --- | --- |
+| « Efface le brouillon », « Efface tout » | vide la zone de saisie (si le curseur y est) |
+| « Nouvelle conversation », « Nouvelle discussion » | commande de menu de l'app : Claude « Nouvelle session », Codex « Nouveau chat », Gemini « Nouvelle discussion » |
+| « Copie la réponse » | bouton « Copier » de la dernière réponse ; vérifie que le presse-papier a changé |
+| « Où on en est ? » | annonce l'état : en veille, dictée, brouillon en attente d'envoi, lecture en pause… |
+
+Pendant une lecture à voix haute, ces commandes sont ignorées (la voix pourrait les dire) : mettez d'abord en pause. « Où on en est ? » pendant l'attente de « OK envoie » garde le brouillon. Essai sans la voix : `voicewake action claude copyResponse`. Réglages : `newChatMenuItems` et `copyResponseShortcut` par cible ; `clearDraftPhrases`, `newChatPhrases`, `copyResponsePhrases`, `statusPhrases`.
+
+### Commandes universelles (toutes les apps pilotées)
+
+Sans liste à tenir à jour : VoiceWake lit l'app au premier plan au moment où vous parlez. Apps acceptées : les cibles (Claude, Codex, Gemini, ChatGPT), les éditeurs configurés, VS Code, Zed, Cursor, Windsurf, et celles de `universalApps`.
+
+| Phrase | Effet |
+| --- | --- |
+| « Menu afficher le terminal », « Menu nouveau chat » | n'importe quelle option de la barre de menus (sous-menus compris) |
+| « Clique sur artéfacts », « Appuie sur le bouton partager » | n'importe quel bouton visible de la fenêtre |
+| « Lance le skill brainstorming sur mon idée », « Commande compact » | tape `/superpowers:brainstorming sur mon idée` (Claude) ou `$pdf` (Codex) dans la zone de saisie, puis attend « OK envoie » ; « … et envoie » envoie tout de suite |
+| « Palette formater le document » | ouvre la palette (⌘⇧P VS Code, Zed, Cursor ; ⌘K Claude), tape la commande ; « valide » dans les 20 s l'exécute (« … et valide » : tout de suite) |
+| « Touche entrée », « Touche échap », « Ferme la palette », « Touche tab », « Flèche bas / haut » | touche, dite seule (forme explicite : un mot courant isolé ne suffit pas) |
+| « Quelles commandes ? » | dit à voix haute ce qu'on peut faire dans l'app au premier plan |
+
+- **Libellé clairement désigné seulement** : exact, ou seul à contenir tous les mots cités. « Menu afficher » (vague) ne fait rien.
+- **Actions sensibles** (supprimer, quitter, se déconnecter, envoyer, autoriser, payer…, y compris par leur chemin de menu) : VoiceWake demande « Confirmer … ? » et n'agit que sur « je confirme » dit seul dans les 8 s. « Non », « annule » ou le silence n'exécutent rien ; jamais de confirmation pendant une lecture à voix haute.
+- Juste avant d'agir, VoiceWake revérifie que la même app est au premier plan et que l'élément n'a pas changé.
+- Skills reconnus : skills personnels, anciennes commandes, commandes intégrées de Claude Code, skills des plugins installés (`/plugin:skill`), skills et commandes de Codex. Seuls des noms simples (lettres, chiffres, `- _ . :`) sont tapés, et seulement depuis des plugins installés sous `~/.claude/plugins`. Deux skills au même nom (deux plugins) : dites le nom du plugin. Le texte n'est tapé que si la zone de saisie a bien reçu le focus.
+- Essais sans rien cliquer ni taper : `voicewake trouve com.anthropic.claudefordesktop "menu palette de commandes"`, `voicewake skill claude "brainstorming sur mon idée"`.
+
+### Commandes du Mac (toutes les apps)
+
+> **En pause par défaut.** Le nom d'appel « Jarvis », les commandes du Mac, le Finder, les Réglages, la musique, les navigateurs et l'interpréteur ne proposent ces commandes du Mac que si `"jarvis": true` est dans la configuration. Sans cela, VoiceWake ne pilote que les assistants IA et les éditeurs.
+
+| Phrase | Effet |
+| --- | --- |
+| « Lance Spotify », « Ouvre Notes », « Ouvre les paramètres système » | ouvre une app installée (« ouvre » : nom exact ; « paramètres » seul vise les réglages de l'app au premier plan) |
+| « Bascule sur Codex », « Montre Gemini » | met une app au premier plan (l'ouvre si besoin) |
+| « Ferme Claude », « Quitte cette app » | quitte l'app, après « je confirme » ; l'app propose elle-même d'enregistrer |
+| « Cache Zed », « Cache cette app » | masque l'app |
+| « Minimise la fenêtre », « Plein écran », « Ferme la fenêtre » | fenêtre au premier plan |
+| « Monte le son », « Baisse le son », « Coupe le son », « Remets le son », « Volume 40 » | son |
+| « Augmente la luminosité », « Baisse la luminosité » | écran |
+| « Musique suivante », « Chanson précédente », « Pause la musique », « Remets la musique » | touches multimédia : Spotify, Musique, YouTube… |
+| « Capture d'écran » | image de l'écran sur le Bureau |
+
+**Finder** (actions sur la sélection : Finder au premier plan) :
+
+| Phrase | Effet |
+| --- | --- |
+| « Va dans mes téléchargements », « Ouvre le dossier voxtv » | ouvre le dossier (connu, nommé dans `folders`, ou sous-dossier du dossier courant, du dossier personnel, du Bureau, des Documents, de Developer) |
+| « Copie le fichier et envoie-le dans Documents », « Envoie-le dans voxtv » | copie la sélection |
+| « Déplace le fichier dans le dossier clients » | déplace la sélection |
+| « Supprime le fichier », « Mets-le à la corbeille » | corbeille, après « je confirme » |
+| « Vide la corbeille » | définitif : après « je confirme » |
+| « Renomme le fichier en Facture 2026 », « Nouveau dossier nommé Clients » | renommer (un seul fichier), créer un dossier |
+| « Ouvre le fichier », « Affiche en liste / icônes / colonnes / galerie » | ouvrir, présentation |
+
+**Réglages Système** : « Ouvre les réglages du son », « Paramètres Bluetooth », « Réglages du clavier »… (Wi-Fi, réseau, écran, notifications, batterie, souris, trackpad, confidentialité, accessibilité, fond d'écran, général, mises à jour, concentration, Dock, langue…), puis « clique sur … » dans le volet. « Active le Wi-Fi », « Coupe le Wi-Fi » (après « je confirme »), « Mode sombre », « Mode clair ». La première fois, macOS demande d'autoriser VoiceWake à piloter le Finder et « Événements système ».
+
+**Musique** :
+
+| Phrase | Effet |
+| --- | --- |
+| « Cherche Aya Nakamura sur Spotify » (ou « cherche … » avec Spotify devant) | ouvre la recherche dans Spotify |
+| « Mets du jazz sur YouTube » | ouvre les résultats YouTube dans le navigateur |
+| « Joue Thriller dans Musique » (ou « joue … » avec Musique devant) | joue le premier morceau de ta bibliothèque qui correspond (titre ou artiste) |
+| « C'est quoi cette chanson ? » | dit le titre et l'artiste en cours (Spotify ou Musique) |
+| « Lecture aléatoire », « Lecture dans l'ordre » | aléatoire de Spotify ou Musique |
+
+La première fois, macOS demande d'autoriser VoiceWake à piloter Spotify ou Musique.
+
+**Navigateurs** (Safari, Chrome, Comet, Arc, Brave, Edge, Firefox, Opera) :
+
+| Phrase | Effet |
+| --- | --- |
+| « Va sur github point com », « Va sur YouTube », « Ouvre le site anthropic.com » | ouvre la page (dans le navigateur au premier plan, sinon celui par défaut), depuis n'importe quelle app |
+| « Cherche météo Paris sur Google » | recherche Google, depuis n'importe quelle app ; navigateur devant : « cherche … » suffit |
+| « Nouvel onglet », « Ferme l'onglet », « Onglet suivant / précédent », « Onglet trois », « Rouvre l'onglet » | onglets |
+| « Recharge la page », « Page précédente / suivante », « Descends », « Remonte », « Tout en haut / en bas » | page |
+| « Zoom avant / arrière », « Taille normale », « Ajoute aux favoris », « Navigation privée » | divers |
+| « Cherche dans la page facture » | ouvre la recherche de la page et tape le mot |
+
+**Nom d'appel** : « Jarvis, ferme Claude ». En veille, « Jarvis » est facultatif. Pendant une dictée, « Jarvis, <commande> » coupe le micro et exécute la commande au lieu de l'écrire (les mots déjà transcrits par l'assistant restent dans le brouillon : « efface le brouillon »). Clé `wakeNames` (défaut `["jarvis"]`, liste vide : désactivé) ; `"systemCommands": false` désactive les commandes du Mac.
+
+### Répondre aux questions de l'assistant
+
+Quand Claude affiche une question à options (un petit son le signale), répondez à voix haute, sans cliquer :
+
+| Phrase | Effet |
+| --- | --- |
+| le libellé d'une option (« Envoyer tout de suite », « Fusionne et pousse ») | coche l'option et l'envoie |
+| « La première », « La deuxième », « Option trois » | option par son rang |
+| « Réponds non, ne fusionne pas », « Ma réponse est … » | réponse libre : tapée dans « Autre » puis envoyée |
+| « Passe » | passe la question |
+
+La carte est relue juste avant d'agir : si elle a changé ou disparu, rien n'est fait. Jamais pendant une lecture à voix haute. `"answerQuestions": false` désactive. Diagnostic : `voicewake question com.anthropic.claudefordesktop "la deuxième"`.
+
+### Routines, « Écris … » et bilan
+
+| Phrase | Effet |
+| --- | --- |
+| « Prépare VoxTV », « Routine fin de journée » | lance une routine : plusieurs commandes vocales enchaînées (clé `routines`) |
+| « Écris rendez-vous demain à 10 h », « Tape le texte … » | tape le texte dans le champ qui a le focus (app autorisée), sans ouvrir le micro d'un assistant |
+
+Routine : une phrase **dite seule** (ou « routine <nom> »), puis les étapes une à une, comme si vous les disiez. Une étape est n'importe quelle commande vocale (« ouvre voxtv », « menu afficher le terminal », « lance le skill … », « où on en est »…), 10 au plus, une toutes les `delaySeconds` (1,5 s par défaut). La routine s'arrête si une étape n'est pas reconnue, si une confirmation est demandée, si une dictée s'ouvre ou si une lecture commence ; elle ne peut pas en lancer une autre.
+
+```json
+"routines": [
+  { "name": "voxtv", "phrases": ["prépare voxtv"], "steps": ["ouvre voxtv", "menu afficher le terminal"] }
+]
+```
+
+« Écris … » : seulement dans le champ qui a déjà le focus (cliquez d'abord dedans) ; la frappe s'arrête si le focus change. Le texte dicté n'est écrit dans le log qu'en mode debug, jamais dans le bilan.
+
+Bilan : chaque commande ratée (rien ne correspond, action impossible, passage introuvable, étape de routine) est comptée dans `~/.config/voicewake/bilan.json` (type d'échec seulement ; vos mots seulement en mode debug ; lisible par vous seul, 100 entrées au plus, jamais envoyé ailleurs). `voicewake bilan` montre les plus fréquentes avec un conseil ; `voicewake bilan efface` remet à zéro ; `"failureReport": false` désactive.
+
+### Naviguer dans Claude à la voix
+
+Claude au premier plan, en veille. Chaque phrase se dit seule (une phrase qui les contient au milieu ne déclenche rien).
+
+| Phrase | Effet |
+| --- | --- |
+| « Ouvre Equality Holding », « Ouvre le projet VoxTV » | projet de la barre latérale : sa session la plus récente (sinon une nouvelle) |
+| « Ouvre la session vox mag » | session de la barre latérale, par quelques mots de son titre |
+| « Nouvelle session dans VoxTV » | nouvelle session dans ce projet |
+| « Session précédente », « Session suivante » (ou « conversation … ») | Aller > Session précédente / suivante |
+| « Page précédente », « Page suivante » | Aller > Retour / Avancer |
+| « Rouvre la session » | Fichier > Rouvrir la session fermée |
+| « Ouvre la recherche », « Ouvre les artéfacts », « Ouvre la personnalisation », « Ouvre créer » | boutons de la barre latérale |
+| « Mode code », « Mode discussion » | Aller > Code / Claude |
+| « Palette de commandes », « Ouvre les paramètres », « Raccourcis clavier » | menus correspondants |
+| « Masque / Affiche la barre latérale », « Affiche le terminal / les fichiers / les modifications / le navigateur », « Ferme le volet » | menu Affichage |
+| « Zoom avant », « Zoom arrière », « Taille normale », « Plein écran » | menu Affichage |
+
+Les noms tolèrent les petites différences (« vox tv » ↔ VoxTV, « le projet equality erp »). Voir ce que « ouvre … » peut viser : `voicewake barre claude`. Essayer sans parler : `voicewake dis claude "ouvre voxtv"`. Autres applications : ajoutez `voiceCommands` à la cible, par exemple `[{"phrases": ["nouveau projet"], "menu": ["Nouveau projet…"]}]` (libellés exacts des menus ou des boutons).
+
+**Codex et Gemini** ont aussi leurs commandes, avec les libellés de leurs menus : « conversation précédente / suivante », « page précédente », « onglet suivant », « nouveau projet », « nouveau chat éphémère » (Codex) ; « toutes les discussions », « discussion temporaire », « modèle suivant », « mini chat », « actualise la page » (Gemini) ; et pour les deux « ouvre la recherche », « ouvre les paramètres », barre latérale, zoom. Chez Gemini, « Ouvre <discussion> » cherche aussi dans le menu « Discussions » (conversations récentes).
+
+**Reconnaissance des noms** : toutes les 60 s, VoiceWake donne au moteur vocal les noms des projets et des conversations de l'app au premier plan, avec les phrases de commande (100 au plus) : « ouvre Equality Holding » est bien mieux compris.
+
+### Navigation du lecteur intégré
+
+Pendant « Lis à partir de … » (voix ElevenLabs ou voix du Mac) :
+
+| Phrase | Effet |
+| --- | --- |
+| « Plus vite », « Moins vite », « Ralentis » | vitesse × 1,25 ou ÷ 1,25 (de 0,5 à 2) |
+| « Répète », « Phrase précédente », « Recule » | début de la phrase en cours (ou de la précédente si elle vient de commencer) |
+| « Phrase suivante », « Saute la phrase » | début de la phrase suivante |
+
+La lecture à voix haute intégrée aux applications ne permet ni de changer la vitesse ni de reculer : ces commandes ne s'appliquent qu'au lecteur intégré. Réglages : `readFasterPhrases`, `readSlowerPhrases`, `readRepeatPhrases`, `readNextPhrases`.
+
+### Sons de confirmation
+
+VoiceWake n'a pas d'interface : un son discret dit ce qu'il a compris.
+
+| Son | Signification |
+| --- | --- |
+| Tink | commande comprise (pause, reprise, « lis à partir de », « fais la lecture ») |
+| Pop | micro de l'assistant ouvert |
+| Bottle | micro coupé sans envoi |
+| Glass | message envoyé |
+| Purr | commande ignorée, attribuée à la voix de lecture : redites-la |
+| Basso | action impossible (passage introuvable, bouton absent, assistant fermé) |
+
+Écouter : `voicewake sons`. Réglages : `"feedbackSounds": false` pour les couper, `"feedbackVolume": 0.35` (0 à 1), `"feedbackSoundNames": {"sent": "Hero"}` pour changer un son (sons de `/System/Library/Sounds`).
+
+### Conversation continue
+
+Avec `"continuousConversation": true`, VoiceWake envoie la dictée après 5 s de silence dès qu'il détecte de la parole et que le bouton d'envoi est disponible. Réglez le délai avec `autoSendSilenceSeconds` (`0` désactive l'envoi automatique).
+
+- **« Attends, je réfléchis »** suspend l'envoi jusqu'à ce que vous repreniez la parole.
+- **« Garde le brouillon »** ou **« OK arrête »** coupe le micro et laisse le texte dans le composeur.
+
+L'envoi automatique exige un bouton d'envoi actif lié au composeur. VoiceWake vérifie que le chat de départ est toujours affiché : passer à un autre chat qu'il reconnaît, même dans la même fenêtre, annule le tour en cours, et le journal en donne la raison. Un chat tout neuf (sans identifiant) et un assistant intégré à un éditeur fonctionnent aussi : VoiceWake prend un repère provisoire, remplacé par le vrai après le premier envoi. Dans une fenêtre trop chargée pour être relue en entier (très longue conversation), le chat ne peut pas être vérifié : l'envoi reste autorisé tant que la fenêtre est au premier plan, donc ne changez pas de chat en pleine dictée. Après une réouverture sans parole pendant `continueSilenceSeconds` (10 s par défaut), le micro se referme et VoiceWake repasse en veille.
+
+Dans Codex, si la réponse terminée est identifiable et que le contrôle de lecture est absent, le lecteur VoiceWake prend le relais, puis rouvre le micro dans le même chat en conversation continue.
+
+Le micro se rouvre dès la fin de la lecture : environ une demi-seconde après le dernier mot quand l'application affiche un bouton de pause (Claude, Gemini), un peu plus d'une seconde quand VoiceWake se fie au son de l'application (Codex).
+
+### Voix ElevenLabs (optionnel)
+
+Par défaut, VoiceWake synthétise la parole sur le Mac. Avec ElevenLabs activé, son lecteur utilise votre voix configurée pour lire les réponses de Codex et les passages demandés avec « Lis à partir de… ». La même voix sert aux annonces de VoiceWake, comme « Où on en est ? » et les demandes de confirmation. Pour garder ces annonces sur le Mac, ajoutez `"announcements": false`.
+
+```json
+"elevenLabs": { "enabled": true, "voiceID": "JBFqnCBsd6RMkjVDRZzb", "model": "eleven_flash_v2_5" }
+```
+
+La lecture démarre en une seconde environ : une première phrase courte est synthétisée seule, le reste pendant qu'elle est lue. Les derniers extraits restent en mémoire (relire un passage ne consomme pas de quota). Essai : `voicewake lecteur "un texte"`. VoiceWake demande à ElevenLabs l'instant où chaque caractère est prononcé : la voix ne déclenche donc pas ses propres commandes. La lecture s'arrête à la fin de la réponse citée, sans lire les boutons de l'application.
+
+Placez la clé dans `~/.config/voicewake/elevenlabs.env` (une ligne `ELEVENLABS_API_KEY=…`, droits `600`), jamais dans la configuration ni dans le dépôt. Le texte à dire est alors envoyé à ElevenLabs et compte dans votre quota. En cas d'erreur (pas de clé, quota épuisé, hors ligne), la voix du Mac prend le relais. Claude et Gemini utilisent leur voix intégrée lorsque VoiceWake déclenche leur lecture native.
+
+**Choisissez une voix française native.** Les voix proposées par défaut par ElevenLabs sont anglophones : elles lisent le français avec un accent. Prenez l'identifiant d'une voix française dans la bibliothèque de voix d'ElevenLabs (filtre « French ») et mettez-le dans `voiceID` ; une voix de la bibliothèque s'utilise directement, sans l'ajouter à votre compte.
+
+### Filtre « ma voix uniquement » (optionnel)
+
+VoiceWake peut n'obéir qu'à votre voix : ni la voix de lecture, ni une autre personne ne déclenchent de commande. Un modèle de reconnaissance du locuteur, sur le Mac, transforme environ 2 s de parole en une empreinte de 256 nombres, comparée à la vôtre (1 = même voix, 0 = voix différente).
+
+1. Modèle (≈ 8 Mo) : `wespeaker_int8.mlmodelc` de [FluidInference/speaker-diarization-coreml](https://huggingface.co/FluidInference/speaker-diarization-coreml), dans `~/.config/voicewake/models/`.
+2. `voicewake voix apprends` : lisez le texte affiché pendant 30 s (empreinte `~/.config/voicewake/voix.json`, droits `600`).
+3. `voicewake voix test 60` : un score par seconde. Parlez, faites parler quelqu'un, lancez une lecture.
+4. **Observation** : `"voiceFilter": { "enabled": true }`. Rien n'est bloqué ; le journal note le score de chaque commande. Réglez `threshold` (défaut 0,45) d'après ces scores.
+5. **Blocage** : `"voiceFilter": { "enabled": true, "block": true }`. Une commande dite par votre voix passe même pendant une lecture, sans devoir la répéter.
+6. **Couper la parole** (avec le blocage) : pendant une lecture à voix haute, il suffit de parler. Dès que votre voix est reconnue (environ une demi-seconde de parole), la lecture s'arrête et le micro s'ouvre, sans dire « écoute ». La voix de lecture et les autres personnes ne coupent rien. En observation, le journal note « aurait coupé la lecture ». Réglages : `bargeIn` (défaut true), `bargeInThreshold` (défaut : seuil + 0,1).
+
+Aucun son n'est enregistré ni envoyé : les 8 dernières secondes restent en mémoire, le temps de décider. Filtre, pas authentification : une voix très proche peut passer ; un rhume ou un autre micro peuvent demander de refaire l'empreinte.
+
+Modèle : WeSpeaker ResNet34 ([pyannote/wespeaker-voxceleb-resnet34-LM](https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM)), converti en Core ML par Fluid Inference, licence [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) ; fichiers modifiés (conversion Core ML, poids 8 bits), non inclus dans ce dépôt.
+
+### Automatismes
+
+- **Diagnostic au démarrage** : 15 s après son lancement, VoiceWake vérifie autorisations, apps, modèle vocal, Apple Intelligence et filtre de voix. S'il manque quelque chose, il le dit à voix haute une fois et écrit la correction dans le journal (`"announceProblems": false` pour ne rien dire). Vue complète : `voicewake diagnostic`.
+- **Routines à heure fixe** : ajoutez `"at": "09:00"` (et `"days": [1, 2, 3, 4, 5]`, 1 = lundi, défaut du lundi au vendredi) à une routine ; elle se lance seule à cette heure si VoiceWake est en veille.
+
+```json
+{ "name": "matin", "at": "09:00", "steps": ["salut claude"] }
+```
+
+### Erreurs de reconnaissance corrigées
+
+En veille, VoiceWake corrige les erreurs fréquentes du moteur vocal avant de chercher la commande : « Ouvrez … » → « ouvre … », « lance le ski … » → « lance le skill … », « nouvelle session de … » → « nouvelle session dans … », « dit Codex » → « dis Codex ». Une dictée n'est jamais modifiée. (Comparatif fait avec le nouveau moteur de macOS 26 : pas meilleur sur les commandes, le moteur actuel est conservé.)
+
+### Parler naturellement (interpréteur local)
+
+Adressez-vous à un assistant par son nom, avec vos mots : VoiceWake comprend la demande, sans phrase-clé.
+
+| Vous dites | VoiceWake fait |
+| --- | --- |
+| « Claude, tu peux me lire ce qu'il a répondu ? » | lis la réponse |
+| « Claude, on repart sur une nouvelle discussion » | nouvelle conversation |
+| « Claude, va dans le projet VoxTV » | ouvre VoxTV |
+| « Codex, c'est quoi l'état actuel ? » | où on en est |
+| « Claude, montre-moi le terminal » | affiche le terminal |
+| « Claude, il fait beau aujourd'hui » | rien (ce n'est pas une demande) |
+
+Le modèle d'Apple intégré au Mac (Apple Intelligence, macOS 26 ou plus) choisit l'action parmi celles que VoiceWake connaît : sans Internet, sans clé, sans coût. Il ne peut rien inventer ; une remarque ne déclenche rien ; effacer, écrire ou lancer un skill demandent « je confirme ». Réponse en moins d'une seconde. Les phrases-clés restent le chemin le plus rapide. Essai sans rien exécuter : `voicewake ia "Claude, relis-moi ta réponse"`. Désactiver : `"interpreter": { "enabled": false }`.
+
+## Applications prises en charge
+
+| Application | Micro | Envoi | Lecture à voix haute | État |
+| --- | --- | --- | --- | --- |
+| **Claude** | bouton micro intégré | Entrée | oui, avec pause et reprise | testé à la voix |
+| **Codex** (`ChatGPT.app`) | raccourci `cmd+shift+d` | bouton « Envoyer » | oui | testé à la voix |
+| **Gemini** | bouton micro intégré | bouton « Envoyer » | oui (menu « Autres actions » > « Écouter »), avec pause et reprise | activation et envoi testés à la voix |
+| **ChatGPT Classic** | Dictée macOS (`ctrl+option+d`) | Entrée | non | testé |
+| **VS Code** + Claude Code | bouton « Voice dictation » | bouton « Send message » | non | testé sans la voix |
+| **VS Code** + Codex | bouton « Dicter » | bouton « Envoyer » | non | testé sans la voix |
+| Cursor, Antigravity, Windsurf | comme VS Code | comme VS Code | non | configurés, non testés |
+
+Les libellés des boutons correspondent à une interface en français ; les libellés anglais sont prévus en alternative.
+
+**Applications OpenAI récentes** : sur certains Mac, `ChatGPT.app` est l'application Codex (`com.openai.codex`) et l'ancienne application s'appelle `ChatGPT Classic.app` (`com.openai.chat`). La configuration d'exemple identifie donc ces deux cibles par leur `bundleID`. Pour vérifier : `mdls -name kMDItemCFBundleIdentifier /Applications/*.app`.
+
+**ChatGPT Classic** : son bouton « Dictée » ne réagit pas au clic automatique, d'où l'usage de la Dictée macOS. Réglez son raccourci dans **Réglages Système > Clavier > Dictée > Raccourci > Personnaliser** → `⌃⌥D`. Cette application est retirée le 30 janvier 2027.
+
+---
+
+## Éditeurs de code
+
+Règle : **la fenêtre au premier plan décide**.
+
+- Un éditeur de la liste `editors` est au premier plan et intègre l'assistant appelé : le micro s'ouvre **dans l'éditeur**.
+- Autre fenêtre au premier plan, ou panneau de l'assistant fermé dans l'éditeur : l'application de bureau prend le relais.
+- « Salut assistant » dans un éditeur vise `preferredAssistant`, sinon `defaultTarget`.
+
+```json
+"editors": [{
+  "id": "vscode",
+  "bundleIDs": ["com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "com.google.antigravity"],
+  "preferredAssistant": "codex",
+  "assistants": {
+    "claude": { "shortcut": "button:Voice dictation", "stopShortcut": "button:Stop recording", "submitShortcut": "button:Send message" },
+    "codex":  { "shortcut": "button:Dicter|Dictate", "stopShortcut": "button:Arrêter la dictée|Stop dictation", "submitShortcut": "button:Envoyer|Send" }
+  }
+}]
+```
+
+`voicewake test claude` applique la même règle : passez sur l'éditeur pendant le compte à rebours de 3 secondes.
+
+---
+
+## Configuration
+
+Fichier : `~/.config/voicewake/config.json`, créé à partir de [`config.example.json`](config.example.json). Après modification :
+
+```bash
+launchctl kickstart -k gui/$(id -u)/io.github.voicewake
+```
+
+### Réglages généraux
+
+| Clé | Rôle | Défaut |
+| --- | --- | --- |
+| `locale` | langue de reconnaissance | `fr-FR` |
+| `requireOnDevice` | reconnaissance exclusivement locale | `true` |
+| `cooldownSeconds` | délai minimal entre deux activations | `5` |
+| `debug` | écrit les transcriptions dans le log | `false` |
+| `dryRun` | essai à blanc : journalise la cible reconnue sans rien ouvrir, pour régler les phrases | `false` |
+| `wakeMaxWaitSeconds` | attente maximale du résultat définitif avant d'agir | `1.8` |
+| `feedbackSounds`, `feedbackVolume`, `feedbackSoundNames` | sons de confirmation (voir plus haut) | `true`, `0.35` |
+| `routines` | routines vocales (`name`, `phrases`, `steps`, `delaySeconds`) | aucune |
+| `writePhrases` | phrases de « écris … » (liste vide : désactivé) | « écris », « écrit », « tape le texte » |
+| `failureReport` | bilan local des commandes ratées | `true` |
+| `wakeNames` | nom d'appel qui force une commande, même en pleine dictée | `["jarvis"]` |
+| `systemCommands` | commandes du Mac (apps, fenêtres, son, musique, capture) | `true` |
+| `answerQuestions` | répondre à la voix aux questions de l'assistant | `true` |
+| `folders` | dossiers nommés pour le Finder, ex. `{"voxtv": "~/Developer/voxtv"}` | aucun |
+| `echoCancellation` | annulation d'écho de macOS (expérimental : peut empêcher la reconnaissance de votre voix) | `false` |
+| `defaultTarget` | cible de « Salut assistant » hors application connue | `claude` |
+| `frontmostPhrases` | phrases visant l'application au premier plan | « salut assistant »… |
+| `sendPhrases`, `stopPhrases` | commandes d'envoi et d'arrêt pendant la dictée | voir l'exemple |
+| `sendSilenceSeconds` | silence requis après une commande | `1.2` |
+| `sendPauseBeforeSeconds` | pause requise avant une commande (`0` pour désactiver) | `0.6` |
+| `reviewSeconds` | attente de « OK envoie » après « OK arrête » | `180` |
+| `readPausePhrases`, `readResumePhrases`, `interruptPhrases` | commandes pendant la lecture | voir l'exemple |
+| `readFromPhrases`, `readerVoice` | « lis à partir de … » et voix du lecteur intégré | voir l'exemple |
+| `conversation.startGraceSeconds` | délai laissé à l'application pour ouvrir son micro | `8` |
+| `conversation.idleSecondsBeforeResume` | micro libre pendant ce délai = conversation terminée | `6` |
+| `conversation.maxPauseMinutes` | retour forcé en veille | `30` |
+
+### Réglages par application (`targets`)
+
+| Clé | Rôle |
+| --- | --- |
+| `id`, `appName`, `bundleID` | identification de l'application (le `bundleID` est prioritaire) |
+| `phrases` | phrases d'activation ; ajoutez les variantes mal transcrites (voir `debug`) |
+| `shortcut` | ouverture du micro |
+| `stopShortcut` | arrêt du micro (défaut : `shortcut`) |
+| `submitShortcut` | envoi (défaut : `return`) |
+| `readAloudShortcut`, `readAloudMenuItem` | bouton de lecture à voix haute, et option de menu s'il ouvre un menu |
+| `pauseReadShortcut`, `resumeReadShortcut` | pause et reprise de la lecture |
+| `busyLabels` | libellés visibles tant que l'assistant répond |
+| `activate`, `launchDelaySeconds` | mise au premier plan, attente après un lancement (`3` s) |
+| `windows` | réglages propres à Windows (voir [Windows](#windows)) |
+
+### Syntaxe des raccourcis
+
+| Forme | Exemple | Usage |
+| --- | --- | --- |
+| bouton de l'application | `button:Dicter\|Dictate` | clic par l'Accessibilité, libellé exact, alternatives séparées par `\|` |
+| combinaison | `ctrl+shift+v`, `cmd+shift+d` | cas courant |
+| touche seule | `capslock`, `fn`, `f13` | touche dédiée |
+| double appui | `double option` | raccourcis à double appui |
+| maintien | `hold 1.5 fn` | push-to-talk |
+| enchaînement | `cmd+k then v` | raccourcis en deux temps |
+| code brut | `keycode:57` | touche non reconnue |
+
+Les lettres suivent la disposition active (AZERTY, QWERTY…). Modificateurs : `ctrl`, `option`, `shift`, `cmd`, `fn`, et `rcmd`, `roption`… pour ceux de droite. Les libellés des boutons se relèvent avec **Accessibility Inspector** (Xcode > Open Developer Tool).
+
+---
+
+## Application de dictée externe
+
+Pour utiliser Whisper, SuperWhisper, MacWhisper, Wispr Flow, VoiceInk ou un outil équivalent à la place des micros intégrés, configurez dans cet outil un raccourci global qui insère le texte dans le champ actif, puis :
+
+```json
+"externalDictation": {
+  "shortcut": "ctrl+option+space",
+  "stopShortcut": "ctrl+option+space"
+}
+```
+
+- Ce raccourci remplace le micro de toutes les applications. `null` rétablit les micros intégrés.
+- Les phrases nominatives (« Dis Claude ») ouvrent l'application de bureau. Dans un éditeur, « Salut assistant » dicte dans le champ déjà actif.
+- « OK arrête » termine la dictée ; l'envoi se fait ensuite manuellement.
+- Outil à maintien : `"shortcut": "hold 3 fn"`, sans `stopShortcut`.
+- Dictée macOS par le menu Édition : `"useMacOSDictationMenu": true`, sans `stopShortcut`.
+- Si le curseur n'est pas placé dans le bon champ : `"dictationFieldLabels": ["libellé exact du champ"]` dans la cible concernée.
+- **App sans micro** (agent d'Antigravity) : `"typedDictation": true` dans la cible, avec `"dictationFieldLabels"` et `"submitShortcut"`. VoiceWake écoute, puis tape le texte entendu (sans la phrase d'envoi) et appuie sur le bouton d'envoi. Exemple :
+
+```json
+{ "id": "antigravity", "appName": "Antigravity IDE", "bundleID": "com.google.antigravity-ide",
+  "phrases": ["salut antigravity"], "shortcut": "button:Message input", "typedDictation": true,
+  "dictationFieldLabels": ["Message input"], "submitShortcut": "button:Send message" }
+```
+
+---
+
+## Commandes du terminal
+
+```bash
+voicewake check                    # configuration, applications trouvées, autorisations
+voicewake test claude              # déclenche Claude dans 3 s, sans la voix
+voicewake route "dis claude"       # cible ou commande associée à une phrase
+voicewake set codex "cmd+shift+d"  # change le raccourci d'une cible
+voicewake record claude            # enregistre un raccourci tapé au clavier
+voicewake sons                     # fait entendre les sons de confirmation
+voicewake action claude newChat    # commande de gestion dans 3 s (clearDraft, newChat, copyResponse)
+voicewake dis claude "ouvre voxtv" # phrase de navigation dans 3 s, sans la voix
+voicewake barre claude             # projets et sessions visibles dans la barre latérale
+voicewake trouve <bundle-id> "menu …"   # option ou bouton visé, sans cliquer
+voicewake skill claude "nom arguments"  # skill ou commande slash qui serait tapé
+voicewake routines                 # routines vocales et leurs étapes
+voicewake bilan                    # commandes ratées les plus fréquentes, avec un conseil
+voicewake boutons <bundle-id>      # boutons visibles (ce que « clique sur … » peut viser)
+voicewake question <bundle-id> "la deuxième"   # question affichée et réponse reconnue, sans cliquer
+voicewake voix apprends | test | efface        # empreinte du filtre « ma voix uniquement »
+voicewake diagnostic                           # autorisations, apps, modèles
+voicewake langue en                            # pack de langue : ce qui est traduit, ce qui manque
+voicewake exemple es --config config.example.json   # configuration de départ dans une langue
+voicewake ia "phrase"                          # commande que l'interpréteur local tirerait de la phrase
+tail -f ~/Library/Logs/voicewake.log   # archivé en voicewake.log.1 au-delà de 5 Mo
+```
+
+---
+
+## Dépannage
+
+Le journal `~/Library/Logs/voicewake.log` indique chaque étape. Pour y voir aussi les transcriptions, passez `"debug": true` puis relancez le service.
+
+| Message ou symptôme | Cause probable | Solution |
+| --- | --- | --- |
+| Rien dans le log quand vous parlez | phrase transcrite autrement | activez `debug`, puis ajoutez la variante dans `phrases` |
+| « Phrase ignorée : lecture à voix haute … en cours » | une lecture est en cours | dites « Arrête la lecture » ou « Écoute » |
+| « bouton introuvable » | panneau fermé, interface dans une autre langue ou libellé modifié | ouvrez le panneau ; vérifiez le libellé avec Accessibility Inspector |
+| « envoi annulé » | une autre application est passée au premier plan | gardez l'application devant jusqu'à l'envoi |
+| « OK envoie » sans effet | `externalDictation` actif ou `sendPhrases` vide | remettez `"externalDictation": null` et la liste `sendPhrases` |
+| Dictée macOS au lieu du micro de l'application | `externalDictation` actif | `"externalDictation": null` |
+| « Autoriser VoiceWake » au démarrage | Accessibilité refusée | Réglages Système > Confidentialité et sécurité > Accessibilité |
+| « impossible de mettre l'app au premier plan » | écran verrouillé, ou une fenêtre système au premier plan | déverrouillez le Mac |
+| L'envoi part alors que vous parlez encore, ou « score aucune parole » | volume d'entrée du micro trop bas | Réglages Système > Son > Entrée : montez le volume (75 % environ) |
+| « envoi automatique annulé, chat ou fenêtre changé (…) » | une autre fenêtre ou un autre chat est resté devant plus de 2 s | la parenthèse dit lequel ; gardez le chat de départ affiché |
+| « Micro muet depuis … s : redémarrage de l'écoute » | le micro ne livre plus de son (changement de périphérique) | rien à faire, VoiceWake relance l'écoute |
+| « Écoute sourde : 2 min de son sans aucun mot reconnu » | moteur vocal bloqué, ou bruit continu sans parole | rien à faire : le service se relance seul (au plus une fois toutes les 6 h, jamais pendant une dictée) |
+| « Reconnaissance vocale : erreur … » | panne du moteur vocal d'Apple | si elle se répète, redémarrez le service ou le Mac |
+| « Modèle vocal fr-FR pas encore prêt » | juste après le démarrage du Mac | rien à faire, VoiceWake réessaie toutes les 5 s |
+
+`voicewake check` affiche l'Accessibilité de l'application qui lance la commande (le Terminal), pas celle du service : pour le service, fiez-vous au log. Évitez de faire modifier la configuration par un autre outil pendant une dictée : chaque redémarrage du service interrompt la dictée en cours. Ne laissez pas deux agents de code modifier et réinstaller VoiceWake en même temps : chacun écrase la version de l'autre et le comportement change sans prévenir.
+
+---
+
+## Limites connues
+
+- L'indicateur orange du micro reste allumé en veille : protection de macOS.
+- La commande d'envoi est aussi transcrite par le micro de l'application et apparaît en fin de message.
+- Le lecteur intégré lit le texte affiché à l'écran : une réponse ancienne, que l'application n'affiche plus, n'est pas retrouvée.
+- Une application qui garde le micro ouvert (visio, enregistrement) prolonge la pause jusqu'à `maxPauseMinutes`.
+- Codex : « Arrête la lecture » arrête la lecture (pas de pause dans l'application) ; « Reprends la lecture » la relance depuis le début. Son bouton de lecture n'accepte pas le clic d'accessibilité : VoiceWake lui donne le focus clavier et envoie Espace à Codex, sans toucher au pointeur (vrai clic de souris seulement en dernier recours).
+- Les libellés des boutons dépendent de la langue et des versions des applications.
+- `record` demande l'autorisation « Surveillance de l'entrée » pour le Terminal ; `test` demande l'Accessibilité pour le Terminal.
+- La reconnaissance locale en français dépend de la version de macOS ; à défaut, `"requireOnDevice": false`.
+
+---
+
+## Windows
+
+> **Version préliminaire, non testée sur une machine Windows.**
+
+Même fonctionnement et même fichier de configuration. Code dans [`windows/`](../windows) (C# / .NET 8).
+
+```powershell
+cd voicewake\windows
+.\install.ps1           # compile, installe dans %LOCALAPPDATA%\VoiceWake, démarre avec la session
+.\install.ps1 -Restart  # après modification de la configuration
+```
+
+**Prérequis** : SDK .NET 8 (`winget install Microsoft.DotNet.SDK.8`), langue **Français** avec l'option **Reconnaissance vocale**, et « Autoriser les applications de bureau à accéder au micro » activé.
+
+| macOS | Windows |
+| --- | --- |
+| `~/.config/voicewake/config.json` | `%APPDATA%\voicewake\config.json` |
+| `~/Library/Logs/voicewake.log` | `%LOCALAPPDATA%\VoiceWake\voicewake.log` |
+| reconnaissance Apple, texte libre | reconnaissance Windows sur liste fermée, hors ligne |
+| Accessibilité (`button:`) | UI Automation (`button:`, mêmes libellés) |
+| Dictée macOS (`ctrl+option+d`) | saisie vocale Windows (`win+h`) |
+| `option`, `cmd` | `alt`, `win` |
+
+Bloc `windows` facultatif par cible :
+
+```json
+"windows": { "processName": "Claude", "launch": "startmenu:Claude", "shortcut": "win+h" }
+```
+
+- `processName` : nom du processus sans `.exe`.
+- `launch` : `startmenu:<nom>` (défaut), `shell:AppsFolder\<AUMID>` ou chemin d'un `.exe`.
+- `shortcut`, `stopShortcut`, `submitShortcut`, `readAloudShortcut`, `pauseReadShortcut` : surcharges propres à Windows.
+- `minConfidence` (`0.5`) : confiance minimale de la reconnaissance.
+
+Non pris en charge sous Windows pour l'instant : `record`, éditeurs de code, commandes de lecture.
+
+---
+
+## Désinstallation
+
+```bash
+./uninstall.sh            # conserve la configuration
+./uninstall.sh --purge    # supprime aussi la configuration et le certificat
+```
+
+Windows : `.\uninstall.ps1` (`-Purge` pour supprimer aussi la configuration).
+
+---
+
+## Adapter à votre langue
+
+VoiceWake écoute **une langue à la fois**, celle de `locale` : le moteur vocal d'Apple ne sait pas en suivre deux en même temps. Toutes les commandes se disent dans cette langue.
+
+| Langue | `locale` | État |
+| --- | --- | --- |
+| Français | `fr-FR` | langue d'origine, utilisée et testée à la voix |
+| Anglais | `en-US` | pack fourni |
+| Espagnol | `es-ES` | pack fourni |
+| Portugais | `pt-BR` | pack fourni |
+| Allemand | `de-DE` | pack fourni |
+| Italien | `it-IT` | pack fourni |
+| Néerlandais | `nl-NL` | pack fourni |
+| Russe | `ru-RU` | pack fourni |
+| Turc | `tr-TR` | pack fourni |
+| Arabe | `ar-SA` | pack fourni |
+| Hindi | `hi-IN` | pack fourni |
+| Chinois (mandarin simplifié) | `zh-CN` | pack fourni |
+| Japonais | `ja-JP` | pack fourni |
+| Coréen | `ko-KR` | pack fourni |
+
+Les packs fournis sont des traductions complètes (commandes, navigation, réponses aux questions, annonces, mots d'actions sensibles), vérifiées par les tests du projet, mais **pas encore rodées à la voix** par des personnes qui parlent ces langues. Le moteur vocal déforme souvent les noms et certains mots : si une commande ne passe pas chez vous, activez `"debug": true`, regardez ce qu'il a écrit, et ajoutez cette variante (voir plus bas). Vos retours sont précieux.
+
+**La langue se choisit toute seule.** À l'installation, `./install.sh` lit la langue du Mac et écrit la configuration dans cette langue, avec sa variante régionale quand le moteur vocal la connaît (`en-GB`, `es-MX`, `pt-PT`…) : on dit tout de suite « Hey Claude », « Hola Claude », « 嘿 Claude ». Un Mac en français reste en français ; une langue sans pack donne l'anglais. La configuration produite est vérifiée avant d'être mise en place.
+
+Hors du français, `requireOnDevice` vaut `false` : si macOS n'a pas de modèle vocal local pour la langue, VoiceWake démarre quand même en passant par la reconnaissance en ligne d'Apple (votre voix est alors envoyée à Apple). Dès qu'un modèle local existe, c'est lui qui sert. Remettez `true` pour interdire tout envoi.
+
+Pour changer de langue ensuite (`auto` = langue du Mac) :
+
+```bash
+voicewake exemple es --config config.example.json > ~/.config/voicewake/config.json
+```
+
+puis relancez le service. Cette commande réécrit la configuration : sauvegardez la vôtre avant si vous l'avez modifiée.
+
+**Japonais, coréen, turc, hindi** : dans ces langues le verbe vient à la fin (« VoxTV を開いて »), alors que les commandes suivies d'un nom (ouvrir un projet, cliquer un bouton, choisir un menu, lancer un skill) doivent commencer par le mot-clé. Le pack donne donc une forme mot-clé d'abord (« 開く VoxTV »). Les commandes sans nom se disent normalement.
+
+**Ce qui change avec la langue**
+
+1. `locale` : la langue écoutée (`en-US`, `es-ES`, `de-DE`, `pt-BR`, `zh-CN`…).
+2. Dans la configuration, vos phrases (remplies d'office par `voicewake exemple`) : `phrases` de chaque assistant, `frontmostPhrases`, `sendPhrases`, `stopPhrases`, `interruptPhrases`, `readPausePhrases`, `readResumePhrases`, `readFromPhrases`, `readAloudPhrases`.
+3. Le **pack de langue** : les mots des actions sensibles (supprimer, quitter, payer… qui demandent toujours une confirmation, dans toutes les langues à la fois), toutes les commandes intégrées (navigation, « clique sur… », « menu… », skills, réponses aux questions, lecteur), les mots qui annoncent qu'une phrase n'est pas finie, et ce que VoiceWake dit à voix haute.
+4. Les libellés `button:` suivent la langue de l'interface des applications : ajoutez les vôtres en alternative avec `|` (`button:Envoyer|Send`).
+
+**Ajouter une langue**
+
+```bash
+voicewake langue es
+```
+
+Cette commande liste tout ce qu'un pack doit fournir (environ 200 éléments) et ce qu'il reste à traduire. Elle refuse aussi un pack dangereux : une confirmation d'un seul mot, ou une annonce dont les valeurs ne correspondent plus. Deux façons de l'écrire :
+
+- sans recompiler : `~/.config/voicewake/lang/es.json`, avec les clés `phrases`, `lists`, `maps`, `speech` ;
+- dans le projet : `src/Lang+xx.swift`, sur le modèle de `src/Lang+en.swift`, puis une ligne dans `Lang.builtIn`. `bash tests/langues.sh ~/.local/bin/voicewake` vérifie tous les packs.
+
+Chaque phrase française est une clé, sa valeur est la liste de ce qu'on dit dans votre langue (plusieurs variantes possibles, liste vide si la phrase n'a pas d'équivalent). Le moteur vocal déforme souvent les noms (« Claude » entendu « clawed ») : activez `"debug": true`, regardez ce qu'il écrit dans le journal et ajoutez ces variantes. Vérifiez avec `voicewake route "hey claude"`.
+
+**Limites actuelles hors du français** : l'interpréteur de phrases libres, les commandes du Mac (mode Jarvis), le diagnostic parlé et les messages du journal restent en français.
+
+Si votre langue n'est pas reconnue localement par macOS, passez `"requireOnDevice": false`.
+
+---
+
+## Contribuer
+
+Le projet est ouvert à tous : nouvelles langues, nouveaux assistants, autres éditeurs, version Linux, corrections.
+
+1. Forkez le dépôt et créez une branche.
+2. Vérifiez vos changements : `./install.sh`, `voicewake check`, puis `bash tests/route.sh ~/.local/bin/voicewake`, `bash tests/route-en.sh ~/.local/bin/voicewake` et `bash tests/langues.sh ~/.local/bin/voicewake`. Les autres tests (`tests/conversation.swift`, `tests/silence.swift`, `tests/reader.swift`) se compilent avec la commande indiquée en tête de `tests/reader.swift`.
+3. Ouvrez une pull request en décrivant ce que vous avez testé (application, langue, version de macOS).
+
+Un bug ou une idée ? Ouvrez une [issue](https://github.com/RychTwins/voicewake/issues) avec l'extrait utile du journal `~/Library/Logs/voicewake.log` (en mode `debug`, il contient vos paroles : relisez-le avant de le partager).
+
+---
+
+## Feuille de route
+
+- Version Linux (Vosk)
+- Lecture à voix haute dans les éditeurs de code
+- Version anglaise de la documentation
+- Configurations prêtes à l'emploi pour d'autres langues
+
+## Licence
+
+[MIT](../LICENSE)
