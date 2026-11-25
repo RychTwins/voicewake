@@ -300,11 +300,23 @@ case "skill":
         print("→ « \(hit.entry.text)\(args2.isEmpty ? "" : " " + args2) » (\(entries.count) connus)")
     } else { print("→ aucun skill ne correspond (\(entries.count) connus)") }
 
+case "exemple":
+    // voicewake exemple [code] --config config.example.json : configuration de départ dans une langue.
+    let wanted = args.count > 1 ? args[1].lowercased() : Lang.systemCode
+    guard let example = FileManager.default.contents(atPath: configPath) else { print("Configuration illisible : \(configPath)"); exit(1) }
+    if wanted == "fr" { FileHandle.standardOutput.write(example); exit(0) }
+    guard let pack = Lang.load(wanted), let data = pack.configuration(from: example, code: wanted) else {
+        FileHandle.standardError.write(Data("Aucun pack « \(wanted) » : voicewake langue \(wanted)\n".utf8)); exit(1)
+    }
+    FileHandle.standardOutput.write(data)
+    FileHandle.standardOutput.write(Data("\n".utf8))
+
 case "langue":
     // voicewake langue [code] : ce qu'il reste à traduire dans un pack de langue (défaut : langue de `locale`).
     let wanted = args.count > 1 ? args[1].lowercased() : String(config.locale.prefix(2)).lowercased()
     let inventory = Lang.inventory(config: config)
     let total = inventory.phrases.count + inventory.lists.count + inventory.maps.count + inventory.speech.count
+        + inventory.settings.count
     print("Langue active : \(Lang.code) (locale \(config.locale)). Packs fournis : fr (source), \(Lang.builtIn.keys.sorted().joined(separator: ", ")).")
     if wanted == "fr" { print("Le français est la langue source : \(total) éléments, rien à traduire."); exit(0) }
     guard let missing = Lang.missing(in: wanted, inventory: inventory) else {
@@ -312,12 +324,25 @@ case "langue":
         print("\(total) éléments à traduire : \(inventory.phrases.count) phrases, \(inventory.lists.count) listes, \(inventory.maps.count) tables, \(inventory.speech.count) annonces.")
         exit(1)
     }
-    let left = missing.phrases.count + missing.lists.count + missing.maps.count + missing.speech.count
+    var left = missing.phrases.count + missing.lists.count + missing.maps.count + missing.speech.count
+        + missing.settings.count
+    // Règle de sûreté : une action sensible ne se confirme jamais d'un mot seul, ni une question d'un rang seul.
+    if let pack = Lang.load(wanted) {
+        for key in ["je confirme", "oui je confirme", "confirme l action"] {
+            for said in pack.phrases[key] ?? [] where normalize(said).split(separator: " ").count < 2 {
+                print("  confirmation trop courte (« \(key) » → « \(said) ») : au moins deux mots."); left += 1
+            }
+        }
+        if !(pack.lists["question.aloneOrdinals"] ?? []).isEmpty {
+            print("  question.aloneOrdinals doit rester vide : un rang dit seul ne répond pas à une question."); left += 1
+        }
+    }
     print("Pack « \(wanted) » : \(total - left) éléments traduits sur \(total).")
     for p in missing.phrases { print("  phrase à traduire : \(p)") }
     for l in missing.lists { print("  liste à fournir : \(l)") }
     for m in missing.maps { print("  table à fournir : \(m)") }
     for s in missing.speech { print("  annonce à traduire : \(s)") }
+    for s in missing.settings { print("  réglage à fournir : \(s)") }
     exit(left == 0 ? 0 : 1)
 
 case "diagnostic":

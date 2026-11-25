@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Usage : bash tests/route-en.sh /chemin/vers/voicewake
-# Routage en anglais (config.example.en.json, pack de langue « en »).
+# Routage en anglais (configuration produite par `voicewake exemple en`, pack de langue « en »).
 set -euo pipefail
 
 binary=${1:?Indiquer le chemin vers le binaire voicewake}
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-config="$root/config.example.en.json"
+config="$(mktemp -t voicewake-en).json"
+trap 'rm -f "$config"' EXIT
+# La configuration anglaise est produite par le pack de langue, à partir de l'exemple français.
+"$binary" exemple en --config "$root/config.example.json" > "$config"
 count=0
 
 expect_route() {

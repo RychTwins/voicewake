@@ -241,6 +241,26 @@ extension LanguagePack {
             Spoken.statusIdleFront: "Standing by, ready. %@ is in front.",
             Spoken.statusIdle: "Standing by, ready.",
         ],
-        fixes: []
+        fixes: [],
+        locale: "en-US",
+        config: [
+            "frontmostPhrases": ["hey assistant", "hi assistant", "hello assistant"],
+            "sendPhrases": ["ok send", "okay send", "ok send it", "okay send it", "go ahead send", "send the message", "send it",
+                            "ok you can send", "all good you can send"],
+            "stopPhrases": ["ok stop", "okay stop", "stop listening", "cancel that", "never mind"],
+            "interruptPhrases": ["listen", "listen to me", "wait listen"],
+            "readPausePhrases": ["stop reading", "pause reading", "pause the reading", "stop the reading"],
+            "readResumePhrases": ["resume reading", "continue reading", "keep reading", "resume the reading"],
+            "readFromPhrases": ["read from", "read starting from", "start reading from", "resume from"],
+            "readAloudPhrases": ["read the answer", "read the response", "read it aloud", "read aloud", "read that again"],
+        ],
+        greetings: ["hey", "hi", "hello", "ok"],
+        names: [
+            "claude": ["claude", "claud", "clawed"],
+            "chatgpt": ["chatgpt", "chat gpt"],
+            "codex": ["codex", "codecs"],
+            "gemini": ["gemini", "geminy"],
+            "antigravity": ["antigravity", "anti gravity"],
+        ]
     )
 }

@@ -41,6 +41,7 @@ extension Lang {
         seen = []
         inv.maps = inv.maps.filter { seen.insert($0).inserted }
         inv.speech = Spoken.all
+        inv.settings = ["locale", "greetings", "names"] + LanguagePack.configKeys
         return inv
     }
 }

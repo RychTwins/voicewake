@@ -27,10 +27,25 @@ func rotateLogIfNeeded(path: String = ("~/Library/Logs/voicewake.log" as NSStrin
 
 /// "Salut, Chat GPT !" -> "salut chat gpt"
 func normalize(_ s: String) -> String {
-    s.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "fr_FR"))
-        .lowercased()
-        .split { !$0.isLetter && !$0.isNumber }
-        .joined(separator: " ")
+    let folded = s.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "fr_FR")).lowercased()
+    // Chinois, japonais, coréen : pas d'espace entre les mots. Chaque caractère compte pour un mot, pour que les
+    // commandes (« 打开 <nom> ») se retrouvent au début ou à la fin d'une phrase comme dans les autres langues.
+    guard folded.unicodeScalars.contains(where: isUnspacedScript) else {
+        return folded.split { !$0.isLetter && !$0.isNumber }.joined(separator: " ")
+    }
+    var spaced = ""
+    for c in folded {
+        if c.unicodeScalars.contains(where: isUnspacedScript) { spaced += " \(c) " } else { spaced.append(c) }
+    }
+    return spaced.split { !$0.isLetter && !$0.isNumber }.joined(separator: " ")
+}
+
+/// Écritures sans espace entre les mots : idéogrammes, kana, hangul.
+private func isUnspacedScript(_ u: Unicode.Scalar) -> Bool {
+    switch u.value {
+    case 0x3040...0x30FF, 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xAC00...0xD7AF, 0xF900...0xFAFF, 0x20000...0x2FA1F: return true
+    default: return false
+    }
 }
 
 struct ConfigError: LocalizedError {

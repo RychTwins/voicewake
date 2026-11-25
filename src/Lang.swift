@@ -20,6 +20,40 @@ struct LanguagePack: Codable {
     var speech: [String: String] = [:]
     /// Corrections d'erreurs de reconnaissance propres à la langue : [motif, remplacement].
     var fixes: [[String]] = []
+    /// Langue écoutée par défaut pour ce pack (« en-US », « es-ES »…).
+    var locale: String?
+    /// Phrases de la configuration, par clé (`sendPhrases`, `stopPhrases`, `readAloudPhrases`…) : elles servent
+    /// à écrire la configuration de départ de la langue (`voicewake exemple <code>`).
+    var config: [String: [String]] = [:]
+    /// Mots d'appel placés devant le nom d'un assistant (« hey », « hi »).
+    var greetings: [String] = []
+    /// Façons dont le moteur vocal écrit le nom de chaque assistant (identifiant de la cible → variantes).
+    var names: [String: [String]] = [:]
+
+    /// Clés de configuration qu'un pack doit fournir.
+    static let configKeys = ["frontmostPhrases", "sendPhrases", "stopPhrases", "interruptPhrases", "readPausePhrases",
+                             "readResumePhrases", "readFromPhrases", "readAloudPhrases"]
+
+    init(phrases: [String: [String]] = [:], lists: [String: [String]] = [:], maps: [String: [String: String]] = [:],
+         speech: [String: String] = [:], fixes: [[String]] = [], locale: String? = nil, config: [String: [String]] = [:],
+         greetings: [String] = [], names: [String: [String]] = [:]) {
+        self.phrases = phrases; self.lists = lists; self.maps = maps; self.speech = speech; self.fixes = fixes
+        self.locale = locale; self.config = config; self.greetings = greetings; self.names = names
+    }
+
+    /// Un fichier de langue peut ne fournir qu'une partie des clés.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        phrases = try c.decodeIfPresent([String: [String]].self, forKey: .phrases) ?? [:]
+        lists = try c.decodeIfPresent([String: [String]].self, forKey: .lists) ?? [:]
+        maps = try c.decodeIfPresent([String: [String: String]].self, forKey: .maps) ?? [:]
+        speech = try c.decodeIfPresent([String: String].self, forKey: .speech) ?? [:]
+        fixes = try c.decodeIfPresent([[String]].self, forKey: .fixes) ?? []
+        locale = try c.decodeIfPresent(String.self, forKey: .locale)
+        config = try c.decodeIfPresent([String: [String]].self, forKey: .config) ?? [:]
+        greetings = try c.decodeIfPresent([String].self, forKey: .greetings) ?? []
+        names = try c.decodeIfPresent([String: [String]].self, forKey: .names) ?? [:]
+    }
 
     mutating func merge(_ other: LanguagePack) {
         phrases.merge(other.phrases) { _, new in new }
@@ -27,6 +61,34 @@ struct LanguagePack: Codable {
         maps.merge(other.maps) { _, new in new }
         speech.merge(other.speech) { _, new in new }
         fixes += other.fixes
+        locale = other.locale ?? locale
+        config.merge(other.config) { _, new in new }
+        if !other.greetings.isEmpty { greetings = other.greetings }
+        names.merge(other.names) { _, new in new }
+    }
+
+    /// Configuration de départ dans cette langue, à partir de la configuration d'exemple (JSON) : mêmes réglages
+    /// et mêmes applications, phrases remplacées. nil si l'exemple est illisible.
+    func configuration(from example: Data, code: String) -> Data? {
+        guard var root = (try? JSONSerialization.jsonObject(with: example)) as? [String: Any] else { return nil }
+        for key in root.keys where key.hasPrefix("_note") { root[key] = nil }
+        root["locale"] = locale ?? code
+        for key in Self.configKeys { root[key] = config[key] ?? [] }
+        root["routines"] = nil
+        if var targets = root["targets"] as? [[String: Any]] {
+            for i in targets.indices {
+                targets[i]["_note"] = nil
+                let id = targets[i]["id"] as? String ?? ""
+                let heard = names[id] ?? [id]
+                targets[i]["phrases"] = heard.flatMap { name in greetings.map { "\($0) \(name)" } }
+            }
+            root["targets"] = targets
+        }
+        if var editors = root["editors"] as? [[String: Any]] {
+            for i in editors.indices { editors[i]["_note"] = nil }
+            root["editors"] = editors
+        }
+        return try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     }
 }
 
@@ -37,7 +99,14 @@ enum Lang {
     static var isSource: Bool { code == "fr" }
 
     /// Packs fournis avec VoiceWake.
-    static let builtIn: [String: LanguagePack] = ["en": .english]
+    static let builtIn: [String: LanguagePack] = [
+        "en": .english, "es": .spanish, "pt": .portuguese, "de": .german, "it": .italian,
+    ]
+
+    /// Langue du Mac (« en », « es »…), pour proposer la bonne configuration à l'installation.
+    static var systemCode: String {
+        String((Locale.preferredLanguages.first ?? "fr").prefix(2)).lowercased()
+    }
 
     static func externalPath(_ code: String) -> String {
         ("~/.config/voicewake/lang/\(code).json" as NSString).expandingTildeInPath
@@ -101,6 +170,8 @@ enum Lang {
         var lists: [String] = []
         var maps: [String] = []
         var speech: [String] = []
+        /// Réglages du pack : clés de configuration, « greetings », « names », « locale ».
+        var settings: [String] = []
     }
 
     /// Non nil pendant l'inventaire : chaque liste consultée y note ce qu'elle demande.
@@ -112,7 +183,15 @@ enum Lang {
         return Inventory(phrases: inventory.phrases.filter { p.phrases[$0] == nil },
                          lists: inventory.lists.filter { p.lists[$0] == nil },
                          maps: inventory.maps.filter { p.maps[$0] == nil },
-                         speech: inventory.speech.filter { p.speech[$0] == nil })
+                         speech: inventory.speech.filter { p.speech[$0] == nil },
+                         settings: inventory.settings.filter { key in
+                             switch key {
+                             case "locale": return p.locale == nil
+                             case "greetings": return p.greetings.isEmpty
+                             case "names": return p.names.isEmpty
+                             default: return (p.config[key] ?? []).isEmpty
+                             }
+                         })
     }
 }
 
