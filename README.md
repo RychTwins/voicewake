@@ -1,5 +1,7 @@
 # VoiceWake
 
+🇫🇷 **Français** · 🇬🇧 [English](README.en.md)
+
 **Pilotez Claude, Codex, Gemini et ChatGPT à la voix, sans toucher au clavier.**
 
 Dites « Dis Claude » : VoiceWake ouvre l'application, active son micro intégré, vous dictez votre demande, puis « OK envoie » l'envoie. La réponse est ensuite lue à voix haute. Le tout fonctionne aussi dans VS Code et les éditeurs dérivés.
@@ -23,7 +25,7 @@ Tout le reste (naviguer, cliquer un bouton, lancer un skill, répondre à une qu
 
 > **Open source et gratuit.** Téléchargez-le, testez-le sur votre Mac, améliorez-le et adaptez-le à votre façon de travailler. La version actuelle est en **français** ; elle s'adapte à n'importe quelle langue (voir [Adapter à votre langue](#adapter-à-votre-langue)). Les contributions sont les bienvenues.
 
-> **Not a French speaker?** VoiceWake ships with language packs for English, Spanish, Portuguese, German, Italian, Dutch, Russian, Turkish, Arabic, Hindi, Chinese, Japanese and Korean. `./install.sh` picks your Mac's language: you then say "Hey Claude", talk, stay silent or say "OK send it", and the answer is read aloud. Switch language any time with `voicewake exemple <code> --config config.example.json > ~/.config/voicewake/config.json`. This README is in French; see [Adapter à votre langue](#adapter-à-votre-langue). The packs pass the project's tests but have not been voice-tested by native speakers yet: please report what the recognizer mishears.
+> **Not a French speaker?** Read the [English README](README.en.md). VoiceWake ships with 14 languages and installs in your Mac's language.
 
 > Projet indépendant, sans lien avec Anthropic, OpenAI ou Google.
 
@@ -308,7 +310,7 @@ Le micro se rouvre dès la fin de la lecture : environ une demi-seconde après l
 
 ### Voix ElevenLabs (optionnel)
 
-Par défaut, VoiceWake n'appelle aucun service en ligne et parle avec une voix du Mac. Si vous avez un compte ElevenLabs, sa voix remplace celle du Mac partout où VoiceWake parle lui-même : « lis à partir de… », « Où on en est ? », « Quelles commandes ? » et les demandes de confirmation. Ces annonces peuvent citer le nom d'une application, d'un menu ou d'un bouton : pour qu'elles restent sur le Mac, ajoutez `"announcements": false` (ElevenLabs ne sert alors qu'à « lis à partir de… »).
+Par défaut, VoiceWake synthétise la parole sur le Mac. Avec ElevenLabs activé, son lecteur utilise votre voix configurée pour lire les réponses de Codex et les passages demandés avec « Lis à partir de… ». La même voix sert aux annonces de VoiceWake, comme « Où on en est ? » et les demandes de confirmation. Pour garder ces annonces sur le Mac, ajoutez `"announcements": false`.
 
 ```json
 "elevenLabs": { "enabled": true, "voiceID": "JBFqnCBsd6RMkjVDRZzb", "model": "eleven_flash_v2_5" }
@@ -316,7 +318,7 @@ Par défaut, VoiceWake n'appelle aucun service en ligne et parle avec une voix d
 
 La lecture démarre en une seconde environ : une première phrase courte est synthétisée seule, le reste pendant qu'elle est lue. Les derniers extraits restent en mémoire (relire un passage ne consomme pas de quota). Essai : `voicewake lecteur "un texte"`. VoiceWake demande à ElevenLabs l'instant où chaque caractère est prononcé : la voix ne déclenche donc pas ses propres commandes. La lecture s'arrête à la fin de la réponse citée, sans lire les boutons de l'application.
 
-Placez la clé dans `~/.config/voicewake/elevenlabs.env` (une ligne `ELEVENLABS_API_KEY=…`, droits `600`), jamais dans la configuration ni dans le dépôt. Le texte à dire est alors envoyé à ElevenLabs et compte dans votre quota. En cas d'erreur (pas de clé, quota épuisé, hors ligne), la voix du Mac prend le relais. Claude, Gemini et Codex gardent leur propre voix.
+Placez la clé dans `~/.config/voicewake/elevenlabs.env` (une ligne `ELEVENLABS_API_KEY=…`, droits `600`), jamais dans la configuration ni dans le dépôt. Le texte à dire est alors envoyé à ElevenLabs et compte dans votre quota. En cas d'erreur (pas de clé, quota épuisé, hors ligne), la voix du Mac prend le relais. Claude et Gemini utilisent leur voix intégrée lorsque VoiceWake déclenche leur lecture native.
 
 **Choisissez une voix française native.** Les voix proposées par défaut par ElevenLabs sont anglophones : elles lisent le français avec un accent. Prenez l'identifiant d'une voix française dans la bibliothèque de voix d'ElevenLabs (filtre « French ») et mettez-le dans `voiceID` ; une voix de la bibliothèque s'utilise directement, sans l'ajouter à votre compte.
 
