@@ -16,6 +16,8 @@ Vous dites « Dis Claude », vous parlez, votre message part, et la réponse vou
 
 ## Installation
 
+### Mac
+
 Il faut macOS 13 ou plus récent et les outils d'Apple (`xcode-select --install`).
 
 ```bash
@@ -25,6 +27,18 @@ cd voicewake
 ```
 
 Acceptez les trois autorisations demandées (Micro, Reconnaissance vocale, Accessibilité), ouvrez Claude et dites « Dis Claude ».
+
+### Windows
+
+Il faut Windows 10 ou 11 et le SDK .NET 8 (`winget install Microsoft.DotNet.SDK.8`). Dans PowerShell :
+
+```powershell
+git clone https://github.com/RychTwins/voicewake.git
+cd voicewake\windows
+.\install.ps1
+```
+
+Version préliminaire, pas encore testée sur une vraie machine : voir les [prérequis Windows](docs/guide.md#windows).
 
 ## Les commandes à connaître
 
@@ -54,8 +68,6 @@ Il y en a beaucoup d'autres : voir le [guide complet](docs/guide.md#commandes-vo
 - [Langues](docs/guide.md#adapter-à-votre-langue) : changer de langue, en corriger ou en ajouter une.
 - [Dépannage](docs/guide.md#dépannage) : quand une commande ne passe pas.
 - [Contribuer](docs/guide.md#contribuer) : le projet est ouvert à tous.
-
-La version Windows est préliminaire et n'a pas été testée sur une vraie machine.
 
 ---
 

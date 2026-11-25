@@ -16,6 +16,8 @@ Say "Hey Claude", talk, your message is sent, and the answer is read out loud. F
 
 ## Install
 
+### Mac
+
 You need macOS 13 or later and Apple's command line tools (`xcode-select --install`).
 
 ```bash
@@ -25,6 +27,18 @@ cd voicewake
 ```
 
 Accept the three permissions (Microphone, Speech Recognition, Accessibility), open Claude and say "Hey Claude".
+
+### Windows
+
+You need Windows 10 or 11 and the .NET 8 SDK (`winget install Microsoft.DotNet.SDK.8`). In PowerShell:
+
+```powershell
+git clone https://github.com/RychTwins/voicewake.git
+cd voicewake\windows
+.\install.ps1
+```
+
+Preliminary version, not yet tested on a real machine: see the [Windows requirements](docs/guide.en.md#windows).
 
 ## Commands to know
 
@@ -54,8 +68,6 @@ There are many more: see the [full guide](docs/guide.en.md#voice-commands).
 - [Languages](docs/guide.en.md#languages): switch language, fix one or add one.
 - [Troubleshooting](docs/guide.en.md#troubleshooting): when a command is not understood.
 - [Contributing](docs/guide.en.md#contributing): the project is open to everyone.
-
-The Windows version is preliminary and has not been tested on a real machine.
 
 ---
 
