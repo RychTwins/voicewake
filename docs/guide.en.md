@@ -1,6 +1,6 @@
 # VoiceWake — full guide
 
-🇫🇷 [Français](guide.md) · 🇬🇧 **English** · [← Back to the overview](../README.en.md)
+🇫🇷 [Français](guide.md) · 🇬🇧 **English** · [← Back to the overview](../README.md)
 
 **Work with Claude, Codex and Gemini by voice, without touching the keyboard.**
 

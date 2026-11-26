@@ -1,24 +1,44 @@
 # VoiceWake
 
-🇫🇷 **Français** · 🇬🇧 [English](README.en.md)
+🇫🇷 [Français](README.fr.md) · 🇬🇧 **English**
 
-**Travaillez avec Claude, Codex et Gemini à la voix, sans toucher au clavier.**
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![macOS 13+](https://img.shields.io/badge/macOS-13%2B-black?logo=apple)
+![Swift](https://img.shields.io/badge/Swift-5-orange?logo=swift)
+![On-device](https://img.shields.io/badge/speech-on--device-green)
+![14 languages](https://img.shields.io/badge/languages-14-purple)
 
-Vous dites « Dis Claude », vous parlez, votre message part, et la réponse vous est lue à voix haute. Gratuit, open source, pour Mac.
+**Talk to Claude, Codex and Gemini hands-free. Wake word, dictation, send, answer read aloud. 100% on-device.**
 
-## Comment ça marche
+Say "Hey Claude", talk, your message is sent, and the answer is read out loud. No API key, no subscription, no cloud by default: Apple's speech recognition runs on your Mac.
 
-1. Vous dites « **Dis Claude** » : le micro de l'assistant s'ouvre.
-2. Vous parlez normalement.
-3. Vous vous taisez, ou vous dites « **OK envoie** » : le message part.
-4. La réponse est lue à voix haute.
-5. Le micro se rouvre : la conversation continue.
+<!-- Demo: record ~20 s (say "Hey Claude", dictate, "OK send it", answer read aloud), save as docs/demo.gif, then uncomment:
+<p align="center"><img src="docs/demo.gif" alt="VoiceWake demo" width="720"></p>
+-->
 
-## Installation
+## Why
+
+AI writes the code, but you still hunt for the window, click the mic, click send, 50 times a day. VoiceWake removes every click: the frontmost window decides which assistant you're talking to (Claude Code in VS Code, the Claude app elsewhere).
+
+- 🎙️ **Wake word**: "Hey Claude", "Hey Codex", "Hey Gemini"
+- 🔁 **Continuous conversation**: the mic reopens after the answer is read
+- 🧠 **Context-aware**: works in the desktop apps and in VS Code, Cursor, Windsurf
+- 🔒 **Private**: speech recognition runs on your Mac; nothing is sent online unless you turn on the optional ElevenLabs voice
+- 🌍 **14 languages**, picked from your Mac's language
+
+## How it works
+
+1. You say "**Hey Claude**": the assistant's microphone opens.
+2. You talk normally.
+3. You say "**OK send it**", or simply stop talking if automatic sending is on: the message goes.
+4. The answer is read out loud.
+5. The microphone reopens: the conversation goes on.
+
+## Install
 
 ### Mac
 
-Il faut macOS 13 ou plus récent et les outils d'Apple (`xcode-select --install`).
+You need macOS 13 or later and Apple's command line tools (`xcode-select --install`).
 
 ```bash
 git clone https://github.com/RychTwins/voicewake.git
@@ -26,11 +46,11 @@ cd voicewake
 ./install.sh
 ```
 
-Acceptez les trois autorisations demandées (Micro, Reconnaissance vocale, Accessibilité), ouvrez Claude et dites « Dis Claude ».
+Accept the three permissions (Microphone, Speech Recognition, Accessibility), open Claude and say "Hey Claude".
 
 ### Windows
 
-Il faut Windows 10 ou 11 et le SDK .NET 8 (`winget install Microsoft.DotNet.SDK.8`). Dans PowerShell :
+You need Windows 10 or 11 and the .NET 8 SDK (`winget install Microsoft.DotNet.SDK.8`). In PowerShell:
 
 ```powershell
 git clone https://github.com/RychTwins/voicewake.git
@@ -38,37 +58,43 @@ cd voicewake\windows
 .\install.ps1
 ```
 
-Version préliminaire, pas encore testée sur une vraie machine : voir les [prérequis Windows](docs/guide.md#windows).
+Preliminary version, French commands only, not yet tested on a real machine: see the [Windows requirements](docs/guide.en.md#windows).
 
-## Les commandes à connaître
+## Commands to know
 
-| Vous dites | Ce qui se passe |
+| You say | What happens |
 | --- | --- |
-| « Dis Claude », « Dis Codex », « Dis Gemini » | le micro de l'assistant s'ouvre |
-| « OK envoie » | le message part |
-| « OK arrête » | le micro se coupe, rien n'est envoyé |
-| « Arrête la lecture », « Reprends la lecture » | pause et reprise de la lecture |
-| « Écoute » | coupe la lecture et rouvre le micro |
-| « Nouvelle conversation » | nouveau chat |
-| « Ouvre *nom du projet* » | ouvre ce projet |
-| « Clique sur *nom du bouton* » | clique ce bouton |
+| "Hey Claude", "Hey Codex", "Hey Gemini" | the assistant's microphone opens |
+| "OK send it" | the message is sent |
+| "OK stop" | the microphone closes, nothing is sent |
+| "Stop reading", "Resume reading" | pause and resume the reading |
+| "Listen" | stops the reading and reopens the microphone |
+| "New chat" | new conversation |
+| "Open *project name*" | opens that project |
+| "Click on *button name*" | clicks that button |
 
-Il y en a beaucoup d'autres : voir le [guide complet](docs/guide.md#commandes-vocales).
+There are many more: see the [full guide](docs/guide.en.md#voice-commands).
 
-## Ce qu'il sait faire
+## What it does
 
-- **Vos assistants** : Claude, Codex, Gemini, et leurs extensions dans VS Code, Cursor et Windsurf.
-- **Votre langue** : 14 langues fournies, choisie d'après la langue de votre Mac. Le français est la langue d'origine ; les autres n'ont pas encore été rodées à la voix.
-- **Local** : la reconnaissance vocale d'Apple tourne sur votre Mac, sans abonnement.
-- **À votre façon** : toutes les phrases se règlent dans un fichier de configuration.
+- **Your assistants**: Claude, Codex, Gemini, and their extensions in VS Code, Cursor and Windsurf.
+- **Your language**: 14 languages included, picked from your Mac's language. French is the original language; the others have not been voice-tested yet, so please report what the speech engine mishears.
+- **Local**: Apple's speech recognition runs on your Mac, with no subscription.
+- **Your way**: every phrase can be changed in a configuration file.
 
-## Pour aller plus loin
+## Going further
 
-- [Guide complet](docs/guide.md) : toutes les commandes, la configuration, les éditeurs de code.
-- [Langues](docs/guide.md#adapter-à-votre-langue) : changer de langue, en corriger ou en ajouter une.
-- [Dépannage](docs/guide.md#dépannage) : quand une commande ne passe pas.
-- [Contribuer](docs/guide.md#contribuer) : le projet est ouvert à tous.
+- [Full guide](docs/guide.en.md): all commands, configuration, supported apps.
+- [Languages](docs/guide.en.md#languages): switch language, fix one or add one.
+- [Troubleshooting](docs/guide.en.md#troubleshooting): when a command is not understood.
+- [Contributing](docs/guide.en.md#contributing): the project is open to everyone.
+
+## Help wanted: native speakers
+
+13 of the 14 language packs have never been voice-tested. If you speak English, Spanish, German, Portuguese, Italian, Dutch, Russian, Turkish, Arabic, Hindi, Chinese, Japanese or Korean, 10 minutes of testing helps a lot: [report what the speech engine mishears](https://github.com/RychTwins/voicewake/issues/new?template=language.yml).
+
+If VoiceWake saves you clicks, a ⭐ helps other people find it.
 
 ---
 
-Projet indépendant, sans lien avec Anthropic, OpenAI ou Google. [Licence](LICENSE).
+Independent project, not affiliated with Anthropic, OpenAI or Google. [License](LICENSE).

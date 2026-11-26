@@ -1,0 +1,27 @@
+name: Bug report
+description: Something does not work
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: macOS version and Mac model
+      placeholder: e.g. macOS 15.2, MacBook Air M2
+    validations:
+      required: true
+  - type: input
+    id: app
+    attributes:
+      label: Assistant and app
+      placeholder: e.g. Claude Code in VS Code
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: Output of `voicewake check`
+      render: text

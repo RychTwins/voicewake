@@ -1,6 +1,6 @@
 # VoiceWake — guide complet
 
-🇫🇷 **Français** · 🇬🇧 [English](guide.en.md) · [← Retour à la présentation](../README.md)
+🇫🇷 **Français** · 🇬🇧 [English](guide.en.md) · [← Retour à la présentation](../README.fr.md)
 
 **Pilotez Claude, Codex, Gemini et ChatGPT à la voix, sans toucher au clavier.**
 

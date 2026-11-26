@@ -1,0 +1,27 @@
+name: Language report
+description: A voice command is misheard or missing in your language
+labels: ["language", "good first issue"]
+body:
+  - type: input
+    id: lang
+    attributes:
+      label: Language
+      placeholder: e.g. Spanish (es-ES)
+    validations:
+      required: true
+  - type: input
+    id: said
+    attributes:
+      label: What you said
+      placeholder: e.g. "Oye Claude"
+    validations:
+      required: true
+  - type: input
+    id: heard
+    attributes:
+      label: What ~/Library/Logs/voicewake.log shows
+      placeholder: e.g. "oye cloud"
+  - type: textarea
+    id: notes
+    attributes:
+      label: Suggested phrase or fix
